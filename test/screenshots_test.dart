@@ -491,4 +491,14 @@ void main() {
       }
     });
   });
+
+  testWidgets('章节内容：HTML 表格显示', (t) async {
+    await seedTablePages(state.repo);
+    final doc = (await state.repo.docs('p1')).firstWhere((d) => d.id == 'd1');
+    await shoot(t, ChapterViewPage(doc: doc, initialIndex: 2), '31_table_render', after: () async {
+      for (var i = 0; i < 6; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+    });
+  });
 }

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme/glass.dart';
+import '../theme/html_clean.dart' show displayPlainText;
 
 // ============================================================================
 // 章节内容（只读）：按页显示某一章解析出的文字，公式按教材样式排版。
@@ -41,7 +42,7 @@ List<ChapterPageView> buildChapterPages(ChapterRange range, List<PageText> pages
 /// 页面提示：没有文字 / 文字很少（可能是图片页）。正常返回 null。
 String? pageNote(ChapterPageView p, {String unit = '页'}) {
   if (!p.parsed) return '这一$unit还没有解析';
-  final n = p.text.replaceAll(RegExp(r'\s'), '').length;
+  final n = displayPlainText(p.text).replaceAll(RegExp(r'\s'), '').length;
   if (n == 0) return '这一$unit没有识别到文字（可能是空白页或图片）';
   if (n < 40) return '这一$unit文字很少，可能是图片、图表或解析不完整';
   return null;
@@ -67,7 +68,7 @@ List<String> sourcesOf(List<ChapterPageView> pages) =>
 /// 复制用的纯文本：带页码标记。
 String chapterPlainText(String title, List<ChapterPageView> pages, {String unit = '页'}) => [
       title,
-      for (final p in pages.where((p) => p.text.trim().isNotEmpty)) '【第 ${p.page} $unit】\n${p.text.trim()}',
+      for (final p in pages.where((p) => p.text.trim().isNotEmpty)) '【第 ${p.page} $unit】\n${displayPlainText(p.text)}',
     ].join('\n\n');
 
 class ChapterViewPage extends StatefulWidget {
@@ -144,12 +145,12 @@ class _ChapterViewPageState extends State<ChapterViewPage> {
   /// 跳到第 [i] 个匹配所在的页。
   void _jump(List<ChapterPageView> ps, int i) {
     final q = query.text;
-    final total = ps.fold<int>(0, (a, p) => a + countMatches(p.text, q));
+    final total = ps.fold<int>(0, (a, p) => a + countMatches(displayPlainText(p.text), q));
     if (total == 0) return;
     current = (i % total + total) % total;
     var acc = 0;
     for (final p in ps) {
-      final n = countMatches(p.text, q);
+      final n = countMatches(displayPlainText(p.text), q);
       if (current < acc + n) {
         final ctx = keys[p.page]?.currentContext;
         if (ctx != null) Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 250), alignment: 0.05);
@@ -176,7 +177,7 @@ class _ChapterViewPageState extends State<ChapterViewPage> {
     }
     final ps = pages;
     final q = query.text.trim();
-    final total = q.isEmpty ? 0 : ps.fold<int>(0, (a, p) => a + countMatches(p.text, q));
+    final total = q.isEmpty ? 0 : ps.fold<int>(0, (a, p) => a + countMatches(displayPlainText(p.text), q));
     final sources = sourcesOf(ps);
     return GlassScaffold(
       title: '章节内容',
@@ -299,7 +300,7 @@ class _ChapterViewPageState extends State<ChapterViewPage> {
   Widget _page(ChapterPageView p, String q) {
     final note = pageNote(p, unit: unit);
     final key = keys.putIfAbsent(p.page, () => GlobalKey());
-    final hits = q.isEmpty ? 0 : countMatches(p.text, q);
+    final hits = q.isEmpty ? 0 : countMatches(displayPlainText(p.text), q);
     return Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: 10),
@@ -330,7 +331,7 @@ class _ChapterViewPageState extends State<ChapterViewPage> {
               if (p.text.trim().isNotEmpty)
                 InkWell(
                   borderRadius: BorderRadius.circular(12),
-                  onTap: () => _copy(p.text.trim(), '第 ${p.page} $unit'),
+                  onTap: () => _copy(displayPlainText(p.text), '第 ${p.page} $unit'),
                   child: Padding(
                     padding: const EdgeInsets.all(4),
                     child: Icon(Icons.content_copy_rounded, size: 16, color: M.sub),

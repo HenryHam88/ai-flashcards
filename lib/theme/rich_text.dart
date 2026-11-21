@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../services/latex.dart';
 import 'glass.dart' show M;
+import 'html_clean.dart';
 
 // 颜色与 glass.dart 中的莫兰迪配色一致（避免循环依赖，这里单独定义）
 Color get _text => M.text;
@@ -12,7 +13,7 @@ Color get _sageDark => M.sageDark;
 Color get _rose => M.roseDark;
 
 /// Markdown 块类型
-enum MdBlockType { paragraph, heading, bullet, ordered, quote, rule, math }
+enum MdBlockType { paragraph, heading, bullet, ordered, quote, rule, math, table }
 
 class MdBlock {
   final MdBlockType type;
@@ -28,7 +29,9 @@ class MdBlock {
 class MdDoc {
   final List<MdBlock> blocks;
   final List<TexSegment> math;
-  const MdDoc(this.blocks, this.math);
+  /// 表格（HTML 表格与 Markdown 管道表格）；table 块的 text 是这里的下标。
+  final List<HtmlTable> tables;
+  const MdDoc(this.blocks, this.math, [this.tables = const []]);
 }
 
 /// Markdown + LaTeX 混排解析器。
@@ -42,6 +45,8 @@ class MdMath {
   static final _quote = RegExp(r'^\s{0,3}>\s?(.*)$');
   static final _rule = RegExp(r'^\s{0,3}([-*_])(\s*\1){2,}\s*$');
   static final _mathOnly = RegExp('^\\s*$ph(\\d+)$ph\\s*\$');
+  static const tph = '\u0001';
+  static final _tableOnly = RegExp('^\\s*$tph(\\d+)$tph\\s*\$');
 
   static MdDoc parse(String input) {
     final math = <TexSegment>[];
@@ -51,10 +56,16 @@ class MdMath {
         b.write(seg.text.replaceAll(ph, ''));
         continue;
       }
-      math.add(seg);
+      math.add(seg.text.contains('&') ? TexSegment(decodeMathEntities(seg.text), isMath: true, display: seg.display) : seg);
       final tok = '$ph${math.length - 1}$ph';
       b.write(seg.display ? '\n$tok\n' : tok);
     }
+    // 显示层清理：HTML 表格 → 表格块，零散 HTML 标签 / 实体 / OCR 定位标记 → Markdown 文字（公式已保护，不受影响）
+    final tables = <HtmlTable>[];
+    final body = cleanForDisplay(b.toString().replaceAll(tph, ''), table: (t) {
+      tables.add(t);
+      return '$tph${tables.length - 1}$tph';
+    });
     final blocks = <MdBlock>[];
     final para = <String>[];
     void flushPara() {
@@ -64,12 +75,35 @@ class MdMath {
       }
     }
 
-    for (final line in b.toString().split('\n')) {
+    final lines = body.split('\n');
+    for (var li = 0; li < lines.length; li++) {
+      final line = lines[li];
       if (line.trim().isEmpty) {
         flushPara();
         continue;
       }
       RegExpMatch? m;
+      if ((m = _tableOnly.firstMatch(line)) != null) {
+        flushPara();
+        blocks.add(MdBlock(MdBlockType.table, m![1]!));
+        continue;
+      }
+      // Markdown 管道表格：表头行 + 分隔行（|---|---|）+ 若干数据行
+      if (isPipeRow(line) && li + 1 < lines.length && isPipeSeparator(lines[li + 1]) && !isPipeSeparator(line)) {
+        flushPara();
+        final rows = <List<HtmlCell>>[
+          [for (final c in splitPipeRow(line)) HtmlCell(c, header: true)]
+        ];
+        li += 2;
+        while (li < lines.length && lines[li].trim().isNotEmpty && lines[li].contains('|') && !_tableOnly.hasMatch(lines[li])) {
+          rows.add([for (final c in splitPipeRow(lines[li])) HtmlCell(c)]);
+          li++;
+        }
+        li--;
+        tables.add(HtmlTable(rows, headerRows: 1));
+        blocks.add(MdBlock(MdBlockType.table, '${tables.length - 1}'));
+        continue;
+      }
       if ((m = _mathOnly.firstMatch(line)) != null && math[int.parse(m![1]!)].display) {
         flushPara();
         blocks.add(MdBlock(MdBlockType.math, m[1]!));
@@ -98,7 +132,7 @@ class MdMath {
       }
     }
     flushPara();
-    return MdDoc(blocks, math);
+    return MdDoc(blocks, math, tables);
   }
 
   /// 行内标记：**粗体**、*斜体*、`代码`、公式占位符。
@@ -247,6 +281,8 @@ class MathText extends StatelessWidget {
         case MdBlockType.rule:
           widgets.add(Container(
               height: 1, margin: const EdgeInsets.symmetric(vertical: 4), color: _sub.withValues(alpha: 0.25)));
+        case MdBlockType.table:
+          widgets.add(_table(doc, doc.tables[int.parse(blk.text)], st, (src, s) => rich(src, s, align: TextAlign.start)));
         case MdBlockType.math:
           widgets.add(Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
@@ -277,5 +313,93 @@ class MathText extends StatelessWidget {
     }
     // 公式排版较重：单独成层，滚动时不重绘
     return doc.math.isEmpty ? result : RepaintBoundary(child: result);
+  }
+
+  /// 估算一段单元格内容的显示宽度（以字号为单位）：汉字约 1 个字宽，其它约半个；公式按源码长度估算。
+  static double _ems(String src, MdDoc doc) {
+    var w = 0.0;
+    for (final line in src.split('\n')) {
+      var lw = 0.0;
+      final t = line.replaceAllMapped(RegExp('${MdMath.ph}(\\d+)${MdMath.ph}'), (m) {
+        final i = int.tryParse(m[1]!) ?? -1;
+        lw += i >= 0 && i < doc.math.length ? doc.math[i].text.length * 0.62 + 0.8 : 1;
+        return '';
+      }).replaceAll('**', '');
+      for (final r in t.runes) {
+        lw += r >= 0x2E80 ? 1.0 : 0.56;
+      }
+      if (lw > w) w = lw;
+    }
+    return w;
+  }
+
+  /// 表格：横向可滚动，列宽按内容估算（不依赖固有尺寸计算，公式单元格也安全），表头浅绿底，隔行浅底色。
+  Widget _table(MdDoc doc, HtmlTable t, TextStyle st, Widget Function(String src, TextStyle s) rich) {
+    final grid = t.grid();
+    if (grid.isEmpty) return const SizedBox();
+    final cols = grid.fold<int>(0, (a, r) => r.length > a ? r.length : a);
+    final fs = (st.fontSize ?? 15) * 0.92;
+    final cellStyle = st.copyWith(fontSize: fs, height: 1.45);
+    final widths = List<double>.filled(cols, 0);
+    String cellSrc(HtmlCell c) => htmlInline(c.text, paragraphs: false).trim();
+    for (final r in grid) {
+      for (var i = 0; i < r.length; i++) {
+        final c = r[i];
+        if (c == null || c.colspan > 1) continue;
+        final w = (_ems(cellSrc(c), doc) * fs + 20).clamp(48.0, 240.0);
+        if (w > widths[i]) widths[i] = w;
+      }
+    }
+    for (var i = 0; i < cols; i++) {
+      if (widths[i] == 0) widths[i] = 56;
+    }
+    final line = M.sub.withValues(alpha: 0.28);
+    final rows = <TableRow>[];
+    for (var ri = 0; ri < grid.length; ri++) {
+      final header = ri < t.headerRows || (t.headerRows == 0 && ri == 0 && grid.length > 1);
+      rows.add(TableRow(
+        decoration: BoxDecoration(
+          color: header
+              ? M.sage.withValues(alpha: 0.2)
+              : ri.isEven
+                  ? M.glass.withValues(alpha: 0.28)
+                  : null,
+        ),
+        children: [
+          for (final c in grid[ri])
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: c == null || c.text.isEmpty
+                  ? const SizedBox()
+                  : rich(cellSrc(c),
+                      header || c.header ? cellStyle.copyWith(fontWeight: FontWeight.w700, color: M.text) : cellStyle),
+            ),
+        ],
+      ));
+    }
+    final table = Table(
+      columnWidths: {for (var i = 0; i < cols; i++) i: FixedColumnWidth(widths[i])},
+      border: TableBorder.symmetric(inside: BorderSide(color: line, width: 0.6)),
+      defaultVerticalAlignment: TableCellVerticalAlignment.top,
+      children: rows,
+    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      if (t.caption.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(t.caption, style: cellStyle.copyWith(color: _sub, fontWeight: FontWeight.w600)),
+        ),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: line, width: 0.8),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: table,
+        ),
+      ),
+    ]);
   }
 }

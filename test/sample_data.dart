@@ -164,3 +164,21 @@ $$P(A\mid B)=\frac{P(AB)}{P(B)}$$
   ]);
   return plan;
 }
+
+/// 第二章第 14–15 页：DeepSeek OCR 输出的 HTML 表格（含公式、合并单元格、实体），用于表格显示截图。
+Future<void> seedTablePages(Repository repo) async {
+  await seedChapterPages(repo);
+  await repo.savePages([
+    PageText(docId: 'd1', projectId: 'p1', page: 14, source: 'deepseek_text', text: r'''<|ref|>title<|/ref|><|det|>[[80, 60, 520, 90]]<|/det|>
+## 2.3 常用离散型分布
+<table><thead><tr><th>分布</th><th>记号</th><th>分布律</th><th>期望</th></tr></thead><tbody><tr><td>0–1 分布</td><td>$B(1,p)$</td><td>$P\{X=k\}=p^k(1-p)^{1-k}$</td><td>$p$</td></tr><tr><td>二项分布</td><td>$B(n,p)$</td><td>$C_n^k p^k(1-p)^{n-k}$</td><td>$np$</td></tr><tr><td>泊松分布</td><td>$P(\lambda)$</td><td>$\dfrac{\lambda^k e^{-\lambda}}{k!}$</td><td>$\lambda$</td></tr></tbody></table>
+注：表中 $0&lt;p&lt;1$，$k$ 取非负整数。'''),
+    PageText(docId: 'd1', projectId: 'p1', page: 15, source: 'deepseek_text', text: '''**附：用 Python 读写实验数据**
+<table><tr><td>模块</td><td>功能</td><td>支持的格式</td><td>安装命令</td></tr><tr><td>xlrd</td><td>读取 Excel 文件</td><td>.xls、.xlsx（2.0 版起只支持 .xls）</td><td>pip install xlrd</td></tr><tr><td>xlwt</td><td>写入 Excel 文件</td><td>.xls</td><td>pip install xlwt</td></tr><tr><td>openpyxl</td><td>读写 Excel 文件<br>（推荐）</td><td>.xlsx</td><td>pip install openpyxl</td></tr></table>
+用 xlrd.open_workbook() 打开工作簿，sheet_by_index(0) 取第一个工作表。'''),
+  ]);
+  await repo.replaceChunks('p1', 'd1', [
+    ...await repo.chunks('p1'),
+    Chunk(id: 'k23', projectId: 'p1', docId: 'd1', chapter: '第二章 随机变量及其分布', section: '2.3 常用离散型分布', pageStart: 14, pageEnd: 15, text: ''),
+  ]);
+}
