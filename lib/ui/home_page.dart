@@ -3,15 +3,18 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../services/study_queue.dart';
 import '../theme/glass.dart';
 import 'project_page.dart';
 import 'review_page.dart';
+import 'study_counts.dart';
 
 class HomeData {
   final int due;
   final int reviewedToday;
+  final StudyCounts counts;
   final List<(Project, int cards, int questions, String firstChapter)> projects;
-  HomeData(this.due, this.reviewedToday, this.projects);
+  HomeData(this.due, this.reviewedToday, this.projects, this.counts);
 }
 
 Future<HomeData> loadHomeData(AppState s) async {
@@ -29,7 +32,7 @@ Future<HomeData> loadHomeData(AppState s) async {
     final ch = pc.map((c) => c.chapter).where((c) => c.isNotEmpty).toSet().take(2).join('、');
     ps.add((p, pc.length, qs.where((q) => q.projectId == p.id).length, ch));
   }
-  return HomeData(due, reviewed, ps);
+  return HomeData(due, reviewed, ps, await s.studyCounts());
 }
 
 Future<void> createProjectDialog(BuildContext context) async {
@@ -90,35 +93,15 @@ class HomePage extends StatelessWidget {
             const SizedBox(height: 4),
             Text('今日计划 · 保持节奏，稳步前进', style: TextStyle(color: M.sub, fontSize: 14)),
             const SizedBox(height: 16),
-            Glass(
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReviewPage())),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Icon(Icons.assignment_outlined, color: M.text, size: 20),
-                  SizedBox(width: 8),
-                  Text('待复习', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                ]),
-                const SizedBox(height: 10),
-                Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Text('${d?.due ?? 0}', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700, height: 1)),
-                  const SizedBox(width: 6),
-                  const Padding(padding: EdgeInsets.only(bottom: 4), child: Text('张', style: TextStyle(fontSize: 15))),
-                  const Spacer(),
-                  if (session != null)
-                    Text('继续 ${(session['index'] as int) + 1}/${(session['ids'] as List).length}',
-                        style: TextStyle(color: M.sageDark, fontWeight: FontWeight.w600)),
-                ]),
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: d == null || d.due + d.reviewedToday == 0 ? 0 : d.reviewedToday / (d.due + d.reviewedToday),
-                    minHeight: 6,
-                    color: M.rose,
-                    backgroundColor: M.glass.withValues(alpha: 0.6),
-                  ),
-                ),
-              ]),
+            StudyCountsCard(
+              counts: d?.counts,
+              resumeText: session == null
+                  ? null
+                  : '继续 ${(session['index'] as int) + 1}/${(session['ids'] as List).length}',
+              onResume: session == null
+                  ? null
+                  : () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ReviewPage(projectId: session['projectId'] as String?, resume: true))),
             ),
             const SizedBox(height: 12),
             Row(children: [

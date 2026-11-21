@@ -279,10 +279,12 @@ void main() {
     expect(await a.backup.localBackups(prefix: 'auto'), hasLength(3));
   });
 
-  test('AppState.dueCards：上限默认不限，设置后按新卡 / 复习分别限制', () async {
+  test('AppState.dueCards：每日新卡默认 20，设置后按新卡 / 复习分别限制，0 为不限', () async {
     final a = await Phone.create({});
     await seedSampleData(a.repo);
     final s = AppState(a.repo, a.settings);
+    expect(a.settings.dailyNewLimit, 20);
+    a.settings.dailyNewLimit = 0;
     final all = await s.dueCards(projectId: 'p1');
     a.settings.dailyNewLimit = 5;
     expect((await s.dueCards(projectId: 'p1')).where((c) => c.reps == 0).length, 5);

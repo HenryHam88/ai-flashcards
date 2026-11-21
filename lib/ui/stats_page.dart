@@ -9,6 +9,8 @@ import '../services/stats.dart';
 import '../theme/glass.dart';
 import 'project_page.dart';
 import 'review_page.dart';
+import '../services/due_schedule.dart';
+import 'due_page.dart';
 
 class StatsData {
   final List<LogEntry> logs;
@@ -54,7 +56,15 @@ class _StatsPageState extends State<StatsPage> {
         final now = widget.now ?? DateTime.now();
         final hour = s.settings.dayStartHour;
         final ov = dailyOverview(d.logs, d.sessions, now: now, startHour: hour);
-        final fc = forecast(d.cards, now, days: 30, startHour: hour);
+        // 90 天 / 全部：天数取到最远一张卡的到期日（最多 10 年）
+        var far = 30;
+        if (horizon == 0 || horizon > 30) {
+          for (final c in d.cards) {
+            if (!c.suspended && c.reps > 0) far = max(far, dayOffset(c.due, now, startHour: hour) + 1);
+          }
+          far = min(max(far, horizon), 3650);
+        }
+        final fc = forecast(d.cards, now, days: far, startHour: hour);
         final (pm, cm) = masteryOf(d.cards, now);
         final weak = weakSpots(d.cards, d.questions, d.wrong, now);
         return SafeArea(
@@ -69,8 +79,15 @@ class _StatsPageState extends State<StatsPage> {
               Glass(
                 child: Heatmap(data: ov.heatmap, today: now, startHour: hour),
               ),
-              SectionTitle('遗忘预测', trailing: _seg({7: '7 天', 30: '30 天'}, horizon, (v) => setState(() => horizon = v))),
-              _forecast(fc),
+              SectionTitle(
+                '遗忘预测',
+                trailing: _seg(
+                  {7: '7 天', 30: '30 天', 90: '90 天', 0: '全部'},
+                  horizon,
+                  (v) => setState(() => horizon = v),
+                ),
+              ),
+              _forecast(fc, now),
               const SectionTitle('掌握度'),
               _mastery(pm, cm, d.projectNames),
               const SectionTitle('薄弱点推荐'),
@@ -186,17 +203,27 @@ class _StatsPageState extends State<StatsPage> {
     ],
   );
 
-  Widget _forecast(Forecast fc) {
-    final data = fc.perDay.take(horizon).toList();
-    final total = data.fold<int>(0, (a, b) => a + b);
+  Widget _forecast(Forecast fc, DateTime now) {
+    final daily = horizon == 7 || horizon == 30;
+    final buckets = forecastBuckets(fc.perDay, horizon, now);
+    final data = daily ? fc.perDay.take(horizon).toList() : [for (final b in buckets) b.count];
+    final total = daily ? data.fold<int>(0, (a, b) => a + b) : fc.perDay.fold<int>(0, (a, b) => a + b);
+    final unit = buckets.length > 1 && buckets[1].label.endsWith('月') ? '按月' : '按周';
+    final title = horizon == 0 ? '全部到期 $total 张' : '未来 $horizon 天到期 $total 张';
+    void openDay(int i) => Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DueByDayPage(initialOffset: daily ? i : buckets[i].start, now: widget.now),
+      ),
+    );
     return Glass(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text('未来 $horizon 天到期 $total 张', style: const TextStyle(fontWeight: FontWeight.w600)),
-              const Spacer(),
+              Expanded(
+                child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
               if (fc.overdue > 0)
                 Text(
                   '已逾期 ${fc.overdue} 张',
@@ -207,8 +234,16 @@ class _StatsPageState extends State<StatsPage> {
           const SizedBox(height: 12),
           SizedBox(
             height: 120,
-            child: BarChart(values: data, labelEvery: horizon == 7 ? 1 : 5, highlightFirst: true),
+            child: BarChart(
+              values: data,
+              labelEvery: daily ? (horizon == 7 ? 1 : 5) : (data.length > 8 ? (data.length / 6).ceil() : 1),
+              highlightFirst: true,
+              labels: daily ? null : [for (final b in buckets) b.label],
+              onTap: openDay,
+            ),
           ),
+          const SizedBox(height: 6),
+          Text(daily ? '点柱子查看那天要复习哪些卡' : '$unit合计 · 点柱子查看那段时间第一天的卡', style: TextStyle(color: M.sub, fontSize: 11)),
         ],
       ),
     );
@@ -226,7 +261,9 @@ class _StatsPageState extends State<StatsPage> {
 
   Widget _mastery(List<Mastery> pm, List<Mastery> cm, Map<String, String> names) {
     if (pm.isEmpty) {
-      return Glass(child: Text('还没有卡片', style: TextStyle(color: M.sub)));
+      return Glass(
+        child: Text('还没有卡片', style: TextStyle(color: M.sub)),
+      );
     }
     pm.sort((a, b) => b.total.compareTo(a.total));
     return Glass(
@@ -505,7 +542,18 @@ class BarChart extends StatelessWidget {
   final List<int> values;
   final int labelEvery;
   final bool highlightFirst;
-  const BarChart({super.key, required this.values, this.labelEvery = 1, this.highlightFirst = false});
+
+  /// 自定义横轴标签（按周 / 按月聚合时）；为空时用「今天 / +i」。
+  final List<String>? labels;
+  final ValueChanged<int>? onTap;
+  const BarChart({
+    super.key,
+    required this.values,
+    this.labelEvery = 1,
+    this.highlightFirst = false,
+    this.labels,
+    this.onTap,
+  });
   @override
   Widget build(BuildContext context) {
     final maxV = max(1, values.fold<int>(0, max));
@@ -515,36 +563,40 @@ class BarChart extends StatelessWidget {
       children: [
         for (var i = 0; i < values.length; i++)
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (!dense || values[i] == maxV)
-                  Text(
-                    '${values[i]}',
-                    style: TextStyle(fontSize: dense ? 9 : 11, color: M.sub),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap == null ? null : () => onTap!(i),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (!dense || values[i] == maxV)
+                    Text(
+                      '${values[i]}',
+                      style: TextStyle(fontSize: dense ? 9 : 11, color: M.sub),
+                    ),
+                  const SizedBox(height: 3),
+                  Container(
+                    height: 76 * values[i] / maxV + 2,
+                    margin: EdgeInsets.symmetric(horizontal: dense ? 1 : 6),
+                    decoration: BoxDecoration(
+                      color: i == 0 && highlightFirst ? M.sage : M.greyBlue.withValues(alpha: 0.75),
+                      borderRadius: BorderRadius.circular(dense ? 2 : 6),
+                    ),
                   ),
-                const SizedBox(height: 3),
-                Container(
-                  height: 76 * values[i] / maxV + 2,
-                  margin: EdgeInsets.symmetric(horizontal: dense ? 1 : 6),
-                  decoration: BoxDecoration(
-                    color: i == 0 && highlightFirst ? M.sage : M.greyBlue.withValues(alpha: 0.75),
-                    borderRadius: BorderRadius.circular(dense ? 2 : 6),
+                  const SizedBox(height: 5),
+                  SizedBox(
+                    height: 14,
+                    child: i % labelEvery == 0
+                        ? FittedBox(
+                            child: Text(
+                              labels != null ? labels![i] : (i == 0 ? '今天' : (dense ? '$i' : '+$i')),
+                              style: TextStyle(fontSize: 11, color: M.sub),
+                            ),
+                          )
+                        : null,
                   ),
-                ),
-                const SizedBox(height: 5),
-                SizedBox(
-                  height: 14,
-                  child: i % labelEvery == 0
-                      ? FittedBox(
-                          child: Text(
-                            i == 0 ? '今天' : (dense ? '$i' : '+$i'),
-                            style: TextStyle(fontSize: 11, color: M.sub),
-                          ),
-                        )
-                      : null,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
       ],

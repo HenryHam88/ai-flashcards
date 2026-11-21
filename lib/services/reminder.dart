@@ -45,7 +45,7 @@ class Reminder {
       id: _id,
       scheduledDate: at,
       title: '该复习啦',
-      body: '今天的闪卡在等你，花几分钟巩固一下吧',
+      body: '今天的新卡和到期复习在等你，花几分钟巩固一下吧',
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails('daily_review', '每日复习提醒',
             channelDescription: '每天固定时间提醒你复习到期的闪卡', importance: Importance.defaultImportance),

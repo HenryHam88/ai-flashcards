@@ -183,7 +183,7 @@ class _LearningSettingsPageState extends State<LearningSettingsPage> {
             icon: Icons.fiber_new_rounded,
             title: '每日新卡',
             valueLabel: lim(st.dailyNewLimit),
-            hint: '每天最多学多少张新卡；拉到最左为不限。',
+            hint: '每天最多学多少张新卡（默认 20），复习不占这个名额；拉到最左为不限。',
             value: st.dailyNewLimit.toDouble(),
             min: 0,
             max: 200,

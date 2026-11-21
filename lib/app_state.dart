@@ -16,6 +16,7 @@ import 'services/prompts.dart';
 import 'services/quality.dart';
 import 'services/settings.dart';
 import 'theme/rich_text.dart' show stripMetaPreamble;
+import 'services/study_queue.dart';
 
 /// 全局状态：持有仓库与设置，提供业务操作。UI 通过 Provider 读取。
 /// 单个 PDF 的解析任务状态（用于多文件队列的逐个进度显示）。
@@ -229,26 +230,36 @@ class AppState extends ChangeNotifier {
     return d;
   }
 
-  Future<List<Flashcard>> dueCards({String? projectId}) async {
-    final now = DateTime.now();
-    final l = (await repo.cards(projectId: projectId)).where((c) => !c.suspended && !c.due.isAfter(now)).toList()
-      ..sort((a, b) => a.due.compareTo(b.due));
-    final newLimit = settings.dailyNewLimit, reviewLimit = settings.dailyReviewLimit;
-    if (newLimit == 0 && reviewLimit == 0) return l; // 默认不限：与旧版完全一致
+  /// 今天（按每日开始时间）的闪卡学习记录。
+  Future<List<LogEntry>> _todayCardLogs(DateTime now) async {
     final since = dayStart(now);
-    final today = (await repo.logs()).where((e) => e.kind == 'card' && !e.at.isBefore(since));
-    var newLeft = newLimit == 0 ? 1 << 30 : newLimit - today.where((e) => e.isNew).length;
-    var revLeft = reviewLimit == 0 ? 1 << 30 : reviewLimit - today.where((e) => !e.isNew).length;
-    final out = <Flashcard>[];
-    for (final c in l) {
-      if (c.reps == 0) {
-        if (newLeft-- > 0) out.add(c);
-      } else if (revLeft-- > 0) {
-        out.add(c);
-      }
-    }
-    return out;
+    return (await repo.logs()).where((e) => e.kind == 'card' && !e.at.isBefore(since)).toList();
   }
+
+  String todayKey([DateTime? now]) => dayKey(now ?? DateTime.now(), settings.dayStartHour);
+
+  /// 新学 / 待复习数量（首页、项目页、复习页）。
+  Future<StudyCounts> studyCounts({String? projectId, DateTime? now}) async {
+    final n = now ?? DateTime.now();
+    return computeCounts(await repo.cards(projectId: projectId), await _todayCardLogs(n),
+        newLimit: settings.dailyNewLimit, reviewLimit: settings.dailyReviewLimit, extra: settings.newExtraFor(todayKey(n)), now: n);
+  }
+
+  /// 学习队列：全部学习（先复习、后新卡）/ 只学新卡 / 只复习。新卡受每日上限限制（可当天追加）。
+  Future<List<Flashcard>> studyQueue({String? projectId, StudyMode mode = StudyMode.all, DateTime? now}) async {
+    final n = now ?? DateTime.now();
+    return buildQueue(await repo.cards(projectId: projectId), await _todayCardLogs(n), mode,
+        newLimit: settings.dailyNewLimit, reviewLimit: settings.dailyReviewLimit, extra: settings.newExtraFor(todayKey(n)), now: n);
+  }
+
+  /// 「今天再学 N 张」：只放宽今天的新卡上限。
+  void extendNewToday([int n = 10]) {
+    settings.addNewExtra(todayKey(), n);
+    changed();
+  }
+
+  /// 全部学习的队列（旧接口，保留给已有的调用方）。
+  Future<List<Flashcard>> dueCards({String? projectId}) => studyQueue(projectId: projectId);
 
   /// 评分并返回撤销记录（评分前的卡片快照 + 写入的日志 id），用于「上一张」。
   Future<Map<String, dynamic>> reviewCard(Flashcard c, bool remembered) async {

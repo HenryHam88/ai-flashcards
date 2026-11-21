@@ -24,6 +24,8 @@ import 'inbox_page.dart';
 import 'home_page.dart';
 import 'quiz_page.dart';
 import 'review_page.dart';
+import 'due_page.dart';
+import '../services/study_queue.dart';
 import 'wrong_book_page.dart';
 import '../services/text_import.dart' show txtWarnBytes;
 
@@ -34,7 +36,8 @@ class ProjectData {
   final List<Question> questions;
   final List<String> chapters;
   final int inbox; // 待审核数量
-  ProjectData(this.project, this.docs, this.cards, this.questions, this.chapters, {this.inbox = 0});
+  final StudyCounts? counts; // 新学 / 待复习
+  ProjectData(this.project, this.docs, this.cards, this.questions, this.chapters, {this.inbox = 0, this.counts});
 }
 
 class ProjectPage extends StatefulWidget {
@@ -76,7 +79,8 @@ class _ProjectPageState extends State<ProjectPage> {
     }
     return ProjectData(pr, await s.repo.docs(pr.id), await s.repo.cards(projectId: pr.id),
         await s.repo.questions(projectId: pr.id), chapters,
-        inbox: (await s.repo.inboxCards(projectId: pr.id)).length + (await s.repo.inboxQuestions(projectId: pr.id)).length);
+        inbox: (await s.repo.inboxCards(projectId: pr.id)).length + (await s.repo.inboxQuestions(projectId: pr.id)).length,
+        counts: await s.studyCounts(projectId: pr.id));
   }
 
   void _progress(String m, double f) {
@@ -237,6 +241,33 @@ class _ProjectPageState extends State<ProjectPage> {
     }
   }
 
+  /// 新学 / 待复习 计数和「学新卡」「复习」「到期」入口（「学习」按钮 = 先复习后新卡）。
+  Widget _countsRow(ProjectData d) {
+    final c = d.counts!;
+    void open(Widget page) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    Widget link(String label, VoidCallback? onTap) => TextButton(
+          style: TextButton.styleFrom(
+              foregroundColor: M.sageDark,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          onPressed: onTap,
+          child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 12, 4),
+      child: Row(children: [
+        Expanded(
+          child: Text('新学 ${c.newAvailable} · 待复习 ${c.due} · ${c.newProgress}',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: M.sub, fontSize: 12)),
+        ),
+        link('学新卡', c.newAvailable == 0 && !c.newLimitReached ? null : () => open(ReviewPage(projectId: d.project.id, mode: StudyMode.newOnly))),
+        link('复习', c.due == 0 ? null : () => open(ReviewPage(projectId: d.project.id, mode: StudyMode.reviewOnly))),
+        link('到期', () => open(DueByDayPage(projectId: d.project.id))),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final st = context.watch<AppState>();
@@ -268,7 +299,7 @@ class _ProjectPageState extends State<ProjectPage> {
                   const SizedBox(width: 8),
                   Expanded(
                       child: GlassButton(
-                          label: '复习',
+                          label: '学习',
                           icon: Icons.style_outlined,
                           onTap: d.cards.isEmpty
                               ? null
@@ -283,6 +314,7 @@ class _ProjectPageState extends State<ProjectPage> {
                               : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => QuizPage(projectId: d.project.id))))),
                 ]),
               ),
+              if (d.cards.isNotEmpty && d.counts != null) _countsRow(d),
               if (progress != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

@@ -98,9 +98,18 @@ class Settings {
   Future<void> setKimiKey(String v) => secrets.write('kimi_key', v.trim());
 
   // ---------- 学习设置（默认值与旧版行为完全一致） ----------
-  /// 每日新卡上限，0 = 不限（旧版行为）。
-  int get dailyNewLimit => prefs.getInt('daily_new_limit') ?? 0;
+  /// 每日新卡上限，0 = 不限。默认 20（v1.3.6 起新卡和复习分开计数）。
+  int get dailyNewLimit => prefs.getInt('daily_new_limit') ?? 20;
   set dailyNewLimit(int v) => prefs.setInt('daily_new_limit', v < 0 ? 0 : v);
+
+  /// 今天额外追加的新卡数（「今天再学 10 张」），按日期键记录，换日后自动失效。
+  int newExtraFor(String day) {
+    final v = prefs.getString('new_extra') ?? '';
+    final i = v.indexOf('|');
+    return i > 0 && v.substring(0, i) == day ? int.tryParse(v.substring(i + 1)) ?? 0 : 0;
+  }
+
+  void addNewExtra(String day, int n) => prefs.setString('new_extra', '$day|${newExtraFor(day) + n}');
 
   /// 每日复习上限，0 = 不限（旧版行为）。
   int get dailyReviewLimit => prefs.getInt('daily_review_limit') ?? 0;

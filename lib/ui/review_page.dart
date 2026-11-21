@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../services/study_queue.dart';
 import '../theme/glass.dart';
 import 'explain_sheet.dart';
 import 'feedback_sheet.dart';
@@ -16,7 +17,10 @@ class ReviewPage extends StatefulWidget {
   final bool resume;
   /// 指定要复习的卡片（如统计页「复习这些」薄弱章节）；这种临时复习不会覆盖正在进行的复习进度。
   final List<String>? cardIds;
-  const ReviewPage({super.key, this.projectId, this.resume = false, this.cardIds});
+  /// 学习入口：全部学习（默认）/ 学新卡 / 复习。
+  final StudyMode mode;
+  /// 临时学习时的标题提示（如「到期安排」里选的那天）。
+  const ReviewPage({super.key, this.projectId, this.resume = false, this.cardIds, this.mode = StudyMode.all});
   @override
   State<ReviewPage> createState() => _ReviewPageState();
 }
@@ -32,6 +36,8 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
   List<Map<String, dynamic>> undoStack = []; // 本轮每次评分的撤销记录（可多步返回）
   List<Map<String, dynamic>> redoStack = []; // 退回后可「下一张」原样恢复的评分
   bool hintSeen = true;
+  late StudyMode mode = widget.mode;
+  StudyCounts? counts; // 完成页：新卡是否已达今日上限
   late final SessionTimer timer; // 统计学习时长
 
   AppState get s => context.read<AppState>();
@@ -64,7 +70,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
         if (c != null && !c.suspended) cards.add(c);
       }
       index = 0;
-    } else if (saved != null && (widget.resume || saved['projectId'] == widget.projectId)) {
+    } else if (saved != null && (widget.resume || (saved['projectId'] == widget.projectId && studyModeOf(saved['mode'] as String?) == widget.mode))) {
       final ids = (saved['ids'] as List).cast<String>();
       final loaded = <Flashcard>[];
       for (final id in ids) {
@@ -75,12 +81,14 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       index = min(saved['index'] as int, max(0, loaded.length));
       flipped = saved['flipped'] == true;
       filter = saved['filter'] as String?;
+      mode = studyModeOf(saved['mode'] as String?);
       undoStack = ((saved['undo'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
       redoStack = ((saved['redo'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
     } else {
-      cards = await s.dueCards(projectId: widget.projectId);
+      cards = await s.studyQueue(projectId: widget.projectId, mode: mode);
       index = 0;
     }
+    if (widget.cardIds == null) counts = await s.studyCounts(projectId: widget.projectId ?? filter);
     if (widget.projectId == null) {
       projects = [for (final p in await s.repo.projects()) (p.id, p.name)];
     }
@@ -102,6 +110,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
         'index': index,
         'flipped': flipped,
         'filter': filter,
+        'mode': mode.name,
         'undo': undoStack,
         'redo': redoStack,
       };
@@ -111,8 +120,10 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
   /// 切换项目筛选：按新范围重新取到期卡片，从第一张开始（并保存为当前会话）。
   Future<void> _setFilter(String? pid) async {
     if (pid == filter) return;
-    final l = await s.dueCards(projectId: pid);
+    final l = await s.studyQueue(projectId: pid, mode: mode);
+    final c = await s.studyCounts(projectId: pid);
     setState(() {
+      counts = c;
       filter = pid;
       cards = l;
       index = 0;
@@ -145,6 +156,10 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       dx = 0;
     });
     _persist();
+    if (index >= cards.length && widget.cardIds == null) {
+      final c = await s.studyCounts(projectId: widget.projectId ?? filter);
+      if (mounted) setState(() => counts = c);
+    }
   }
 
   /// 上一张：撤销上一次评分（恢复状态、删除记录），回到那张卡的正面；原评分进入重做栈。
@@ -224,15 +239,15 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Container(
-                                width: 7,
-                                height: 7,
-                                decoration: BoxDecoration(color: M.sage, shape: BoxShape.circle),
-                              ),
+                              KindBadge(cardKind(card!)),
                               const SizedBox(width: 6),
-                              Text(
-                                card!.chapter.isEmpty ? '学习中' : '学习中 · ${card.chapter}',
-                                style: TextStyle(color: M.sub, fontSize: 13),
+                              Flexible(
+                                child: Text(
+                                  card.chapter.isEmpty ? '学习中' : card.chapter,
+                                  style: TextStyle(color: M.sub, fontSize: 13),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ],
                           ),
@@ -405,6 +420,31 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
     );
   }
 
+  String _emptyText() {
+    final scope = filter == null && widget.projectId == null ? '' : '这个项目';
+    return switch (mode) {
+      StudyMode.newOnly => counts?.newLimitReached == true ? '今天的新卡已学完' : '$scope没有新卡',
+      StudyMode.reviewOnly => '$scope现在没有到期的复习',
+      StudyMode.all => counts?.newLimitReached == true ? '到期的复习已完成，今天的新卡已学完' : '$scope现在没有要学的闪卡',
+    };
+  }
+
+  /// 「今天再学 10 张」：放宽今天的新卡上限，接着学新卡（保留本轮的撤销记录）。
+  Future<void> _extend() async {
+    s.extendNewToday(10);
+    final more = await s.studyQueue(projectId: widget.projectId ?? filter, mode: StudyMode.newOnly);
+    final have = cards.map((c) => c.id).toSet();
+    final add = more.where((c) => !have.contains(c.id)).toList();
+    final c = await s.studyCounts(projectId: widget.projectId ?? filter);
+    setState(() {
+      cards = [...cards, ...add];
+      counts = c;
+      flipped = false;
+      dx = 0;
+    });
+    _persist();
+  }
+
   Widget _done() => Center(
     child: Padding(
       padding: const EdgeInsets.all(32),
@@ -416,10 +456,19 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
             Icon(Icons.celebration_outlined, color: M.sageDark, size: 40),
             const SizedBox(height: 12),
             Text(
-              cards.isEmpty ? (filter == null ? '现在没有到期的闪卡' : '这个项目没有到期的闪卡') : '本轮 ${cards.length} 张已复习完',
+              cards.isEmpty ? _emptyText() : '本轮 ${cards.length} 张已学完',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
             ),
+            if (counts != null && widget.cardIds == null) ...[
+              const SizedBox(height: 6),
+              Text('${counts!.newProgress} · 待复习 ${counts!.due}', style: TextStyle(color: M.sub, fontSize: 13)),
+            ],
             const SizedBox(height: 16),
+            if (counts != null && widget.cardIds == null && mode != StudyMode.reviewOnly && counts!.newLimitReached) ...[
+              GlassButton(label: '今天再学 10 张', icon: Icons.add_rounded, tint: M.sage, onTap: _extend),
+              const SizedBox(height: 12),
+            ],
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -435,4 +484,23 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       ),
     ),
   );
+}
+
+/// 卡片身份标签：新（燕麦色）/ 复习（灰绿）/ 重学（玫瑰色）。
+class KindBadge extends StatelessWidget {
+  final CardKind kind;
+  const KindBadge(this.kind, {super.key});
+  @override
+  Widget build(BuildContext context) {
+    final (bg, fg) = switch (kind) {
+      CardKind.fresh => (M.oat.withValues(alpha: 0.85), M.text),
+      CardKind.review => (M.sage.withValues(alpha: 0.25), M.sageDark),
+      CardKind.relearn => (M.rose.withValues(alpha: 0.3), M.roseDark),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+      child: Text(cardKindLabel(kind), style: TextStyle(fontSize: 11, height: 1.4, fontWeight: FontWeight.w700, color: fg)),
+    );
+  }
 }

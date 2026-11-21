@@ -21,7 +21,9 @@ import 'package:ai_flashcards/ui/project_page.dart';
 import 'package:ai_flashcards/ui/quiz_page.dart';
 import 'package:ai_flashcards/ui/review_page.dart';
 import 'package:ai_flashcards/ui/wrong_book_page.dart';
+import 'package:ai_flashcards/ui/due_page.dart';
 import 'package:ai_flashcards/models.dart';
+import 'package:ai_flashcards/services/study_queue.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -129,8 +131,10 @@ void main() {
     // 让「运筹学」的卡片也到期
     final ys = (await state.repo.cards(projectId: 'p3'))..forEach((c) => c.due = DateTime.now().subtract(const Duration(minutes: 5)));
     await state.repo.saveCards(ys);
+    state.settings.dailyNewLimit = 0; // 不限新卡：保持这张截图的卡片数量
     await shoot(t, const ReviewPage(), '7_review_filter', after: () async {
-      expect(find.text('1 / 44'), findsOneWidget);
+      // v1.3.6 起没学过的卡都算新卡（不看到期时间），所以比以前多了「常微分方程」的 8 张新卡
+      expect(find.text('1 / 52'), findsOneWidget);
       await t.tap(find.text('运筹学'));
       for (var i = 0; i < 5; i++) {
         await t.pump(const Duration(milliseconds: 100));
@@ -544,5 +548,91 @@ void main() {
         id: 't1', projectId: 'p1', name: '概率论课堂笔记', path: '', type: 'txt', status: '已解析', pageCount: 14, parsedPages: 14));
     await state.repo.saveDoc(PdfDoc(id: 'w1', projectId: 'p1', name: '第二章讲义', path: '', type: 'docx', status: '已解析', pageCount: 6, parsedPages: 6));
     await shoot(t, const ProjectPage(projectId: 'p1'), '34_txt_doc');
+  });
+
+  Future<void> seedTodayNew(int n) async {
+    for (var i = 0; i < n; i++) {
+      await state.repo.log(LogEntry(id: 'today$i', projectId: 'p1', kind: 'card', correct: true, isNew: true));
+    }
+  }
+
+  testWidgets('新学 / 待复习分开计数', (t) async {
+    await seedStudyHistory(state.repo, DateTime.now()); // 含今天学过的 5 张新卡和到期的复习
+    await shoot(t, const HomeShell(restoreSession: false), '35_new_vs_review', after: () async {
+      expect(find.text('今日新卡 5/20'), findsOneWidget);
+      expect(find.text('学新卡'), findsOneWidget);
+      expect(find.text('全部学习'), findsOneWidget);
+    });
+  });
+
+  testWidgets('复习页卡片标签', (t) async {
+    // 一张刚「没记住」的卡（重学），排在最前
+    final c = (await state.repo.card('c0'))!;
+    final now = DateTime.now();
+    c
+      ..reps = 3
+      ..lapses = 1
+      ..stability = 1
+      ..difficulty = 6
+      ..lastReview = now.subtract(const Duration(minutes: 12))
+      ..due = now.subtract(const Duration(minutes: 2));
+    await state.repo.saveCards([c]);
+    await shoot(t, const ReviewPage(projectId: 'p1'), '36_card_badge', after: () async {
+      expect(find.text('重学'), findsOneWidget);
+    });
+  });
+
+  testWidgets('每日到期卡片', (t) async {
+    await seedStudyHistory(state.repo, statsNow);
+    await shoot(t, DueByDayPage(now: statsNow), '37_due_by_day', after: () async {
+      expect(find.text('已逾期 · 12'), findsOneWidget);
+      expect(find.textContaining('现在复习这些'), findsOneWidget);
+      await t.tap(find.text('明天'));
+      await t.pump(const Duration(milliseconds: 100));
+      expect(find.text('明天到期 · 2'), findsOneWidget);
+      await t.tap(find.text('常微分方程'));
+      for (var i = 0; i < 4; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('明天到期 · 1'), findsOneWidget);
+      await t.tap(find.text('全部'));
+      await t.tap(find.text('今天'));
+      for (var i = 0; i < 4; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+    });
+  });
+
+  testWidgets('今日新卡已满：今天再学 10 张', (t) async {
+    await seedTodayNew(20);
+    await shoot(t, const ReviewPage(projectId: 'p1', mode: StudyMode.newOnly), '38_new_limit', after: () async {
+      expect(find.text('今天再学 10 张'), findsOneWidget);
+      await t.tap(find.text('今天再学 10 张'));
+      for (var i = 0; i < 6; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('新'), findsWidgets);
+    });
+  });
+
+  testWidgets('遗忘预测：90 天按周、全部，点柱子打开到期安排', (t) async {
+    await seedStudyHistory(state.repo, statsNow);
+    await shoot(t, HomeShell(initialTab: 2, restoreSession: false, statsNow: statsNow), '39_forecast_90', after: () async {
+      await t.tap(find.text('90 天'));
+      for (var i = 0; i < 4; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.textContaining('按周合计'), findsOneWidget);
+      expect(find.text('本周'), findsOneWidget);
+    });
+    await t.tap(find.text('全部'));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.textContaining('全部到期'), findsOneWidget);
+    await t.tap(find.text('本周'));
+    for (var i = 0; i < 6; i++) {
+      await t.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text('到期安排'), findsOneWidget);
+    expect(find.textContaining('现在复习这些'), findsOneWidget);
   });
 }

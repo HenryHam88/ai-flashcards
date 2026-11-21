@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../services/study_queue.dart';
 import '../theme/glass.dart';
 import 'quiz_page.dart';
 import 'review_page.dart';
+import 'study_counts.dart';
 import 'wrong_book_page.dart';
 
 class ReviewTab extends StatelessWidget {
@@ -13,20 +15,21 @@ class ReviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    Future<List<(Project, int, int, int)>> load() async {
-      final now = DateTime.now();
-      final cards = await s.repo.cards();
+    Future<(StudyCounts, List<(Project, StudyCounts, int, int)>)> load() async {
       final qs = await s.repo.questions();
       final wrong = await s.repo.wrong();
-      return [
-        for (final p in await s.repo.projects())
-          (
-            p,
-            cards.where((c) => c.projectId == p.id && !c.due.isAfter(now)).length,
-            qs.where((q) => q.projectId == p.id).length,
-            wrong.where((w) => w.projectId == p.id).length,
-          )
-      ];
+      return (
+        await s.studyCounts(),
+        [
+          for (final p in await s.repo.projects())
+            (
+              p,
+              await s.studyCounts(projectId: p.id),
+              qs.where((q) => q.projectId == p.id).length,
+              wrong.where((w) => w.projectId == p.id).length,
+            )
+        ]
+      );
     }
 
     final session = s.settings.reviewSession;
@@ -50,12 +53,7 @@ class ReviewTab extends StatelessWidget {
                     builder: (_) => ReviewPage(projectId: session['projectId'] as String?, resume: true))),
               ),
             ),
-          GlassButton(
-            label: '复习全部到期闪卡',
-            icon: Icons.style_rounded,
-            expand: true,
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReviewPage())),
-          ),
+          StudyCountsCard(counts: snap.data?.$1, title: '全部项目'),
           const SizedBox(height: 10),
           GlassButton(
             label: '错题本',
@@ -64,21 +62,21 @@ class ReviewTab extends StatelessWidget {
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WrongBookPage())),
           ),
           const SectionTitle('按项目'),
-          for (final (p, due, nq, nw) in snap.data ?? <(Project, int, int, int)>[])
+          for (final (p, c, nq, nw) in snap.data?.$2 ?? <(Project, StudyCounts, int, int)>[])
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Glass(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(p.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
-                  Text('待复习 $due 张 · 题目 $nq 道 · 错题 $nw 道', style: TextStyle(color: M.sub, fontSize: 13)),
+                  Text('新学 ${c.newAvailable} · 待复习 ${c.due} 张 · 题目 $nq 道 · 错题 $nw 道', style: TextStyle(color: M.sub, fontSize: 13)),
                   const SizedBox(height: 10),
                   Row(children: [
                     Expanded(
                         child: GlassButton(
                             label: '闪卡',
                             icon: Icons.style_outlined,
-                            onTap: due == 0
+                            onTap: c.newAvailable + c.due == 0
                                 ? null
                                 : () => Navigator.of(context)
                                     .push(MaterialPageRoute(builder: (_) => ReviewPage(projectId: p.id))))),
