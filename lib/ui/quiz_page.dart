@@ -42,7 +42,9 @@ class _QuizPageState extends State<QuizPage> {
     if (saved != null) {
       ids = (saved['ids'] as List).cast<String>();
       index = saved['index'] as int;
-      answers = ((saved['answers'] as Map?) ?? {}).map((k, v) => MapEntry(k.toString(), (v as Map).cast<String, dynamic>()));
+      answers = ((saved['answers'] as Map?) ?? {}).map(
+        (k, v) => MapEntry(k.toString(), (v as Map).cast<String, dynamic>()),
+      );
     } else if (widget.questionIds != null) {
       ids = widget.questionIds!;
     } else {
@@ -89,6 +91,16 @@ class _QuizPageState extends State<QuizPage> {
     if (mounted) setState(() {});
   }
 
+  void _prev() {
+    if (index == 0) return;
+    setState(() {
+      index--;
+      picked = {};
+      input.clear();
+    });
+    _persist();
+  }
+
   void _next() {
     setState(() {
       index++;
@@ -127,8 +139,8 @@ class _QuizPageState extends State<QuizPage> {
       body: loading
           ? const Center(child: CircularProgressIndicator(color: M.sage))
           : done
-              ? _summary()
-              : _question(qs[index]),
+          ? _summary()
+          : _question(qs[index]),
     );
   }
 
@@ -138,119 +150,155 @@ class _QuizPageState extends State<QuizPage> {
     final correct = a?['correct'] == true;
     final isChoice = q.type == QType.single || q.type == QType.multi;
     return SafeArea(
-      child: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 24), children: [
-        Glass(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              const Icon(Icons.description_outlined, size: 20, color: M.text),
-              const SizedBox(width: 8),
-              Text('${q.type}题', style: const TextStyle(fontWeight: FontWeight.w600)),
-              const Spacer(),
-              Text(q.difficulty, style: const TextStyle(color: M.sub, fontSize: 12)),
-            ]),
-            const SizedBox(height: 12),
-            MathText(q.stem, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, height: 1.5)),
-            const SizedBox(height: 12),
-            if (isChoice)
-              for (var i = 0; i < q.options.length; i++) _option(q, i, a),
-            if (q.type == QType.judge)
-              Row(children: [
-                for (final v in ['对', '错']) ...[
-                  Expanded(
-                    child: GlassButton(
-                      label: v,
-                      tint: answered && q.answer == v
-                          ? M.sage
-                          : (answered && a['answer'] == v ? M.rose : null),
-                      onTap: answered ? null : () => _submit(q, v),
-                    ),
-                  ),
-                  if (v == '对') const SizedBox(width: 12),
-                ]
-              ]),
-            if (!isChoice && q.type != QType.judge) ...[
-              TextField(
-                controller: input,
-                enabled: !answered,
-                minLines: QType.isObjective(q.type) ? 1 : 4,
-                maxLines: QType.isObjective(q.type) ? 2 : 10,
-                decoration: InputDecoration(
-                    hintText: q.type == QType.fill ? '填写答案（公式可用 \$...\$）' : '写下你的解答，AI 会按步骤批改'),
-              ),
-              if (answered && (a['answer'] as String).contains('\$')) ...[
-                const SizedBox(height: 8),
-                MathText('你的作答：${a['answer']}', style: const TextStyle(color: M.sub)),
-              ],
-            ],
-            if (q.type == QType.multi && !answered) ...[
-              const SizedBox(height: 8),
-              GlassButton(
-                  label: '提交',
-                  tint: M.sage,
-                  expand: true,
-                  onTap: picked.isEmpty
-                      ? null
-                      : () => _submit(q, (picked.toList()..sort()).map((i) => String.fromCharCode(65 + i)).join())),
-            ],
-            if (!isChoice && q.type != QType.judge && !answered) ...[
-              const SizedBox(height: 10),
-              grading
-                  ? const Center(child: Padding(padding: EdgeInsets.all(8), child: Text('AI 正在批改…', style: TextStyle(color: M.sub))))
-                  : GlassButton(
-                      label: QType.isObjective(q.type) ? '提交' : '提交并让 AI 批改',
-                      tint: M.sage,
-                      expand: true,
-                      onTap: () => input.text.trim().isEmpty ? null : _submit(q, input.text.trim())),
-            ],
-          ]),
-        ),
-        if (answered) ...[
-          const SizedBox(height: 12),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        children: [
           Glass(
-            tint: null,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Icon(correct ? Icons.check_circle_rounded : Icons.cancel_rounded, color: correct ? M.sageDark : M.roseDark),
-                const SizedBox(width: 6),
-                Text(
-                    a['score'] != null
-                        ? 'AI 评分：${a['score']} / 10'
-                        : (correct ? '回答正确' : '回答错误，已加入错题本'),
-                    style: TextStyle(fontWeight: FontWeight.w700, color: correct ? M.sageDark : M.roseDark)),
-              ]),
-              if (a['comment'] != null) ...[
-                const SizedBox(height: 8),
-                MathText('${a['comment']}', style: const TextStyle(height: 1.5)),
-              ],
-              if (!isChoice) ...[
-                const SizedBox(height: 8),
-                MathText('参考答案：${q.answer.replaceAll('|', ' 或 ')}', style: const TextStyle(height: 1.5)),
-              ],
-              const SizedBox(height: 10),
-              const Row(children: [
-                Icon(Icons.menu_book_outlined, size: 18, color: M.text),
-                SizedBox(width: 6),
-                Text('解析', style: TextStyle(fontWeight: FontWeight.w600)),
-              ]),
-              const SizedBox(height: 6),
-              MathText(q.explanation.isEmpty ? '（暂无解析）' : q.explanation, style: const TextStyle(fontSize: 14, height: 1.6)),
-              if (q.page > 0)
-                TextButton(
-                  onPressed: () => showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter),
-                  child: Text('出处：第 ${q.page} 页 · 查看原文', style: const TextStyle(color: M.sageDark)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.description_outlined, size: 20, color: M.text),
+                    const SizedBox(width: 8),
+                    Text('${q.type}题', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    Text(q.difficulty, style: const TextStyle(color: M.sub, fontSize: 12)),
+                  ],
                 ),
-            ]),
+                const SizedBox(height: 12),
+                MathText(q.stem, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, height: 1.5)),
+                const SizedBox(height: 12),
+                if (isChoice)
+                  for (var i = 0; i < q.options.length; i++) _option(q, i, a),
+                if (q.type == QType.judge)
+                  Row(
+                    children: [
+                      for (final v in ['对', '错']) ...[
+                        Expanded(
+                          child: GlassButton(
+                            label: v,
+                            tint: answered && q.answer == v ? M.sage : (answered && a['answer'] == v ? M.rose : null),
+                            onTap: answered ? null : () => _submit(q, v),
+                          ),
+                        ),
+                        if (v == '对') const SizedBox(width: 12),
+                      ],
+                    ],
+                  ),
+                if (!isChoice && q.type != QType.judge) ...[
+                  if (!answered)
+                    TextField(
+                      controller: input,
+                      minLines: QType.isObjective(q.type) ? 1 : 4,
+                      maxLines: QType.isObjective(q.type) ? 2 : 10,
+                      decoration: InputDecoration(
+                        hintText: q.type == QType.fill ? '填写答案（公式可用 \$...\$）' : '写下你的解答，AI 会按步骤批改',
+                      ),
+                    ),
+                  if (answered) MathText('你的作答：${a['answer']}', style: const TextStyle(color: M.sub, height: 1.5)),
+                ],
+                if (q.type == QType.multi && !answered) ...[
+                  const SizedBox(height: 8),
+                  GlassButton(
+                    label: '提交',
+                    tint: M.sage,
+                    expand: true,
+                    onTap: picked.isEmpty
+                        ? null
+                        : () => _submit(q, (picked.toList()..sort()).map((i) => String.fromCharCode(65 + i)).join()),
+                  ),
+                ],
+                if (!isChoice && q.type != QType.judge && !answered) ...[
+                  const SizedBox(height: 10),
+                  grading
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(8),
+                            child: Text('AI 正在批改…', style: TextStyle(color: M.sub)),
+                          ),
+                        )
+                      : GlassButton(
+                          label: QType.isObjective(q.type) ? '提交' : '提交并让 AI 批改',
+                          tint: M.sage,
+                          expand: true,
+                          onTap: () => input.text.trim().isEmpty ? null : _submit(q, input.text.trim()),
+                        ),
+                ],
+              ],
+            ),
+          ),
+          if (answered) ...[
+            const SizedBox(height: 12),
+            Glass(
+              tint: null,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        correct ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                        color: correct ? M.sageDark : M.roseDark,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        a['score'] != null ? 'AI 评分：${a['score']} / 10' : (correct ? '回答正确' : '回答错误，已加入错题本'),
+                        style: TextStyle(fontWeight: FontWeight.w700, color: correct ? M.sageDark : M.roseDark),
+                      ),
+                    ],
+                  ),
+                  if (a['comment'] != null) ...[
+                    const SizedBox(height: 8),
+                    MathText('${a['comment']}', style: const TextStyle(height: 1.5)),
+                  ],
+                  if (!isChoice) ...[
+                    const SizedBox(height: 8),
+                    MathText('参考答案：${q.answer.replaceAll('|', ' 或 ')}', style: const TextStyle(height: 1.5)),
+                  ],
+                  const SizedBox(height: 10),
+                  const Row(
+                    children: [
+                      Icon(Icons.menu_book_outlined, size: 18, color: M.text),
+                      SizedBox(width: 6),
+                      Text('解析', style: TextStyle(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  MathText(
+                    q.explanation.isEmpty ? '（暂无解析）' : q.explanation,
+                    style: const TextStyle(fontSize: 14, height: 1.6),
+                  ),
+                  if (q.page > 0)
+                    TextButton(
+                      onPressed: () => showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter),
+                      child: Text('出处：第 ${q.page} 页 · 查看原文', style: const TextStyle(color: M.sageDark)),
+                    ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              // 上一题：只读回看（显示当时的作答和结果，不重新判分、不重复记错题）
+              GlassButton(label: '上一题', icon: Icons.undo_rounded, onTap: index > 0 ? _prev : null),
+              const SizedBox(width: 10),
+              Expanded(
+                child: GlassButton(
+                  label: 'AI 解释',
+                  icon: Icons.auto_awesome_rounded,
+                  onTap: () => showExplainSheet(context, question: q),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GlassButton(label: '下一题 →', onTap: answered ? _next : null),
+              ),
+            ],
           ),
         ],
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(
-              child: GlassButton(
-                  label: 'AI 解释', icon: Icons.auto_awesome_rounded, onTap: () => showExplainSheet(context, question: q))),
-          const SizedBox(width: 12),
-          Expanded(child: GlassButton(label: '下一题  →', onTap: answered ? _next : null)),
-        ]),
-      ]),
+      ),
     );
   }
 
@@ -278,21 +326,24 @@ class _QuizPageState extends State<QuizPage> {
                   setState(() => chosen ? picked.remove(i) : picked.add(i));
                 }
               },
-        child: Row(children: [
-          Container(
-            width: 28,
-            height: 28,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: answered && isAnswer ? M.sageDark : Colors.white.withValues(alpha: chosen ? 0.95 : 0.6)),
-            child: answered && isAnswer
-                ? const Icon(Icons.check_rounded, size: 18, color: Colors.white)
-                : Text(letter, style: const TextStyle(fontWeight: FontWeight.w600)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: MathText(q.options[i], style: const TextStyle(fontSize: 16))),
-        ]),
+                color: answered && isAnswer ? M.sageDark : Colors.white.withValues(alpha: chosen ? 0.95 : 0.6),
+              ),
+              child: answered && isAnswer
+                  ? const Icon(Icons.check_rounded, size: 18, color: Colors.white)
+                  : Text(letter, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: MathText(q.options[i], style: const TextStyle(fontSize: 16))),
+          ],
+        ),
       ),
     );
   }
@@ -305,13 +356,28 @@ class _QuizPageState extends State<QuizPage> {
         padding: const EdgeInsets.all(32),
         child: Glass(
           padding: const EdgeInsets.all(28),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.emoji_events_outlined, color: M.sageDark, size: 40),
-            const SizedBox(height: 12),
-            Text(qs.isEmpty ? '还没有题目' : '完成！答对 $right / $total', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 16),
-            GlassButton(label: '返回', onTap: () => Navigator.pop(context)),
-          ]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.emoji_events_outlined, color: M.sageDark, size: 40),
+              const SizedBox(height: 12),
+              Text(
+                qs.isEmpty ? '还没有题目' : '完成！答对 $right / $total',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (qs.isNotEmpty) ...[
+                    GlassButton(label: '上一题', icon: Icons.undo_rounded, onTap: _prev),
+                    const SizedBox(width: 12),
+                  ],
+                  GlassButton(label: '返回', onTap: () => Navigator.pop(context)),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

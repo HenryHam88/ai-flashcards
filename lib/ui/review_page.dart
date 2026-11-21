@@ -25,6 +25,8 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
   double dx = 0;
   String? filter; // 混合复习时的项目筛选（null=全部）
   List<(String, String)> projects = [];
+  List<Map<String, dynamic>> undoStack = []; // 本轮每次评分的撤销记录（可多步返回）
+  bool hintSeen = true;
 
   AppState get s => context.read<AppState>();
 
@@ -59,6 +61,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       index = min(saved['index'] as int, max(0, loaded.length));
       flipped = saved['flipped'] == true;
       filter = saved['filter'] as String?;
+      undoStack = ((saved['undo'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
     } else {
       cards = await s.dueCards(projectId: widget.projectId);
       index = 0;
@@ -66,12 +69,14 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
     if (widget.projectId == null) {
       projects = [for (final p in await s.repo.projects()) (p.id, p.name)];
     }
+    hintSeen = s.settings.prefs.getBool('swipe_hint_seen') ?? false;
     loading = false;
     _persist();
     if (mounted) setState(() {});
   }
 
   void _persist() {
+    // 一轮完成后清除会话（完成页仍可在内存里「上一张」，撤销后会重新保存）
     if (cards.isEmpty || index >= cards.length) {
       s.settings.reviewSession = null;
     } else {
@@ -81,6 +86,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
         'index': index,
         'flipped': flipped,
         'filter': filter,
+        'undo': undoStack,
       };
     }
   }
@@ -95,6 +101,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       index = 0;
       flipped = false;
       dx = 0;
+      undoStack = [];
     });
     _persist();
   }
@@ -105,9 +112,27 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
 
   Future<void> _rate(bool remembered) async {
     if (index >= cards.length) return;
-    await s.reviewCard(cards[index], remembered);
+    final undo = await s.reviewCard(cards[index], remembered);
+    if (!hintSeen) {
+      hintSeen = true;
+      s.settings.prefs.setBool('swipe_hint_seen', true);
+    }
     setState(() {
+      undoStack.add(undo);
       index++;
+      flipped = false;
+      dx = 0;
+    });
+    _persist();
+  }
+
+  /// 上一张：撤销上一次评分，回到那张卡的正面。
+  Future<void> _undo() async {
+    if (undoStack.isEmpty || index == 0) return;
+    final restored = await s.undoReview(undoStack.removeLast());
+    setState(() {
+      index--;
+      cards[index] = restored;
       flipped = false;
       dx = 0;
     });
@@ -168,8 +193,19 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                           const SizedBox(height: 12),
                           Expanded(child: _cardView(card)),
                           const SizedBox(height: 14),
+                          if (!hintSeen)
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 8),
+                              child: Text('右滑 = 记得，左滑 = 忘了，点按翻面', style: TextStyle(color: M.sub, fontSize: 12)),
+                            ),
                           Row(
                             children: [
+                              GlassButton(
+                                label: '上一张',
+                                icon: Icons.undo_rounded,
+                                onTap: index > 0 && undoStack.isNotEmpty ? _undo : null,
+                              ),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: GlassButton(
                                   label: 'AI 解释',
@@ -329,7 +365,16 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 16),
-            GlassButton(label: '返回', onTap: () => Navigator.pop(context)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (undoStack.isNotEmpty) ...[
+                  GlassButton(label: '上一张', icon: Icons.undo_rounded, onTap: _undo),
+                  const SizedBox(width: 12),
+                ],
+                GlassButton(label: '返回', onTap: () => Navigator.pop(context)),
+              ],
+            ),
           ],
         ),
       ),

@@ -170,4 +170,53 @@ void main() {
       }
     });
   });
+
+  testWidgets('闪卡上一张：撤销评分并写入会话', (t) async {
+    state.settings.reviewSession = {
+      'projectId': 'p1',
+      'ids': [for (var i = 0; i < 32; i++) 'c$i'],
+      'index': 0,
+      'flipped': false,
+    };
+    await shoot(t, const ReviewPage(projectId: 'p1', resume: true), '11_review_undo', after: () async {
+      Future<void> settle() async {
+        for (var i = 0; i < 6; i++) {
+          await t.pump(const Duration(milliseconds: 100));
+        }
+      }
+      expect(find.text('右滑 = 记得，左滑 = 忘了，点按翻面'), findsOneWidget);
+      await t.tap(find.text('记住了'));
+      await settle();
+      await t.tap(find.text('没记住'));
+      await settle();
+      expect(find.text('3 / 32'), findsOneWidget);
+      expect(state.settings.reviewSession!['index'], 2);
+      expect((state.settings.reviewSession!['undo'] as List).length, 2);
+      await t.tap(find.text('上一张'));
+      await settle();
+      expect(find.text('2 / 32'), findsOneWidget);
+      expect(state.settings.reviewSession!['index'], 1);
+      expect((await state.repo.card('c1'))!.reps, 0);
+      expect(find.text('•  点击翻面  •'), findsOneWidget); // 回到正面
+    });
+  });
+
+  testWidgets('测验上一题：只读回看，不重复判分', (t) async {
+    await state.repo.saveQuestions([
+      Question(id: 'q2', projectId: 'p2', type: QType.judge, stem: '一阶方程的通解含一个任意常数', answer: '对'),
+    ]);
+    await shoot(t, const QuizPage(projectId: 'p2', questionIds: ['q1', 'q2'], sessionKey: 't'), 'quiz_prev', after: () async {
+      await t.tap(find.text('A'));
+      await t.pump(const Duration(milliseconds: 300));
+      await t.tap(find.text('下一题 →'));
+      await t.pump(const Duration(milliseconds: 300));
+      await t.tap(find.text('上一题'));
+      await t.pump(const Duration(milliseconds: 300));
+      expect(find.text('回答错误，已加入错题本'), findsOneWidget);
+      await t.tap(find.text('C'), warnIfMissed: false); // 已作答：点击无效
+      await t.pump(const Duration(milliseconds: 300));
+    });
+    expect((await state.repo.logs(projectId: 'p2')).length, 1);
+    expect((await state.repo.wrong()).length, 1);
+  });
 }

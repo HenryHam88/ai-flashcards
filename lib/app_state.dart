@@ -125,11 +125,24 @@ class AppState extends ChangeNotifier {
     return l;
   }
 
-  Future<void> reviewCard(Flashcard c, bool remembered) async {
+  /// 评分并返回撤销记录（评分前的卡片快照 + 写入的日志 id），用于「上一张」。
+  Future<Map<String, dynamic>> reviewCard(Flashcard c, bool remembered) async {
+    final snapshot = c.toJson();
     fsrs.review(c, remembered ? 3 : 1);
     await repo.saveCards([c]);
-    await repo.log(LogEntry(id: newId(), projectId: c.projectId, kind: 'card', correct: remembered));
+    final logId = newId();
+    await repo.log(LogEntry(id: logId, projectId: c.projectId, kind: 'card', correct: remembered));
     changed();
+    return {'card': snapshot, 'log': logId};
+  }
+
+  /// 撤销一次评分：恢复卡片的 FSRS 状态和到期时间，并删除那条复习记录。返回恢复后的卡片。
+  Future<Flashcard> undoReview(Map<String, dynamic> undo) async {
+    final c = Flashcard.fromJson((undo['card'] as Map).cast<String, dynamic>());
+    await repo.saveCards([c]);
+    await repo.deleteLog(undo['log'] as String);
+    changed();
+    return c;
   }
 
   // ---------- 答题与错题本 ----------
