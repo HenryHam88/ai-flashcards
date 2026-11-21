@@ -287,7 +287,7 @@ class ParseService {
 }
 
 extension on ParseService {
-  /// Word：整份 .docx 直接交给设置里的解析模型（DeepSeek OCR / Kimi），不在手机上本地解析。
+  /// Word：整份 .docx / .doc 直接交给设置里的解析模型（DeepSeek OCR / Kimi），不在手机上本地解析。
   /// 解析模型不支持 Word 时不联网，直接在这份资料上显示提示。
   Future<int> _parseWord(PdfDoc doc, Progress onProgress) async {
     if (parserOverride == null && !Settings.supportsWord(settings.ocrProvider)) {
@@ -310,7 +310,7 @@ extension on ParseService {
     Object? err;
     for (var attempt = 0; attempt < 3 && r == null; attempt++) {
       try {
-        r = await parser.parse(bytes, '${doc.name}.docx', 1);
+        r = await parser.parse(bytes, '${doc.name}.${doc.type}', 1); // 扩展名决定 MIME
       } catch (e) {
         err = e;
         if (e is OcrException && (e.message.contains('401') || e.message.contains('密钥'))) break;

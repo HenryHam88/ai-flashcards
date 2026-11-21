@@ -37,6 +37,8 @@ void main() {
     expect(PdfDoc.fromJson({'id': 'a', 'projectId': 'p', 'name': 'n', 'path': ''}).type, 'pdf');
     expect(PdfDoc.typeOf('A.DOCX'), 'docx');
     expect(PdfDoc.typeOf('a.pdf'), 'pdf');
+    expect(PdfDoc.typeOf('旧讲义.DOC'), 'doc');
+    expect(PdfDoc(id: 'x', projectId: 'p', name: 'n', path: '', type: 'doc').isWord, isTrue);
     expect(Settings.supportsWord(OcrProvider.deepseek), isTrue);
     expect(Settings.supportsWord(OcrProvider.kimi), isTrue);
     expect(Settings.supportsWord(OcrProvider.local), isFalse);
@@ -57,6 +59,7 @@ void main() {
     expect(calls.single.url.path, '/v1/tools/ocr');
     final body = latin1.decode(calls.single.bodyBytes);
     expect(body, contains('.docx"'));
+    expect(body, contains('content-type: application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
     expect(body, contains('text_recognition'));
     expect(doc.status, '已解析');
     expect(doc.pageCount, 4); // 每个章/节标题开一个小节：第一章、1.1、1.2、第二章
@@ -115,5 +118,59 @@ void main() {
     final parts = splitWordSections(long, maxChars: 1000);
     expect(parts.length, greaterThan(3));
     expect(parts.every((p) => p.length < 2000), isTrue);
+  });
+
+  group('旧版 .doc', () {
+    late PdfDoc legacy;
+    setUp(() async {
+      final f = File('${Directory.systemTemp.createTempSync('d').path}/旧讲义.doc')..writeAsBytesSync([0xD0, 0xCF, 0x11, 0xE0]);
+      legacy = PdfDoc(id: 'd1', projectId: 'p1', name: '旧讲义', path: f.path, type: PdfDoc.typeOf('旧讲义.doc'));
+      await repo.saveDoc(legacy);
+    });
+
+    test('DeepSeek OCR：.doc 以 application/msword 上传', () async {
+      settings.ocrProvider = OcrProvider.deepseek;
+      await settings.setOcrKey('sk-test');
+      var body = '';
+      final client = MockClient((req) async {
+        body = latin1.decode(req.bodyBytes);
+        return http.Response.bytes(utf8.encode(jsonEncode({'page_count': 1, 'pages': [{'index': 0, 'text': wordText}]})), 200);
+      });
+      expect(await ParseService(repo, settings, httpClient: client).parseDoc(legacy, (_, _) {}), 0);
+      expect(body, contains('.doc"'));
+      expect(body, contains('content-type: application/msword'));
+      expect(legacy.status, '已解析');
+      expect(repo.isWordDoc('d1'), isTrue);
+    });
+
+    test('Kimi：.doc 以 application/msword 上传', () async {
+      settings.ocrProvider = OcrProvider.kimi;
+      await settings.setKimiKey('sk-kimi');
+      var body = '';
+      final client = MockClient((req) async {
+        if (req.method == 'POST') {
+          body = latin1.decode(req.bodyBytes);
+          return http.Response(jsonEncode({'id': 'f'}), 200);
+        }
+        return http.Response.bytes(utf8.encode(jsonEncode({'content': wordText})), 200);
+      });
+      expect(await ParseService(repo, settings, httpClient: client).parseDoc(legacy, (_, _) {}), 0);
+      expect(body, contains('file-extract'));
+      expect(body, contains('content-type: application/msword'));
+      expect(legacy.status, '已解析');
+    });
+
+    test('本地提取：.doc 同样提示不支持，不联网', () async {
+      settings.ocrProvider = OcrProvider.local;
+      var calls = 0;
+      final client = MockClient((req) async {
+        calls++;
+        return http.Response('{}', 200);
+      });
+      expect(await ParseService(repo, settings, httpClient: client).parseDoc(legacy, (_, _) {}), 1);
+      expect(calls, 0);
+      expect(legacy.status, '不支持');
+      expect(legacy.note, ParseService.wordUnsupported);
+    });
   });
 }

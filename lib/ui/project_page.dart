@@ -80,17 +80,13 @@ class _ProjectPageState extends State<ProjectPage> {
   Future<void> _upload() async {
     final picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['pdf', 'docx', 'doc']);
     if (picked.isEmpty) return;
-    final legacy = picked.where((f) => f.name.toLowerCase().endsWith('.doc')).toList();
-    if (legacy.isNotEmpty && mounted) {
-      toast(context, '暂不支持旧版 .doc 格式（${legacy.map((f) => f.name).join('、')}）。请在 Word / WPS 里「另存为」.docx 或 PDF 后再上传。');
-    }
     final dir = Directory(p.join((await getApplicationDocumentsDirectory()).path, 'pdfs'));
     await dir.create(recursive: true);
     final added = <PdfDoc>[];
     for (final f in picked) {
       if (f.path == null) continue;
       final lower = f.name.toLowerCase();
-      if (!lower.endsWith('.pdf') && !lower.endsWith('.docx')) continue;
+      if (!['.pdf', '.docx', '.doc'].any(lower.endsWith)) continue;
       final type = PdfDoc.typeOf(f.name);
       final id = newId();
       final dest = p.join(dir.path, '$id.$type');
@@ -255,7 +251,7 @@ class _ProjectPageState extends State<ProjectPage> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('上传 PDF / Word', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                Text('支持 PDF 和 Word（.docx），可一次选择多个（在文件选择器里长按可多选）', style: TextStyle(color: M.sub, fontSize: 12)),
+                Text('支持 PDF 和 Word（.docx / .doc），可一次选择多个（在文件选择器里长按可多选）', style: TextStyle(color: M.sub, fontSize: 12)),
               ]),
             ),
           ]),

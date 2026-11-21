@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 class OcrException implements Exception {
   final String message;
@@ -62,6 +63,15 @@ class OcrText {
   }
 }
 
+/// 按扩展名给上传文件设置正确的 MIME 类型。
+MediaType mimeFor(String fileName) {
+  final l = fileName.toLowerCase();
+  if (l.endsWith('.docx')) return MediaType('application', 'vnd.openxmlformats-officedocument.wordprocessingml.document');
+  if (l.endsWith('.doc')) return MediaType('application', 'msword');
+  if (l.endsWith('.pdf')) return MediaType('application', 'pdf');
+  return MediaType('application', 'octet-stream');
+}
+
 abstract class PdfParser {
   /// 解析一个批次的 PDF（已在本地拆好），返回该批次每页文字。
   Future<OcrResult> parse(Uint8List pdfBytes, String fileName, int pageCount);
@@ -90,7 +100,7 @@ class DeepSeekOcr implements PdfParser {
     final req = http.MultipartRequest('POST', Uri.parse('$b/v1/tools/ocr'))
       ..headers['Authorization'] = 'Bearer $apiKey'
       ..fields['purpose'] = purpose
-      ..files.add(http.MultipartFile.fromBytes('file', pdfBytes, filename: fileName));
+      ..files.add(http.MultipartFile.fromBytes('file', pdfBytes, filename: fileName, contentType: mimeFor(fileName)));
     try {
       final streamed = await client.send(req).timeout(const Duration(seconds: 180));
       final body = await streamed.stream.bytesToString(utf8).timeout(const Duration(seconds: 180));
@@ -122,7 +132,7 @@ class KimiFileExtract implements PdfParser {
     final up = http.MultipartRequest('POST', Uri.parse('$b/files'))
       ..headers['Authorization'] = 'Bearer $apiKey'
       ..fields['purpose'] = 'file-extract'
-      ..files.add(http.MultipartFile.fromBytes('file', pdfBytes, filename: fileName));
+      ..files.add(http.MultipartFile.fromBytes('file', pdfBytes, filename: fileName, contentType: mimeFor(fileName)));
     final r = await http.Response.fromStream(await client.send(up).timeout(const Duration(seconds: 180)));
     if (r.statusCode != 200) throw OcrException('Kimi 上传失败（${r.statusCode}）：${utf8.decode(r.bodyBytes)}');
     final id = jsonDecode(utf8.decode(r.bodyBytes))['id'];

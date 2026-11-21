@@ -32,7 +32,7 @@ class PdfDoc {
   int pageCount;
   int parsedPages;
   String status; // 未解析 / 解析中 / 已解析 / 部分失败 / 不支持
-  String type; // pdf / docx（Word）
+  String type; // pdf / docx / doc（后两种都是 Word）
   String note; // 给用户看的提示，例如当前解析模型不支持 Word
   PdfDoc({
     required this.id,
@@ -45,10 +45,15 @@ class PdfDoc {
     this.type = 'pdf',
     this.note = '',
   });
-  bool get isWord => type == 'docx';
+  bool get isWord => type == 'docx' || type == 'doc';
 
   /// 资料类型：按扩展名判断。
-  static String typeOf(String fileName) => fileName.toLowerCase().endsWith('.docx') ? 'docx' : 'pdf';
+  static String typeOf(String fileName) {
+    final l = fileName.toLowerCase();
+    if (l.endsWith('.docx')) return 'docx';
+    if (l.endsWith('.doc')) return 'doc';
+    return 'pdf';
+  }
   Map<String, dynamic> toJson() => {
         'id': id,
         'projectId': projectId,

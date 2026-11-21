@@ -24,7 +24,7 @@ class Repository {
   }
 
   // ---------- PDF ----------
-  /// docId → 类型（pdf / docx），用于出处显示「第 N 页」还是「标题名」。
+  /// docId → 类型（pdf / docx / doc），用于出处显示「第 N 页」还是「标题名」。
   final docTypes = <String, String>{};
   Future<void> loadDocTypes() async {
     for (final j in await store.list('docs')) {
@@ -32,7 +32,7 @@ class Repository {
     }
   }
 
-  bool isWordDoc(String docId) => docTypes[docId] == 'docx';
+  bool isWordDoc(String docId) => docTypes[docId] == 'docx' || docTypes[docId] == 'doc';
 
   Future<List<PdfDoc>> docs(String projectId) async {
     final l = (await store.list('docs', projectId: projectId)).map(PdfDoc.fromJson).toList();

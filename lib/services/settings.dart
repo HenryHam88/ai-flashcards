@@ -71,8 +71,8 @@ class Settings {
 
   /// 各解析方式支持的格式（依据 DeepSeek OCR 与 Kimi 文件接口的官方文档）。
   static const providerFormats = {
-    OcrProvider.deepseek: 'PDF、Word（.docx）',
-    OcrProvider.kimi: 'PDF、Word（.docx）',
+    OcrProvider.deepseek: 'PDF、Word（.docx / .doc）',
+    OcrProvider.kimi: 'PDF、Word（.docx / .doc）',
     OcrProvider.local: '仅 PDF',
   };
   static bool supportsWord(OcrProvider p) => p != OcrProvider.local;

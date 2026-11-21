@@ -64,7 +64,7 @@ class SqliteDocStore implements DocStore {
         await db.execute('CREATE INDEX idx_${c}_p ON $c(project_id)');
       }
     }, onUpgrade: (db, from, to) async {
-      // v2：资料加 type 字段（pdf / docx），旧资料全部标记为 PDF
+      // v2：资料加 type 字段（pdf / docx / doc），旧资料全部标记为 PDF
       if (from < 2) {
         for (final row in await db.query('docs')) {
           final j = jsonDecode(row['data'] as String) as Map<String, dynamic>;
