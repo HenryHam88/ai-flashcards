@@ -49,6 +49,7 @@
     <td align="center"><img src="docs/screenshots/29_help_home.png" width="190"><br><sub>使用帮助</sub></td>
     <td align="center"><img src="docs/screenshots/30_help_article.png" width="190"><br><sub>帮助文章</sub></td>
     <td align="center"><img src="docs/screenshots/31_table_render.png" width="190"><br><sub>表格显示</sub></td>
+    <td align="center"><img src="docs/screenshots/32_latex_text.png" width="190"><br><sub>LaTeX 文本格式</sub></td>
   </tr>
 </table>
 
@@ -84,7 +85,7 @@
 - 可选每周自动备份，保留最近 3 份
 
 **体验**
-- 完整的 LaTeX 公式排版与 Markdown 格式；识别出的表格（含公式）显示为可左右滑动的表格
+- 完整的 LaTeX 公式排版与 Markdown 格式；识别出的表格（含公式）显示为可左右滑动的表格；公式外的 `\texttt`、`\textbf`、列表和 tabular 等 LaTeX 写法也会整理成正常的格式
 - 莫兰迪配色、玻璃质感界面，支持深色模式
 - 字体大小、公式字号可调；可减少动态效果、关闭触感反馈
 - 内置「使用帮助」（我的 → 使用帮助）：按场景分步讲解各项功能，含常见问题，可搜索，离线可用；填密钥、编辑章节、出题等页面右上角的 **?** 可直接打开对应说明

@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-11-21
+
+### 修复
+
+- 闪卡、题目、解析和章节内容中，公式之外的 LaTeX 写法原样显示的问题（如 `\texttt{print()}`）：
+  - `\texttt` 和 `\verb` 显示为代码样式，`\textbf` 粗体，`\textit` / `\emph` 斜体，`\underline` 下划线，`\text` / `\mathrm` 普通文字；支持嵌套括号。
+  - `\_` `\%` `\&` `\#` `\$` `\{` `\}` 显示为对应字符，`\\` 换行；不认识的命令按原样显示，残缺的写法不会出错。
+  - itemize / enumerate（含嵌套）显示为列表，tabular 显示为表格，center、quote 等外层环境去掉；公式外裸露的 align、equation、cases 等数学环境按公式排版。
+- 成对的 ``` 代码块显示为代码框，里面的内容不做任何转换；没有闭合的 ``` 或反引号按普通文字显示，不再影响后面的内容。
+- 公式无法排版时，先尝试自动修正（如 align 环境、公式里的中文），仍不行就以低调的等宽字体显示原始写法，不再显示醒目的红字。
+- OCR 结果中的字面量 `\n` 显示为换行；只有符号没有内容的行（单独的 `*`、`#`）不再显示，多余的 `**` 不再显示出来，`#` 后紧跟中文也按标题显示。
+- 只改显示：保存的内容和发给 AI 的内容保持不变；原本能正常显示的公式（包括 `\(…\)` 和 `\[…\]`）显示完全不变。
+
 ## [1.3.3] - 2026-11-21
 
 ### 修复
@@ -118,7 +131,8 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式显示。
 - 学习统计页面。
 
-[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.4...HEAD
+[1.3.4]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.0...v1.3.1
