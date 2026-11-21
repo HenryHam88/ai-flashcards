@@ -49,7 +49,7 @@ Future<String?> promptText(BuildContext context, String title, {String hint = ''
   return showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
-      backgroundColor: const Color(0xFFF4F1EC),
+      backgroundColor: M.sheet,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       title: Text(title),
       content: TextField(controller: c, autofocus: true, decoration: InputDecoration(hintText: hint)),
@@ -81,19 +81,19 @@ class HomePage extends StatelessWidget {
               Glass(
                   radius: 20,
                   padding: const EdgeInsets.all(8),
-                  child: const Icon(Icons.spa_rounded, color: M.sageDark, size: 22)),
+                  child: Icon(Icons.spa_rounded, color: M.sageDark, size: 22)),
               const Spacer(),
-              IconButton(onPressed: () => onTab(2), icon: const Icon(Icons.notifications_none_rounded, color: M.text)),
+              IconButton(onPressed: () => onTab(2), icon: Icon(Icons.notifications_none_rounded, color: M.text)),
             ]),
             const SizedBox(height: 14),
-            const Text('今日复习', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: M.text)),
+            Text('今日复习', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: M.text)),
             const SizedBox(height: 4),
-            const Text('今日计划 · 保持节奏，稳步前进', style: TextStyle(color: M.sub, fontSize: 14)),
+            Text('今日计划 · 保持节奏，稳步前进', style: TextStyle(color: M.sub, fontSize: 14)),
             const SizedBox(height: 16),
             Glass(
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReviewPage())),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Row(children: [
+                Row(children: [
                   Icon(Icons.assignment_outlined, color: M.text, size: 20),
                   SizedBox(width: 8),
                   Text('待复习', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
@@ -106,7 +106,7 @@ class HomePage extends StatelessWidget {
                   const Spacer(),
                   if (session != null)
                     Text('继续 ${(session['index'] as int) + 1}/${(session['ids'] as List).length}',
-                        style: const TextStyle(color: M.sageDark, fontWeight: FontWeight.w600)),
+                        style: TextStyle(color: M.sageDark, fontWeight: FontWeight.w600)),
                 ]),
                 const SizedBox(height: 12),
                 ClipRRect(
@@ -115,7 +115,7 @@ class HomePage extends StatelessWidget {
                     value: d == null || d.due + d.reviewedToday == 0 ? 0 : d.reviewedToday / (d.due + d.reviewedToday),
                     minHeight: 6,
                     color: M.rose,
-                    backgroundColor: Colors.white.withValues(alpha: 0.6),
+                    backgroundColor: M.glass.withValues(alpha: 0.6),
                   ),
                 ),
               ]),
@@ -125,7 +125,7 @@ class HomePage extends StatelessWidget {
               Expanded(
                 child: Glass(
                   onTap: () => createProjectDialog(context),
-                  child: const Row(children: [
+                  child: Row(children: [
                     Icon(Icons.create_new_folder_outlined, color: M.text),
                     SizedBox(width: 10),
                     Text('新建项目', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
@@ -144,7 +144,7 @@ class HomePage extends StatelessWidget {
                           builder: (_) => ProjectPage(projectId: ps.first.$1.id, autoUpload: true)));
                     }
                   },
-                  child: const Row(children: [
+                  child: Row(children: [
                     Icon(Icons.cloud_upload_outlined, color: M.text),
                     SizedBox(width: 10),
                     Text('上传资料', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
@@ -153,14 +153,14 @@ class HomePage extends StatelessWidget {
               ),
             ]),
             const SizedBox(height: 4),
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(left: 4, top: 6),
               child: Text('支持 PDF / Word 自动解析与生成卡片', style: TextStyle(color: M.sub, fontSize: 12)),
             ),
             SectionTitle('我的项目',
-                trailing: Text('共 ${d?.projects.length ?? 0} 个', style: const TextStyle(color: M.sub, fontSize: 13))),
+                trailing: Text('共 ${d?.projects.length ?? 0} 个', style: TextStyle(color: M.sub, fontSize: 13))),
             if (d != null && d.projects.isEmpty)
-              const Glass(child: Text('还没有项目，点「新建项目」开始，例如「概率论」。', style: TextStyle(color: M.sub))),
+              Glass(child: Text('还没有项目，点「新建项目」开始，例如「概率论」。', style: TextStyle(color: M.sub))),
             for (final (p, nc, nq, ch) in d?.projects ?? <(Project, int, int, String)>[])
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -173,7 +173,7 @@ class HomePage extends StatelessWidget {
                       height: 40,
                       decoration: BoxDecoration(
                           color: M.greyBlue.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(12)),
-                      child: const Icon(Icons.menu_book_rounded, color: M.text, size: 22),
+                      child: Icon(Icons.menu_book_rounded, color: M.text, size: 22),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -183,10 +183,10 @@ class HomePage extends StatelessWidget {
                         Text('$nc 张卡片 · $nq 道题${ch.isEmpty ? '' : ' · $ch'}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: M.sub, fontSize: 12)),
+                            style: TextStyle(color: M.sub, fontSize: 12)),
                       ]),
                     ),
-                    const Icon(Icons.chevron_right_rounded, color: M.sub),
+                    Icon(Icons.chevron_right_rounded, color: M.sub),
                   ]),
                 ),
               ),

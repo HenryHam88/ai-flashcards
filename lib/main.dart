@@ -1,14 +1,17 @@
 import 'dart:ui';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_state.dart';
 import 'data/doc_store.dart';
 import 'data/repository.dart';
+import 'services/reminder.dart';
 import 'services/settings.dart';
 import 'theme/glass.dart';
+import 'ui/onboarding_page.dart';
 import 'ui/home_page.dart';
 import 'ui/me_page.dart';
 import 'ui/review_page.dart';
@@ -22,7 +25,23 @@ Future<void> main() async {
   final repo = Repository(store);
   await repo.loadDocTypes();
   final state = AppState(repo, Settings(prefs, SecureSecretStore()));
+  // 老用户升级上来已经有数据，不再显示首次引导
+  if (!state.settings.onboarded && (await repo.projects()).isNotEmpty) state.settings.onboarded = true;
+  try {
+    state.appVersion = (await PackageInfo.fromPlatform()).version;
+  } catch (_) {}
   runApp(StudyApp(state: state));
+  // 启动后的轻量后台任务：每周自动备份、重新安排复习提醒（失败不影响使用）
+  Future(() async {
+    try {
+      await (await state.backup()).autoBackupIfDue();
+    } catch (_) {}
+    try {
+      if (state.settings.reminderOn) {
+        await Reminder.schedule(on: true, minutes: state.settings.reminderMinutes);
+      }
+    } catch (_) {}
+  });
 }
 
 class StudyApp extends StatelessWidget {
@@ -33,12 +52,34 @@ class StudyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ChangeNotifierProvider.value(
         value: state,
-        child: MaterialApp(
-          title: '闪卡刷题',
-          debugShowCheckedModeBanner: false,
-          theme: buildTheme(fontFamily: fontFamily),
-          home: home ?? const HomeShell(),
-        ),
+        child: Selector<AppState, String>(
+            // 只在外观相关设置变化时重建 MaterialApp
+            selector: (_, s) => s.appearanceKey,
+            builder: (context, _, _) {
+          final st = state.settings;
+          final platformDark = MediaQueryData.fromView(View.of(context)).platformBrightness == Brightness.dark;
+          final dark = st.themeMode == 'dark' || (st.themeMode == 'system' && platformDark);
+          M.apply(dark);
+          MathText.mathScale = st.mathScale;
+          M.haptics = st.haptics;
+          return MaterialApp(
+            key: ValueKey('theme-$dark'), // 切换深浅色时整体重建，静态调色板才能生效
+            title: '闪卡刷题',
+            debugShowCheckedModeBanner: false,
+            theme: buildTheme(fontFamily: fontFamily, reduceMotion: st.reduceMotion),
+            builder: (context, child) {
+              final mq = MediaQuery.of(context);
+              return MediaQuery(
+                data: mq.copyWith(
+                  textScaler: TextScaler.linear(st.textScale),
+                  disableAnimations: mq.disableAnimations || st.reduceMotion,
+                ),
+                child: child!,
+              );
+            },
+            home: home ?? (st.onboarded ? const HomeShell() : const OnboardingPage()),
+          );
+        }),
       );
 }
 
@@ -95,9 +136,9 @@ class _HomeShellState extends State<HomeShell> {
               child: Container(
                 height: 66,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.5),
+                  color: M.glass.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(26),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.8)),
+                  border: Border.all(color: M.line.withValues(alpha: 0.8)),
                 ),
                 child: Row(children: [
                   for (var i = 0; i < items.length; i++)

@@ -102,7 +102,7 @@ class _GenSheetState extends State<_GenSheet> {
       if (o.scope == 'chapters') ...[
         const SizedBox(height: 6),
         widget.chapters.isEmpty
-            ? const Text('还没有识别到章节，请先解析资料', style: TextStyle(color: M.sub))
+            ? Text('还没有识别到章节，请先解析资料', style: TextStyle(color: M.sub))
             : _chips(widget.chapters, o.chapters),
       ],
       if (o.scope == 'pages')

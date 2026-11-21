@@ -71,7 +71,7 @@ class ReviewTab extends StatelessWidget {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(p.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
-                  Text('待复习 $due 张 · 题目 $nq 道 · 错题 $nw 道', style: const TextStyle(color: M.sub, fontSize: 13)),
+                  Text('待复习 $due 张 · 题目 $nq 道 · 错题 $nw 道', style: TextStyle(color: M.sub, fontSize: 13)),
                   const SizedBox(height: 10),
                   Row(children: [
                     Expanded(

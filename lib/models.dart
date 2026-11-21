@@ -380,31 +380,68 @@ class LogEntry {
   String kind; // card / quiz
   bool correct;
   DateTime at;
-  LogEntry({required this.id, required this.projectId, required this.kind, required this.correct, DateTime? at})
+  bool isNew; // 闪卡：这次是否是第一次学（用于每日新卡上限）
+  LogEntry({required this.id, required this.projectId, required this.kind, required this.correct, DateTime? at, this.isNew = false})
       : at = at ?? DateTime.now();
   Map<String, dynamic> toJson() =>
-      {'id': id, 'projectId': projectId, 'kind': kind, 'correct': correct, 'at': at.toIso8601String()};
+      {'id': id, 'projectId': projectId, 'kind': kind, 'correct': correct, 'at': at.toIso8601String(), if (isNew) 'isNew': true};
   factory LogEntry.fromJson(Map<String, dynamic> j) => LogEntry(
       id: j['id'],
       projectId: j['projectId'] ?? '',
       kind: j['kind'] ?? 'card',
       correct: j['correct'] == true,
-      at: DateTime.tryParse(j['at'] ?? ''));
+      at: DateTime.tryParse(j['at'] ?? ''),
+      isNew: j['isNew'] == true);
 }
 
 /// AI 解释缓存（含追问对话）。
+/// 同时也是「解释历史」的一条记录。
 class ExplainCache {
   String id; // itemId
   String projectId;
   List<Map<String, String>> messages; // role/content，第一条 assistant 为首次解释
-  ExplainCache({required this.id, required this.projectId, required this.messages});
-  Map<String, dynamic> toJson() => {'id': id, 'projectId': projectId, 'messages': messages};
+  String kind; // card / question（旧记录为空，打开历史时自动补齐）
+  String title; // 卡片正面 / 题干，用于列表预览和搜索
+  DateTime createdAt;
+  DateTime updatedAt;
+  bool starred;
+  ExplainCache(
+      {required this.id,
+      required this.projectId,
+      required this.messages,
+      this.kind = '',
+      this.title = '',
+      DateTime? createdAt,
+      DateTime? updatedAt,
+      this.starred = false})
+      : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? createdAt ?? DateTime.now();
+
+  /// 首次解释内容（不含提示词）。
+  String get firstAnswer => messages.length > 1 ? messages[1]['content'] ?? '' : '';
+  int get followUps => messages.length > 2 ? (messages.length - 2) ~/ 2 : 0;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'messages': messages,
+        'kind': kind,
+        'title': title,
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+        'starred': starred,
+      };
   factory ExplainCache.fromJson(Map<String, dynamic> j) => ExplainCache(
         id: j['id'],
         projectId: j['projectId'] ?? '',
         messages: ((j['messages'] as List?) ?? [])
             .map((e) => (e as Map).map((k, v) => MapEntry(k.toString(), v.toString())))
             .toList(),
+        kind: j['kind'] ?? '',
+        title: j['title'] ?? '',
+        createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
+        updatedAt: DateTime.tryParse(j['updatedAt'] ?? ''),
+        starred: j['starred'] == true,
       );
 }
 

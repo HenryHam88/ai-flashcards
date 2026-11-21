@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 
 import 'package:material_ui/material_ui.dart';
 
@@ -5,46 +6,110 @@ import 'package:material_ui/material_ui.dart';
 export 'rich_text.dart';
 
 
-/// 莫兰迪配色
+/// 莫兰迪配色。浅色 / 深色两套，切换外观时由 [M.apply] 整体替换。
 class M {
-  static const bg = Color(0xFFECE8E2); // 燕麦底
-  static const mist = Color(0xFFD5D3CF); // 雾灰
-  static const greyBlue = Color(0xFFA3B1BD); // 灰蓝
-  static const oat = Color(0xFFD9CBB4); // 燕麦
-  static const sage = Color(0xFF8FA68B); // 灰绿（强调色）
-  static const sageDark = Color(0xFF66805F);
-  static const rose = Color(0xFFC79B9B); // 豆沙（错误）
-  static const roseDark = Color(0xFFA86F6F);
-  static const text = Color(0xFF3E3C39); // 深灰文字
-  static const sub = Color(0xFF7D7973);
+  static bool dark = false;
+  static Color bg = const Color(0xFFECE8E2); // 燕麦底
+  static Color mist = const Color(0xFFD5D3CF); // 雾灰
+  static Color greyBlue = const Color(0xFFA3B1BD); // 灰蓝
+  static Color oat = const Color(0xFFD9CBB4); // 燕麦
+  static Color sage = const Color(0xFF8FA68B); // 灰绿（强调色）
+  static Color sageDark = const Color(0xFF66805F);
+  static Color rose = const Color(0xFFC79B9B); // 豆沙（错误）
+  static Color roseDark = const Color(0xFFA86F6F);
+  static Color text = const Color(0xFF3E3C39); // 深灰文字
+  static Color sub = const Color(0xFF7D7973);
+  static Color sheet = const Color(0xFFF4F1EC); // 面板、对话框底色
+  static Color glass = Colors.white; // 玻璃面板底色
+  static double glassAlpha = 1; // 玻璃不透明度系数
+  static Color line = Colors.white; // 玻璃描边
+  static Color wordBlue = const Color(0xFF6F8296);
+
+  /// 触感反馈开关（外观设置）。
+  static bool haptics = true;
+
+  static void apply(bool isDark) {
+    dark = isDark;
+    if (!isDark) {
+      bg = const Color(0xFFECE8E2);
+      mist = const Color(0xFFD5D3CF);
+      greyBlue = const Color(0xFFA3B1BD);
+      oat = const Color(0xFFD9CBB4);
+      sage = const Color(0xFF8FA68B);
+      sageDark = const Color(0xFF66805F);
+      rose = const Color(0xFFC79B9B);
+      roseDark = const Color(0xFFA86F6F);
+      text = const Color(0xFF3E3C39);
+      sub = const Color(0xFF7D7973);
+      sheet = const Color(0xFFF4F1EC);
+      glass = Colors.white;
+      glassAlpha = 1;
+      line = Colors.white;
+      wordBlue = const Color(0xFF6F8296);
+    } else {
+      // 深色莫兰迪：炭灰底，低饱和的灰绿 / 豆沙 / 燕麦
+      bg = const Color(0xFF22252A);
+      mist = const Color(0xFF3A3D42);
+      greyBlue = const Color(0xFF55636F);
+      oat = const Color(0xFF6B604F);
+      sage = const Color(0xFF7E9579);
+      sageDark = const Color(0xFFA9C1A3);
+      rose = const Color(0xFF9E7676);
+      roseDark = const Color(0xFFD9A7A7);
+      text = const Color(0xFFE7E2DA);
+      sub = const Color(0xFFA29D95);
+      sheet = const Color(0xFF2C3035);
+      glass = const Color(0xFF3A3F45);
+      glassAlpha = 1.2;
+      line = const Color(0xFF545A61);
+      wordBlue = const Color(0xFF9DB0C4);
+    }
+  }
 }
 
-ThemeData buildTheme({String? fontFamily}) {
+ThemeData buildTheme({String? fontFamily, bool reduceMotion = false}) {
   final base = ThemeData(
     useMaterial3: true,
     fontFamily: fontFamily,
-    colorScheme: ColorScheme.fromSeed(seedColor: M.sage, surface: M.bg, primary: M.sageDark, error: M.roseDark),
+    colorScheme: ColorScheme.fromSeed(
+        seedColor: M.sage, brightness: M.dark ? Brightness.dark : Brightness.light, surface: M.bg, primary: M.sageDark, error: M.roseDark),
     scaffoldBackgroundColor: Colors.transparent,
   );
   return base.copyWith(
     textTheme: base.textTheme.apply(bodyColor: M.text, displayColor: M.text, fontFamily: fontFamily),
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent, elevation: 0, foregroundColor: M.text, centerTitle: true, scrolledUnderElevation: 0),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.5),
+      fillColor: M.glass.withValues(alpha: M.dark ? 0.55 : 0.5),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     ),
     chipTheme: ChipThemeData(
-      backgroundColor: Colors.white.withValues(alpha: 0.45),
+      backgroundColor: M.glass.withValues(alpha: M.dark ? 0.6 : 0.45),
       selectedColor: M.sage.withValues(alpha: 0.35),
-      side: BorderSide(color: Colors.white.withValues(alpha: 0.8)),
+      side: BorderSide(color: M.line.withValues(alpha: 0.8)),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       labelStyle: TextStyle(color: M.text, fontFamily: fontFamily),
     ),
-    dividerColor: Colors.white.withValues(alpha: 0.6),
+    dividerColor: M.line.withValues(alpha: 0.6),
+    dialogTheme: DialogThemeData(backgroundColor: M.sheet, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22))),
+    popupMenuTheme: PopupMenuThemeData(color: M.sheet, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+    snackBarTheme: SnackBarThemeData(backgroundColor: M.text, contentTextStyle: TextStyle(color: M.bg, fontFamily: fontFamily)),
+    // 统一的页面切换动画；「减弱动画」时直接切换
+    pageTransitionsTheme: PageTransitionsTheme(builders: {
+      for (final p in TargetPlatform.values)
+        p: reduceMotion ? const _NoTransition() : const FadeForwardsPageTransitionsBuilder(),
+    }),
   );
+}
+
+class _NoTransition extends PageTransitionsBuilder {
+  const _NoTransition();
+  @override
+  Widget buildTransitions<T>(PageRoute<T> route, BuildContext context, Animation<double> animation,
+          Animation<double> secondaryAnimation, Widget child) =>
+      child;
 }
 
 /// 背景：燕麦底 + 几团大的柔和莫兰迪色块。
@@ -114,9 +179,10 @@ class Glass extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = BorderRadius.circular(radius);
-    final base = tint ?? Colors.white;
-    final hi = tint == null ? opacity + 0.16 : 0.66;
-    final lo = tint == null ? opacity - 0.06 : 0.48;
+    final base = tint ?? M.glass;
+    final k = tint == null ? M.glassAlpha : 1.0;
+    final hi = ((tint == null ? opacity + 0.16 : 0.66) * k).clamp(0.0, 1.0);
+    final lo = ((tint == null ? opacity - 0.06 : 0.48) * k).clamp(0.0, 1.0);
     return RepaintBoundary(
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -126,7 +192,7 @@ class Glass extends StatelessWidget {
             end: Alignment.bottomRight,
             colors: [base.withValues(alpha: hi), base.withValues(alpha: lo)],
           ),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1),
+          border: Border.all(color: M.line.withValues(alpha: M.dark ? 0.6 : 0.8), width: 1),
           boxShadow: [
             BoxShadow(color: const Color(0xFF6B6259).withValues(alpha: 0.08), blurRadius: 12, offset: const Offset(0, 5)),
           ],
@@ -134,7 +200,10 @@ class Glass extends StatelessWidget {
         child: Material(
           type: MaterialType.transparency,
           child: InkWell(
-            onTap: onTap,
+            onTap: onTap == null ? null : () {
+              tapFeedback();
+              onTap!();
+            },
             borderRadius: r,
             child: Padding(padding: padding, child: child),
           ),
@@ -186,8 +255,8 @@ Future<T?> showGlassSheet<T>(BuildContext context, Widget Function(BuildContext,
         child: RepaintBoundary(
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF4F1EC), // 不透明：避免底层文字透出
-              border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.9))),
+              color: M.sheet, // 不透明：避免底层文字透出
+              border: Border(top: BorderSide(color: M.line.withValues(alpha: 0.9))),
             ),
             child: Column(children: [
               const SizedBox(height: 8),
@@ -199,6 +268,11 @@ Future<T?> showGlassSheet<T>(BuildContext context, Widget Function(BuildContext,
       ),
     ),
   );
+}
+
+/// 轻触反馈：所有玻璃卡片 / 按钮共用，可在设置里关闭。
+void tapFeedback() {
+  if (M.haptics) HapticFeedback.selectionClick();
 }
 
 void toast(BuildContext context, String msg) {
@@ -217,7 +291,7 @@ class SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
         child: Row(children: [
-          Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: M.text)),
+          Text(text, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: M.text)),
           const Spacer(),
           ?trailing,
         ]),

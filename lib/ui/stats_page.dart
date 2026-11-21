@@ -26,13 +26,13 @@ class StatsPage extends StatelessWidget {
         final days = List.generate(7, (i) => DateTime(now.year, now.month, now.day).subtract(Duration(days: 6 - i)));
         final perDay = [for (final d in days) logs.where((l) => sameDay(l.at, d)).length];
         final maxDay = perDay.fold<int>(1, (a, b) => b > a ? b : a);
-        Widget stat(String label, String value, {Color color = M.text}) => Expanded(
+        Widget stat(String label, String value, {Color? color}) => Expanded(
               child: Glass(
                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
                 child: Column(children: [
                   Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: color)),
                   const SizedBox(height: 4),
-                  Text(label, style: const TextStyle(color: M.sub, fontSize: 12)),
+                  Text(label, style: TextStyle(color: M.sub, fontSize: 12)),
                 ]),
               ),
             );
@@ -69,7 +69,7 @@ class StatsPage extends StatelessWidget {
                   for (var i = 0; i < 7; i++)
                     Expanded(
                       child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                        Text('${perDay[i]}', style: const TextStyle(fontSize: 11, color: M.sub)),
+                        Text('${perDay[i]}', style: TextStyle(fontSize: 11, color: M.sub)),
                         const SizedBox(height: 4),
                         Container(
                           height: 100 * perDay[i] / maxDay + 2,
@@ -80,7 +80,7 @@ class StatsPage extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        Text(wd[days[i].weekday - 1], style: const TextStyle(fontSize: 12, color: M.sub)),
+                        Text(wd[days[i].weekday - 1], style: TextStyle(fontSize: 12, color: M.sub)),
                       ]),
                     ),
                 ]),

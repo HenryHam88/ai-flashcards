@@ -36,6 +36,12 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
     <td align="center"><img src="docs/screenshots/16_word_doc_list.png" width="190"><br><sub>Documents</sub></td>
     <td align="center"><img src="docs/screenshots/15_word_doc.png" width="190"><br><sub>Parsing settings</sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/19_settings.png" width="190"><br><sub>Settings</sub></td>
+    <td align="center"><img src="docs/screenshots/23_explain_history.png" width="190"><br><sub>Explanation history</sub></td>
+    <td align="center"><img src="docs/screenshots/22_dark.png" width="190"><br><sub>Dark mode</sub></td>
+    <td align="center"><img src="docs/screenshots/21_onboarding.png" width="190"><br><sub>Onboarding</sub></td>
+  </tr>
 </table>
 
 ## Features
@@ -51,12 +57,21 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
 **Review and practice**
 - FSRS spaced-repetition scheduling, swipe to grade, step back and forward through cards
 - Objective questions are graded automatically; short-answer and calculation questions are graded by AI
-- AI explanations grounded in the source text, with follow-up questions
+- AI explanations grounded in the source text, with follow-up questions; every explanation is kept in a searchable history you can star and continue
 - Mistake book: wrong answers are collected automatically, filterable by project, with new questions generated for weak points
+- Study settings: daily new / review limits, FSRS desired retention, day start time
+- Daily review reminder (local notification, no network needed)
+
+**Data**
+- Export everything to a single `.afcbak` backup and restore it on a new phone, including review progress, mistakes, and explanation history
+- Integrity check before import; choose "Overwrite" (a safety backup is made first) or "Merge" (keeps the more recent progress for each card)
+- Export a single project to share with classmates, with or without your own progress
+- Optional weekly automatic backup, keeping the latest 3
 
 **Experience**
 - Full LaTeX typesetting and Markdown formatting
-- Calm Morandi color palette with a glass-style interface
+- Calm Morandi color palette with a glass-style interface, plus dark mode
+- Adjustable text and formula size; reduce motion and haptics toggles
 - Review progress is saved automatically
 
 ## Download
@@ -105,6 +120,7 @@ Choose in **我的 → 文档解析（PDF / Word）** (Me → Document parsing):
 - Documents, cards, mistakes, and review history are stored only on your device. The project runs no servers.
 - API keys are kept in the system secure storage (Android Keystore).
 - Document content is sent only to the providers you configure; "Local text layer" mode never goes online.
+- Backups exclude API keys by default; they are included only if you turn on "包含 API 密钥" (backups are not encrypted, so keep them private).
 
 ## FAQ
 
@@ -121,6 +137,12 @@ Local text-layer mode reads PDFs only. Switch to DeepSeek OCR or Kimi in parsing
 </details>
 
 <details>
+<summary><b>How do I move my data to a new phone?</b></summary>
+
+On the old phone open **我的 → 导出 / 导入数据 → 导出数据** and save or share the `.afcbak` file (turn on "include original PDF / Word" if you want to re-parse or view source pages later). On the new phone choose **导入数据 → 覆盖当前数据** on the same page. API keys are not migrated by default.
+</details>
+
+<details>
 <summary><b>A formula looks wrong. What can I do?</b></summary>
 
 Ask for a rewrite in the card's AI explanation, or mark the question as "AI 出错了" (AI made a mistake) in the quiz.
@@ -131,12 +153,13 @@ Ask for a rewrite in the card's AI explanation, or mark the question as "AI 出�
 - Generation and grading quality depends on the model you choose; double-check important content against the source.
 - With Kimi, source page numbers for PDFs may be imprecise.
 - Chapters of unusually formatted books may be detected incorrectly; adjust them in the chapter editor or let AI re-split them.
-- Android only for now; no multi-device sync yet.
+- Android only for now; no real-time multi-device sync yet (use backup files to migrate).
 
 ## Roadmap
 
 - [x] PDF / Word parsing and AI generation
 - [x] FSRS review, quizzes, and mistake book
+- [x] Data backup and migration, dark mode, explanation history
 - [ ] Cloud sync (WebDAV)
 - [ ] Web version
 - [ ] iOS version

@@ -14,12 +14,14 @@ val hasReleaseKey = keyPropsFile.exists()
 
 android {
     namespace = "io.github.henryham88.ai_flashcards"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_local_notifications 需要用 API 37 编译；targetSdk 不变
+    compileSdk = maxOf(flutter.compileSdkVersion, 37)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -63,4 +65,8 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

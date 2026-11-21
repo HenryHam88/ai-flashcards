@@ -5,6 +5,8 @@ import '../app_state.dart';
 import '../services/prompts.dart';
 import '../services/settings.dart';
 import '../theme/glass.dart';
+import 'explain_history_page.dart';
+import 'settings_pages.dart';
 import 'wrong_book_page.dart';
 
 class MePage extends StatelessWidget {
@@ -12,38 +14,69 @@ class MePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     void go(Widget w) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
-    Widget item(IconData i, String t, String sub, Widget page) => Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Glass(
-            onTap: () => go(page),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(children: [
-              Icon(i, color: M.text),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(t, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                  Text(sub, style: const TextStyle(color: M.sub, fontSize: 12)),
-                ]),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: M.sub),
-            ]),
-          ),
-        );
+    final s = context.watch<AppState>();
+    final st = s.settings;
+    String mode() => const {'light': '浅色', 'dark': '深色', 'system': '跟随系统'}[st.themeMode] ?? '浅色';
+    String lim(int v) => v == 0 ? '不限' : '$v';
     return SafeArea(
       bottom: false,
       child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 110), children: [
         const Text('我的', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 14),
-        item(Icons.smart_toy_outlined, '出题模型', '接口地址、API 密钥、模型名称', const LlmSettingsPage()),
-        item(Icons.document_scanner_outlined, '文档解析（PDF / Word）', 'DeepSeek OCR / Kimi / 本地提取', const OcrSettingsPage()),
-        item(Icons.bookmark_border_rounded, '错题本', '全部项目的错题', const WrongBookPage()),
-        item(Icons.tune_rounded, '高级：提示词', '查看和修改出题、解释、批改用的提示词', const PromptSettingsPage()),
-        const SizedBox(height: 8),
-        const Glass(
-          child: Text('所有数据（资料、解析结果、卡片、错题）只保存在本机；API 密钥保存在系统安全存储中，不会上传到任何地方。',
-              style: TextStyle(color: M.sub, fontSize: 13, height: 1.6)),
-        ),
+        const SizedBox(height: 4),
+        SettingsGroup(title: '学习', children: [
+          SettingsTile(icon: Icons.bookmark_border_rounded, title: '错题本', subtitle: '全部项目的错题', onTap: () => go(const WrongBookPage())),
+          SettingsTile(
+              icon: Icons.history_edu_rounded,
+              title: '解释历史',
+              subtitle: '所有 AI 解释与追问，可搜索、收藏、继续提问',
+              onTap: () => go(const ExplainHistoryPage())),
+        ]),
+        SettingsGroup(title: '模型配置', children: [
+          SettingsTile(icon: Icons.smart_toy_outlined, title: '出题模型', subtitle: st.llmModel, onTap: () => go(const LlmSettingsPage())),
+          SettingsTile(
+              icon: Icons.document_scanner_outlined,
+              title: '文档解析（PDF / Word）',
+              subtitle: ocrProviderNames[st.ocrProvider] ?? '',
+              onTap: () => go(const OcrSettingsPage())),
+          SettingsTile(
+              icon: Icons.tune_rounded, title: '高级：提示词', subtitle: '出题、解释、批改用的提示词', onTap: () => go(const PromptSettingsPage())),
+        ]),
+        SettingsGroup(title: '偏好', children: [
+          SettingsTile(
+              icon: Icons.school_outlined,
+              title: '学习设置',
+              subtitle: '新卡 ${lim(st.dailyNewLimit)} / 复习 ${lim(st.dailyReviewLimit)} · 目标记忆率 ${(st.desiredRetention * 100).round()}%',
+              onTap: () => go(const LearningSettingsPage())),
+          SettingsTile(
+              icon: Icons.palette_outlined,
+              title: '外观',
+              subtitle: '${mode()} · 字号 ${(st.textScale * 100).round()}%',
+              onTap: () => go(const AppearancePage())),
+          SettingsTile(
+              icon: Icons.notifications_none_rounded,
+              title: '提醒',
+              subtitle: st.reminderOn
+                  ? '每天 ${(st.reminderMinutes ~/ 60).toString().padLeft(2, '0')}:${(st.reminderMinutes % 60).toString().padLeft(2, '0')}'
+                  : '未开启',
+              onTap: () => go(const ReminderPage())),
+        ]),
+        SettingsGroup(title: '数据', children: [
+          SettingsTile(
+              icon: Icons.import_export_rounded,
+              title: '导出 / 导入数据',
+              subtitle: st.autoBackup ? '备份、换手机迁移 · 已开启每周自动备份' : '备份、换手机迁移、分享项目',
+              onTap: () => go(const DataPage())),
+        ]),
+        SettingsGroup(title: '关于', children: [
+          SettingsTile(
+              icon: Icons.info_outline_rounded,
+              title: '关于闪卡刷题',
+              subtitle: s.appVersion.isEmpty ? '更新日志、开源许可、隐私说明' : '版本 ${s.appVersion} · 检查更新、更新日志',
+              onTap: () => go(const AboutPage())),
+        ]),
+        const SizedBox(height: 16),
+        Text('所有数据只保存在本机；API 密钥保存在系统安全存储中，不会上传到任何地方。',
+            textAlign: TextAlign.center, style: TextStyle(color: M.sub, fontSize: 12, height: 1.6)),
       ]),
     );
   }
@@ -108,7 +141,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
       body: ListView(padding: const EdgeInsets.all(20), children: [
         Glass(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('兼容 OpenAI 格式的服务都能用（DeepSeek、通义千问、Kimi 等）。', style: TextStyle(color: M.sub, fontSize: 13)),
+            Text('兼容 OpenAI 格式的服务都能用（DeepSeek、通义千问、Kimi 等）。', style: TextStyle(color: M.sub, fontSize: 13)),
             const SizedBox(height: 12),
             _textField('接口地址', st.llmBaseUrl, (v) => st.llmBaseUrl = v, hint: 'https://api.deepseek.com'),
             _KeyField(label: 'API 密钥', load: st.llmKey, save: st.setLlmKey),
@@ -124,7 +157,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
                     }),
             ]),
             const SizedBox(height: 8),
-            const Text('提示：日常用 deepseek-flash 便宜；难题可切到 deepseek-v4-pro。', style: TextStyle(color: M.sub, fontSize: 12)),
+            Text('提示：日常用 deepseek-flash 便宜；难题可切到 deepseek-v4-pro。', style: TextStyle(color: M.sub, fontSize: 12)),
           ]),
         ),
         const SizedBox(height: 14),
@@ -191,7 +224,7 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
                 ]),
               ),
             const SizedBox(height: 4),
-            const Text('Word（.docx 和旧版 .doc）会整份交给所选模型解析，不在手机上本地解析。',
+            Text('Word（.docx 和旧版 .doc）会整份交给所选模型解析，不在手机上本地解析。',
                 style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
           ]),
         ),
@@ -201,7 +234,7 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('DeepSeek OCR', style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              const Text('扫描版也能识别，公式会保留为 LaTeX，支持 PDF 和 Word。每批最多 1000 页、100 MiB，需在 180 秒内完成，所以 PDF 会在本地分批上传；Word 整份上传（文字模式下没有图片的 Word 直接抽取文字）。',
+              Text('扫描版也能识别，公式会保留为 LaTeX，支持 PDF 和 Word。每批最多 1000 页、100 MiB，需在 180 秒内完成，所以 PDF 会在本地分批上传；Word 整份上传（文字模式下没有图片的 Word 直接抽取文字）。',
                   style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
               const SizedBox(height: 10),
               Wrap(spacing: 8, children: [
@@ -227,7 +260,7 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
                     : (st.ocrModes.first == Settings.ocrRich
                         ? '全部页面用版面模式，保留图表和插图位置。'
                         : '全部页面用文字模式，适合纯文字教材。两个都选可开启混合模式。'),
-                style: const TextStyle(color: M.sageDark, fontSize: 12, height: 1.5),
+                style: TextStyle(color: M.sageDark, fontSize: 12, height: 1.5),
               ),
               const SizedBox(height: 12),
               _textField('接口地址', st.ocrBaseUrl, (v) => st.ocrBaseUrl = v),
@@ -239,14 +272,14 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('Kimi 文件解析', style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              const Text('上传后由 Kimi 抽取文字（目前免费），支持 PDF 和 Word。PDF 每批的文字会记在该批首页；Word 按标题切成小节。', style: TextStyle(color: M.sub, fontSize: 12)),
+              Text('上传后由 Kimi 抽取文字（目前免费），支持 PDF 和 Word。PDF 每批的文字会记在该批首页；Word 按标题切成小节。', style: TextStyle(color: M.sub, fontSize: 12)),
               const SizedBox(height: 12),
               _textField('接口地址', st.kimiBaseUrl, (v) => st.kimiBaseUrl = v),
               _KeyField(label: 'Kimi API 密钥', load: st.kimiKey, save: st.setKimiKey),
             ]),
           ),
         if (st.ocrProvider == OcrProvider.local)
-          const Glass(
+          Glass(
               child: Text('直接读取 PDF 自带的文字层，不花钱、不联网；扫描版 PDF 没有文字层，读不出内容，公式也可能变成普通字符。不支持 Word：上传的 Word 会提示切换到 DeepSeek OCR 或 Kimi。',
                   style: TextStyle(color: M.sub, height: 1.5))),
         const SizedBox(height: 12),
@@ -281,7 +314,7 @@ class _PromptSettingsPageState extends State<PromptSettingsPage> {
     return GlassScaffold(
       title: '高级：提示词',
       body: ListView(padding: const EdgeInsets.all(20), children: [
-        const Text('可直接修改发给 AI 的完整提示词。{{...}} 是占位符，会被自动替换，请保留。',
+        Text('可直接修改发给 AI 的完整提示词。{{...}} 是占位符，会被自动替换，请保留。',
             style: TextStyle(color: M.sub, fontSize: 13)),
         const SizedBox(height: 12),
         for (final e in Prompts.names.entries)

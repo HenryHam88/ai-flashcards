@@ -57,7 +57,7 @@ class _WrongListState extends State<WrongList> {
         final qIds = items.where((e) => e.$2 != null).map((e) => e.$2!.id).toList();
         final header = <Widget>[
           if (items.isEmpty)
-            const Glass(
+            Glass(
               child: Text('错题本是空的。答错的题会自动收进来，连续答对 3 次后自动移出。', style: TextStyle(color: M.sub)),
             ),
           if (qIds.isNotEmpty)
@@ -104,16 +104,16 @@ class _WrongListState extends State<WrongList> {
                           child: Text(w.mark, style: const TextStyle(fontSize: 12)),
                         ),
                         const SizedBox(width: 8),
-                        Text(q != null ? '${q.type}题' : '闪卡', style: const TextStyle(color: M.sub, fontSize: 12)),
+                        Text(q != null ? '${q.type}题' : '闪卡', style: TextStyle(color: M.sub, fontSize: 12)),
                         const Spacer(),
-                        Text('连续答对 ${w.streak}/3', style: const TextStyle(color: M.sub, fontSize: 12)),
+                        Text('连续答对 ${w.streak}/3', style: TextStyle(color: M.sub, fontSize: 12)),
                       ],
                     ),
                     const SizedBox(height: 8),
                     MathText(q?.stem ?? c!.front, style: const TextStyle(fontWeight: FontWeight.w600)),
                     if (w.lastAnswer.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      MathText('上次作答：${w.lastAnswer}', style: const TextStyle(color: M.roseDark, fontSize: 13)),
+                      MathText('上次作答：${w.lastAnswer}', style: TextStyle(color: M.roseDark, fontSize: 13)),
                     ],
                     const SizedBox(height: 6),
                     Wrap(
@@ -151,7 +151,7 @@ class _WrongListState extends State<WrongList> {
                             await s.repo.deleteWrong(w.id);
                             s.changed();
                           },
-                          child: const Text('移出', style: TextStyle(color: M.sub)),
+                          child: Text('移出', style: TextStyle(color: M.sub)),
                         ),
                       ],
                     ),

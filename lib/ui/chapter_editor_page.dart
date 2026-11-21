@@ -137,7 +137,7 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
     final r = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFFF4F1EC),
+        backgroundColor: M.sheet,
         title: const Text('放弃修改？'),
         content: const Text('章节的修改还没有保存。'),
         actions: [
@@ -172,7 +172,7 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       Icon(doc.isWord ? Icons.description_outlined : Icons.picture_as_pdf_outlined,
-                          size: 20, color: doc.isWord ? const Color(0xFF6F8296) : M.roseDark),
+                          size: 20, color: doc.isWord ? M.wordBlue : M.roseDark),
                       const SizedBox(width: 8),
                       Expanded(
                           child: Text(doc.name,
@@ -180,7 +180,7 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
                     ]),
                     const SizedBox(height: 6),
                     Text('共 $total $unit · ${list.length} 章 · 来源：${chapterSourceNames[source] ?? source}${dirty ? '（未保存）' : ''}',
-                        style: const TextStyle(color: M.sub, fontSize: 12)),
+                        style: TextStyle(color: M.sub, fontSize: 12)),
                     const SizedBox(height: 10),
                     Wrap(spacing: 8, runSpacing: 8, children: [
                       _chip(Icons.add, '新增章节', _add),
@@ -190,12 +190,12 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
                     ]),
                     if (busy) ...[
                       const SizedBox(height: 10),
-                      const LinearProgressIndicator(minHeight: 3, color: M.sage, backgroundColor: Colors.white54),
+                      LinearProgressIndicator(minHeight: 3, color: M.sage, backgroundColor: M.glass.withValues(alpha: 0.5)),
                     ],
                   ]),
                 ),
                 const SizedBox(height: 6),
-                const Padding(
+                Padding(
                   padding: EdgeInsets.fromLTRB(4, 6, 4, 8),
                   child: Text('点章节可重命名；右侧菜单可拆分、合并、调整起始页或删除。',
                       style: TextStyle(color: M.sub, fontSize: 12)),
@@ -226,18 +226,18 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
             height: 30,
             alignment: Alignment.center,
             decoration: BoxDecoration(color: M.sage.withValues(alpha: 0.18), shape: BoxShape.circle),
-            child: Text('${i + 1}', style: const TextStyle(color: M.sageDark, fontWeight: FontWeight.w700, fontSize: 13)),
+            child: Text('${i + 1}', style: TextStyle(color: M.sageDark, fontWeight: FontWeight.w700, fontSize: 13)),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(c.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 2),
-              Text('第 ${c.start}–${c.end} $unit · 共 $pages $unit', style: const TextStyle(color: M.sub, fontSize: 12)),
+              Text('第 ${c.start}–${c.end} $unit · 共 $pages $unit', style: TextStyle(color: M.sub, fontSize: 12)),
             ]),
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert_rounded, color: M.sub),
+            icon: Icon(Icons.more_vert_rounded, color: M.sub),
             onSelected: (v) {
               switch (v) {
                 case 'rename':

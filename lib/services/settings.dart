@@ -97,6 +97,98 @@ class Settings {
   Future<String> kimiKey() async => await secrets.read('kimi_key') ?? '';
   Future<void> setKimiKey(String v) => secrets.write('kimi_key', v.trim());
 
+  // ---------- 学习设置（默认值与旧版行为完全一致） ----------
+  /// 每日新卡上限，0 = 不限（旧版行为）。
+  int get dailyNewLimit => prefs.getInt('daily_new_limit') ?? 0;
+  set dailyNewLimit(int v) => prefs.setInt('daily_new_limit', v < 0 ? 0 : v);
+
+  /// 每日复习上限，0 = 不限（旧版行为）。
+  int get dailyReviewLimit => prefs.getInt('daily_review_limit') ?? 0;
+  set dailyReviewLimit(int v) => prefs.setInt('daily_review_limit', v < 0 ? 0 : v);
+
+  /// FSRS 目标记忆率，默认 0.90（旧版固定值）。
+  double get desiredRetention => prefs.getDouble('desired_retention') ?? 0.9;
+  set desiredRetention(double v) => prefs.setDouble('desired_retention', v.clamp(0.70, 0.97));
+
+  /// 每日开始时间（小时），默认 0 点。用于计算「今天」已学的新卡 / 复习数。
+  int get dayStartHour => prefs.getInt('day_start_hour') ?? 0;
+  set dayStartHour(int v) => prefs.setInt('day_start_hour', v.clamp(0, 6));
+
+  // ---------- 外观 ----------
+  /// light / dark / system。默认浅色（与旧版一致）。
+  String get themeMode => prefs.getString('theme_mode') ?? 'light';
+  set themeMode(String v) => prefs.setString('theme_mode', v);
+  double get textScale => prefs.getDouble('text_scale') ?? 1.0;
+  set textScale(double v) => prefs.setDouble('text_scale', v);
+  double get mathScale => prefs.getDouble('math_scale') ?? 1.0;
+  set mathScale(double v) => prefs.setDouble('math_scale', v);
+  bool get haptics => prefs.getBool('haptics') ?? true;
+  set haptics(bool v) => prefs.setBool('haptics', v);
+  bool get reduceMotion => prefs.getBool('reduce_motion') ?? false;
+  set reduceMotion(bool v) => prefs.setBool('reduce_motion', v);
+
+  // ---------- 提醒 ----------
+  bool get reminderOn => prefs.getBool('reminder_on') ?? false;
+  set reminderOn(bool v) => prefs.setBool('reminder_on', v);
+  int get reminderMinutes => prefs.getInt('reminder_minutes') ?? 20 * 60; // 默认 20:00
+  set reminderMinutes(int v) => prefs.setInt('reminder_minutes', v);
+
+  // ---------- 数据 ----------
+  bool get autoBackup => prefs.getBool('auto_backup') ?? false;
+  set autoBackup(bool v) => prefs.setBool('auto_backup', v);
+  DateTime? get lastAutoBackup => DateTime.tryParse(prefs.getString('last_auto_backup') ?? '');
+  set lastAutoBackup(DateTime? v) => prefs.setString('last_auto_backup', v?.toIso8601String() ?? '');
+
+  // ---------- 首次启动 ----------
+  bool get onboarded => prefs.getBool('onboarded') ?? false;
+  set onboarded(bool v) => prefs.setBool('onboarded', v);
+
+  /// 不含任何密钥的设置项，用于备份。
+  static const backupKeys = [
+    'llm_base', 'llm_model', 'ocr_provider', 'ocr_modes', 'ocr_base', 'ocr_batch', 'kimi_base', 'gen_templates',
+    'daily_new_limit', 'daily_review_limit', 'desired_retention', 'day_start_hour', 'theme_mode', 'text_scale',
+    'math_scale', 'reduce_motion', 'haptics', 'reminder_on', 'reminder_minutes', 'auto_backup',
+  ];
+  static const secretKeys = ['llm_key', 'ocr_key', 'kimi_key'];
+
+  Map<String, dynamic> exportPrefs() {
+    final out = <String, dynamic>{};
+    for (final k in prefs.getKeys()) {
+      if (backupKeys.contains(k) || k.startsWith('prompt_')) out[k] = prefs.get(k);
+    }
+    return out;
+  }
+
+  Future<void> importPrefs(Map<String, dynamic> m) async {
+    for (final e in m.entries) {
+      final v = e.value;
+      if (!(backupKeys.contains(e.key) || e.key.startsWith('prompt_'))) continue;
+      if (v is bool) {
+        await prefs.setBool(e.key, v);
+      } else if (v is int) {
+        await prefs.setInt(e.key, v);
+      } else if (v is double) {
+        await prefs.setDouble(e.key, v);
+      } else if (v is String) {
+        await prefs.setString(e.key, v);
+      } else if (v is List) {
+        await prefs.setStringList(e.key, v.map((x) => '$x').toList());
+      }
+    }
+  }
+
+  Future<Map<String, String>> exportSecrets() async => {
+        for (final k in secretKeys)
+          if ((await secrets.read(k) ?? '').isNotEmpty) k: (await secrets.read(k))!,
+      };
+
+  Future<void> importSecrets(Map<String, dynamic> m) async {
+    for (final k in secretKeys) {
+      final v = m[k];
+      if (v is String && v.isNotEmpty) await secrets.write(k, v);
+    }
+  }
+
   // 提示词模板（高级）
   String prompt(String name) => prefs.getString('prompt_$name') ?? Prompts.defaults[name]!;
   void setPrompt(String name, String v) => prefs.setString('prompt_$name', v);

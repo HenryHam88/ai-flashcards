@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'dart:math';
 
 import 'package:material_ui/material_ui.dart';
@@ -115,6 +116,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       : const SizedBox();
 
   Future<void> _rate(bool remembered) async {
+    if (M.haptics) HapticFeedback.lightImpact();
     if (index >= cards.length) return;
     final undo = await s.reviewCard(cards[index], remembered);
     if (!hintSeen) {
@@ -179,7 +181,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
           ),
       ],
       body: loading
-          ? const Center(child: CircularProgressIndicator(color: M.sage))
+          ? Center(child: CircularProgressIndicator(color: M.sage))
           : done
           ? Column(
               children: [
@@ -202,12 +204,12 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                               Container(
                                 width: 7,
                                 height: 7,
-                                decoration: const BoxDecoration(color: M.sage, shape: BoxShape.circle),
+                                decoration: BoxDecoration(color: M.sage, shape: BoxShape.circle),
                               ),
                               const SizedBox(width: 6),
                               Text(
                                 card!.chapter.isEmpty ? '学习中' : '学习中 · ${card.chapter}',
-                                style: const TextStyle(color: M.sub, fontSize: 13),
+                                style: TextStyle(color: M.sub, fontSize: 13),
                               ),
                             ],
                           ),
@@ -215,7 +217,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                           Expanded(child: _cardView(card)),
                           const SizedBox(height: 14),
                           if (!hintSeen)
-                            const Padding(
+                            Padding(
                               padding: EdgeInsets.only(bottom: 8),
                               child: Text(
                                 '右滑 = 记得，左滑 = 忘了，点按翻面；上一张 / 下一张可回看',
@@ -300,7 +302,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
           child: TweenAnimationBuilder<double>(
             key: ValueKey(card.id),
             tween: Tween(begin: 0, end: flipped ? pi : 0),
-            duration: const Duration(milliseconds: 380),
+            duration: MediaQuery.of(context).disableAnimations ? Duration.zero : const Duration(milliseconds: 380),
             curve: Curves.easeInOut,
             builder: (context, angle, _) {
               final showBack = angle > pi / 2;
@@ -330,13 +332,13 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                                       height: 48,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: Colors.white.withValues(alpha: 0.6),
-                                        border: Border.all(color: Colors.white),
+                                        color: M.glass.withValues(alpha: 0.6),
+                                        border: Border.all(color: M.line),
                                       ),
-                                      child: const Icon(Icons.question_mark_rounded, color: M.text),
+                                      child: Icon(Icons.question_mark_rounded, color: M.text),
                                     ),
                                   if (showBack)
-                                    const Text(
+                                    Text(
                                       '答案',
                                       style: TextStyle(color: M.sageDark, fontWeight: FontWeight.w600),
                                     ),
@@ -355,13 +357,13 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                                     MathText(
                                       card.explanation,
                                       textAlign: TextAlign.center,
-                                      style: const TextStyle(fontSize: 14, color: M.sub, height: 1.5),
+                                      style: TextStyle(fontSize: 14, color: M.sub, height: 1.5),
                                     ),
                                   ],
                                   const SizedBox(height: 18),
                                   Text(
                                     showBack ? (card.page > 0 ? '出处：${s.sourceLabel(card.docId, card.page, card.chapter, card.section)}' : '') : '•  点击翻面  •',
-                                    style: const TextStyle(color: M.sub, fontSize: 13),
+                                    style: TextStyle(color: M.sub, fontSize: 13),
                                   ),
                                 ],
                               ),
@@ -388,7 +390,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.celebration_outlined, color: M.sageDark, size: 40),
+            Icon(Icons.celebration_outlined, color: M.sageDark, size: 40),
             const SizedBox(height: 12),
             Text(
               cards.isEmpty ? (filter == null ? '现在没有到期的闪卡' : '这个项目没有到期的闪卡') : '本轮 ${cards.length} 张已复习完',

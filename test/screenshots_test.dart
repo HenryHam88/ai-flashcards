@@ -6,7 +6,11 @@ import 'package:ai_flashcards/data/doc_store.dart';
 import 'package:ai_flashcards/data/repository.dart';
 import 'package:ai_flashcards/main.dart';
 import 'package:ai_flashcards/services/settings.dart';
+import 'package:ai_flashcards/theme/glass.dart';
 import 'package:ai_flashcards/ui/chapter_editor_page.dart';
+import 'package:ai_flashcards/ui/explain_history_page.dart';
+import 'package:ai_flashcards/ui/onboarding_page.dart';
+import 'package:ai_flashcards/ui/settings_pages.dart';
 import 'package:ai_flashcards/ui/me_page.dart';
 import 'package:ai_flashcards/ui/project_page.dart';
 import 'package:ai_flashcards/ui/quiz_page.dart';
@@ -331,5 +335,65 @@ void main() {
     ]));
     final doc = (await state.repo.docs('p1')).firstWhere((d) => d.id == 'd1');
     await shoot(t, ChapterEditorPage(doc: doc), '18_chapter_editor');
+  });
+
+  testWidgets('我的：分组设置', (t) async {
+    state.appVersion = '1.2.0';
+    state.settings.dailyNewLimit = 30;
+    state.settings.reminderOn = true;
+    state.settings.autoBackup = true;
+    await shoot(t, const HomeShell(initialTab: 3, restoreSession: false), '19_settings');
+  });
+
+  testWidgets('关于', (t) async {
+    state.appVersion = '1.2.0';
+    await shoot(t, const AboutPage(), '20_about', after: () async {
+      await t.runAsync(() async {
+        final el = t.element(find.byType(AboutPage));
+        await precacheImage(const AssetImage('assets/logo.png'), el);
+      });
+      await t.pump(const Duration(milliseconds: 100));
+    });
+  });
+
+  testWidgets('首次启动引导', (t) async {
+    await shoot(t, const OnboardingPage(), '21_onboarding', after: () async {
+      await t.drag(find.byType(PageView), const Offset(-300, 0));
+      await t.pumpAndSettle();
+    });
+  });
+
+  testWidgets('深色模式', (t) async {
+    state.settings.themeMode = 'dark';
+    addTearDown(() => M.apply(false));
+    await shoot(t, const HomeShell(restoreSession: false), '22_dark');
+  });
+
+  testWidgets('解释历史', (t) async {
+    final now = DateTime.now();
+    await state.repo.saveExplain(ExplainCache(
+        id: 'c11', projectId: 'p1', kind: 'card', title: '什么是条件概率？', starred: true,
+        createdAt: now.subtract(const Duration(minutes: 8)),
+        messages: [
+          {'role': 'user', 'content': '...'},
+          {'role': 'assistant', 'content': r'**通俗理解**：条件概率就是「已知 $B$ 已经发生」之后，再看 $A$ 发生的可能性。相当于把样本空间缩小到 $B$。'},
+          {'role': 'user', 'content': '再举个例子'},
+          {'role': 'assistant', 'content': '掷骰子……'},
+        ]));
+    await state.repo.saveExplain(ExplainCache(
+        id: 'c2', projectId: 'p1', kind: 'card', title: '全概率公式',
+        createdAt: now.subtract(const Duration(hours: 3)),
+        messages: [
+          {'role': 'user', 'content': '...'},
+          {'role': 'assistant', 'content': r'把复杂事件 $A$ 按一组完备事件 $B_1,\dots,B_n$ 拆开分别计算，再加权求和。'},
+        ]));
+    await state.repo.saveExplain(ExplainCache(
+        id: 'q-demo', projectId: 'p2', kind: 'question', title: r'求解微分方程 $y\prime + y = 0$ 的通解',
+        createdAt: now.subtract(const Duration(days: 2)),
+        messages: [
+          {'role': 'user', 'content': '...'},
+          {'role': 'assistant', 'content': r'这是一阶线性齐次方程，分离变量得 $\frac{dy}{y}=-dx$，积分得 $y=Ce^{-x}$。'},
+        ]));
+    await shoot(t, const ExplainHistoryPage(), '23_explain_history');
   });
 }

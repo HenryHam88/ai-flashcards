@@ -14,7 +14,7 @@ Future<void> showSourceSheet(BuildContext context, {required String docId, requi
   final word = s.repo.isWordDoc(docId);
   await showGlassSheet(context, (ctx, sc) => ListView(controller: sc, padding: const EdgeInsets.all(20), children: [
         Text('原文出处 · ${s.sourceLabel(docId, page, chapter, section)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-        if (chapter.isNotEmpty && !word) Text(chapter, style: const TextStyle(color: M.sub)),
+        if (chapter.isNotEmpty && !word) Text(chapter, style: TextStyle(color: M.sub)),
         const SizedBox(height: 12),
         MathText(text.isEmpty ? '没有找到这一页的解析结果。' : text, style: const TextStyle(fontSize: 15, height: 1.6)),
       ]));
@@ -66,7 +66,9 @@ class _ExplainBodyState extends State<_ExplainBody> {
           projectId: projectId,
           itemText: itemText,
           docId: widget.card?.docId ?? widget.question!.docId,
-          page: widget.card?.page ?? widget.question!.page);
+          page: widget.card?.page ?? widget.question!.page,
+          kind: widget.card != null ? 'card' : 'question',
+          title: widget.card?.front ?? widget.question!.stem);
       if (mounted) setState(() => cache = c);
     } catch (e) {
       if (mounted) setState(() => error = '$e');
@@ -96,16 +98,16 @@ class _ExplainBodyState extends State<_ExplainBody> {
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 10, 12, 4),
         child: Row(children: [
-          const Icon(Icons.auto_awesome_rounded, color: M.sageDark, size: 20),
+          Icon(Icons.auto_awesome_rounded, color: M.sageDark, size: 20),
           const SizedBox(width: 8),
           const Text('AI 解释', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
           const Spacer(),
-          IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, color: M.sub)),
+          IconButton(onPressed: () => Navigator.pop(context), icon: Icon(Icons.close_rounded, color: M.sub)),
         ]),
       ),
       Expanded(
         child: ListView(controller: widget.controller, padding: const EdgeInsets.symmetric(horizontal: 20), children: [
-          if (error != null) Text(error!, style: const TextStyle(color: M.roseDark)),
+          if (error != null) Text(error!, style: TextStyle(color: M.roseDark)),
           for (final m in msgs)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -119,7 +121,7 @@ class _ExplainBodyState extends State<_ExplainBody> {
                           child: Text(m['content']!, style: const TextStyle(color: Colors.white))))
                   : MathText(stripMetaPreamble(m['content']!), style: const TextStyle(fontSize: 15, height: 1.6)),
             ),
-          if (busy) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(color: M.sage))),
+          if (busy) Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(color: M.sage))),
           const SizedBox(height: 8),
           Row(children: [
             Expanded(

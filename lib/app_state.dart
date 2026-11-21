@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'data/repository.dart';
 import 'models.dart';
+import 'services/backup.dart';
 import 'services/chapters.dart';
 import 'services/fsrs.dart';
 import 'services/json_utils.dart';
@@ -28,6 +32,29 @@ class AppState extends ChangeNotifier {
   final Settings settings;
   final LlmClient Function(AppState s, String key)? llmFactory; // 测试可注入
   AppState(this.repo, this.settings, {this.llmFactory});
+
+  /// 应用版本号（main 里从安装包读取）。
+  String appVersion = '';
+  /// 测试可注入应用目录。
+  Directory? appDirOverride;
+
+  Future<BackupService> backup() async => BackupService(
+      store: repo.store,
+      settings: settings,
+      appDir: appDirOverride ?? await getApplicationDocumentsDirectory(),
+      appVersion: appVersion);
+
+  /// 导入数据后刷新内存缓存和所有页面。
+  Future<void> afterImport() async {
+    await repo.loadDocTypes();
+    changed();
+  }
+
+  /// 外观相关设置的指纹；变化时 MaterialApp 才重建。
+  String get appearanceKey {
+    final st = settings;
+    return '${st.themeMode}|${st.textScale}|${st.mathScale}|${st.reduceMotion}|${st.haptics}|${st.onboarded}';
+  }
 
   int _version = 0;
   int get version => _version;
@@ -125,13 +152,36 @@ class AppState extends ChangeNotifier {
   Future<GenerationService> generator() async => GenerationService(repo, settings, await llm());
 
   // ---------- 复习 ----------
-  static const fsrs = Fsrs();
+  /// FSRS 调度器：目标记忆率来自学习设置（默认 0.9，与旧版相同）。
+  Fsrs get fsrs => Fsrs(requestRetention: settings.desiredRetention);
+
+  /// 「今天」的开始时刻（按学习设置里的每日开始时间）。
+  DateTime dayStart([DateTime? now]) {
+    final n = now ?? DateTime.now();
+    var d = DateTime(n.year, n.month, n.day, settings.dayStartHour);
+    if (n.isBefore(d)) d = d.subtract(const Duration(days: 1));
+    return d;
+  }
 
   Future<List<Flashcard>> dueCards({String? projectId}) async {
     final now = DateTime.now();
     final l = (await repo.cards(projectId: projectId)).where((c) => !c.due.isAfter(now)).toList()
       ..sort((a, b) => a.due.compareTo(b.due));
-    return l;
+    final newLimit = settings.dailyNewLimit, reviewLimit = settings.dailyReviewLimit;
+    if (newLimit == 0 && reviewLimit == 0) return l; // 默认不限：与旧版完全一致
+    final since = dayStart(now);
+    final today = (await repo.logs()).where((e) => e.kind == 'card' && !e.at.isBefore(since));
+    var newLeft = newLimit == 0 ? 1 << 30 : newLimit - today.where((e) => e.isNew).length;
+    var revLeft = reviewLimit == 0 ? 1 << 30 : reviewLimit - today.where((e) => !e.isNew).length;
+    final out = <Flashcard>[];
+    for (final c in l) {
+      if (c.reps == 0) {
+        if (newLeft-- > 0) out.add(c);
+      } else if (revLeft-- > 0) {
+        out.add(c);
+      }
+    }
+    return out;
   }
 
   /// 评分并返回撤销记录（评分前的卡片快照 + 写入的日志 id），用于「上一张」。
@@ -140,7 +190,7 @@ class AppState extends ChangeNotifier {
     fsrs.review(c, remembered ? 3 : 1);
     await repo.saveCards([c]);
     final logId = newId();
-    await repo.log(LogEntry(id: logId, projectId: c.projectId, kind: 'card', correct: remembered));
+    await repo.log(LogEntry(id: logId, projectId: c.projectId, kind: 'card', correct: remembered, isNew: snapshot['reps'] == 0));
     changed();
     return {'card': snapshot, 'log': logId};
   }
@@ -230,7 +280,14 @@ class AppState extends ChangeNotifier {
   }
 
   /// 首次解释（有缓存直接返回，不重复花钱）。
-  Future<ExplainCache> explain({required String itemId, required String projectId, required String itemText, required String docId, required int page}) async {
+  Future<ExplainCache> explain(
+      {required String itemId,
+      required String projectId,
+      required String itemText,
+      required String docId,
+      required int page,
+      String kind = '',
+      String title = ''}) async {
     final cached = await repo.explain(itemId);
     if (cached != null && cached.messages.isNotEmpty) return cached;
     final src = await sourceText(docId, page);
@@ -239,7 +296,7 @@ class AppState extends ChangeNotifier {
     final client = await llm();
     var answer = await client.chat([{'role': 'user', 'content': prompt}]);
     answer = await _ensureLatex(client, [{'role': 'user', 'content': prompt}], answer);
-    final c = ExplainCache(id: itemId, projectId: projectId, messages: [
+    final c = ExplainCache(id: itemId, projectId: projectId, kind: kind, title: title, messages: [
       {'role': 'user', 'content': prompt},
       {'role': 'assistant', 'content': answer},
     ]);
@@ -253,6 +310,7 @@ class AppState extends ChangeNotifier {
     var answer = await client.chat(msgs);
     answer = await _ensureLatex(client, msgs, answer);
     c.messages = [...c.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': answer}];
+    c.updatedAt = DateTime.now();
     await repo.saveExplain(c);
     return c;
   }

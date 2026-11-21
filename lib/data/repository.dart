@@ -159,4 +159,28 @@ class Repository {
   }
 
   Future<void> saveExplain(ExplainCache c) => store.put('explain', c.id, c.projectId, c.toJson());
+  Future<void> deleteExplain(String id) => store.delete('explain', id);
+
+  /// 解释历史，最新在前。旧版缓存（没有类型 / 标题）在这里补齐并写回，相当于一次惰性迁移。
+  Future<List<ExplainCache>> explainHistory({String? projectId}) async {
+    final l = (await store.list('explain', projectId: projectId)).map(ExplainCache.fromJson).toList();
+    for (final e in l.where((e) => e.kind.isEmpty || e.title.isEmpty)) {
+      final c = await card(e.id);
+      final q = c == null ? await question(e.id) : null;
+      if (c == null && q == null) {
+        e.kind = e.kind.isEmpty ? 'gone' : e.kind;
+      } else {
+        e.kind = c != null ? 'card' : 'question';
+        e.title = c?.front ?? q!.stem;
+      }
+      if (e.title.isEmpty) e.title = _titleFromPrompt(e.messages.isEmpty ? '' : e.messages.first['content'] ?? '');
+      await saveExplain(e);
+    }
+    return l.where((e) => e.messages.length >= 2).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  static String _titleFromPrompt(String p) {
+    final m = RegExp(r'(?:闪卡问题|题)：(.+)').firstMatch(p);
+    return (m?.group(1) ?? '').trim();
+  }
 }

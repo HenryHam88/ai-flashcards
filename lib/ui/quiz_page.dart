@@ -137,7 +137,7 @@ class _QuizPageState extends State<QuizPage> {
           ),
       ],
       body: loading
-          ? const Center(child: CircularProgressIndicator(color: M.sage))
+          ? Center(child: CircularProgressIndicator(color: M.sage))
           : done
           ? _summary()
           : _question(qs[index]),
@@ -159,11 +159,11 @@ class _QuizPageState extends State<QuizPage> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.description_outlined, size: 20, color: M.text),
+                    Icon(Icons.description_outlined, size: 20, color: M.text),
                     const SizedBox(width: 8),
                     Text('${q.type}题', style: const TextStyle(fontWeight: FontWeight.w600)),
                     const Spacer(),
-                    Text(q.difficulty, style: const TextStyle(color: M.sub, fontSize: 12)),
+                    Text(q.difficulty, style: TextStyle(color: M.sub, fontSize: 12)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -196,7 +196,7 @@ class _QuizPageState extends State<QuizPage> {
                         hintText: q.type == QType.fill ? '填写答案（公式可用 \$...\$）' : '写下你的解答，AI 会按步骤批改',
                       ),
                     ),
-                  if (answered) MathText('你的作答：${a['answer']}', style: const TextStyle(color: M.sub, height: 1.5)),
+                  if (answered) MathText('你的作答：${a['answer']}', style: TextStyle(color: M.sub, height: 1.5)),
                 ],
                 if (q.type == QType.multi && !answered) ...[
                   const SizedBox(height: 8),
@@ -212,7 +212,7 @@ class _QuizPageState extends State<QuizPage> {
                 if (!isChoice && q.type != QType.judge && !answered) ...[
                   const SizedBox(height: 10),
                   grading
-                      ? const Center(
+                      ? Center(
                           child: Padding(
                             padding: EdgeInsets.all(8),
                             child: Text('AI 正在批改…', style: TextStyle(color: M.sub)),
@@ -257,7 +257,7 @@ class _QuizPageState extends State<QuizPage> {
                     MathText('参考答案：${q.answer.replaceAll('|', ' 或 ')}', style: const TextStyle(height: 1.5)),
                   ],
                   const SizedBox(height: 10),
-                  const Row(
+                  Row(
                     children: [
                       Icon(Icons.menu_book_outlined, size: 18, color: M.text),
                       SizedBox(width: 6),
@@ -272,7 +272,7 @@ class _QuizPageState extends State<QuizPage> {
                   if (q.page > 0)
                     TextButton(
                       onPressed: () => showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter, section: q.section),
-                      child: Text('出处：${s.sourceLabel(q.docId, q.page, q.chapter, q.section)} · 查看原文', style: const TextStyle(color: M.sageDark)),
+                      child: Text('出处：${s.sourceLabel(q.docId, q.page, q.chapter, q.section)} · 查看原文', style: TextStyle(color: M.sageDark)),
                     ),
                 ],
               ),
@@ -334,7 +334,7 @@ class _QuizPageState extends State<QuizPage> {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: answered && isAnswer ? M.sageDark : Colors.white.withValues(alpha: chosen ? 0.95 : 0.6),
+                color: answered && isAnswer ? M.sageDark : M.glass.withValues(alpha: chosen ? 0.95 : 0.6),
               ),
               child: answered && isAnswer
                   ? const Icon(Icons.check_rounded, size: 18, color: Colors.white)
@@ -359,7 +359,7 @@ class _QuizPageState extends State<QuizPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.emoji_events_outlined, color: M.sageDark, size: 40),
+              Icon(Icons.emoji_events_outlined, color: M.sageDark, size: 40),
               const SizedBox(height: 12),
               Text(
                 qs.isEmpty ? '还没有题目' : '完成！答对 $right / $total',

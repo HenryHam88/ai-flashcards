@@ -13,6 +13,7 @@ import '../services/pipeline.dart';
 import '../services/settings.dart';
 import '../theme/glass.dart';
 import 'chapter_editor_page.dart';
+import 'settings_pages.dart' show showExportSheet;
 import 'explain_sheet.dart';
 import 'gen_sheet.dart';
 import 'home_page.dart';
@@ -107,7 +108,7 @@ class _ProjectPageState extends State<ProjectPage> {
       final go = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFFF4F1EC),
+          backgroundColor: M.sheet,
           title: const Text('现在解析？'),
           content: Text('已添加 ${added.length} 份资料。会排队依次解析（最多同时 ${AppState.parseConcurrency} 份），PDF 每批 ${s.settings.ocrBatchPages} 页，Word 整份交给解析模型；每份单独显示进度，失败可单独重试。'
               '${added.any((d) => d.isWord) && !Settings.supportsWord(s.settings.ocrProvider) ? '\n\n注意：${ParseService.wordUnsupported}。' : ''}'),
@@ -131,7 +132,9 @@ class _ProjectPageState extends State<ProjectPage> {
   }
 
   Future<void> _menu(String v, Project pr) async {
-    if (v == 'rename') {
+    if (v == 'export') {
+      await showExportSheet(context, projectId: pr.id, projectName: pr.name);
+    } else if (v == 'rename') {
       final n = await promptText(context, '重命名项目', initial: pr.name);
       if (n != null && n.trim().isNotEmpty) {
         pr.name = n.trim();
@@ -142,12 +145,12 @@ class _ProjectPageState extends State<ProjectPage> {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFFF4F1EC),
+          backgroundColor: M.sheet,
           title: const Text('删除项目？'),
           content: Text('「${pr.name}」里的资料、闪卡、题目和错题都会被删除，无法恢复。'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除', style: TextStyle(color: M.roseDark))),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('删除', style: TextStyle(color: M.roseDark))),
           ],
         ),
       );
@@ -182,6 +185,7 @@ class _ProjectPageState extends State<ProjectPage> {
                 onSelected: (v) => _menu(v, d.project),
                 itemBuilder: (_) => const [
                   PopupMenuItem(value: 'rename', child: Text('重命名')),
+                  PopupMenuItem(value: 'export', child: Text('导出 / 分享此项目')),
                   PopupMenuItem(value: 'delete', child: Text('删除项目')),
                 ],
               ),
@@ -217,11 +221,11 @@ class _ProjectPageState extends State<ProjectPage> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(progress!, style: const TextStyle(fontSize: 13)),
                       const SizedBox(height: 6),
-                      LinearProgressIndicator(value: frac, color: M.sage, backgroundColor: Colors.white54),
+                      LinearProgressIndicator(value: frac, color: M.sage, backgroundColor: M.glass.withValues(alpha: 0.5)),
                     ]),
                   ),
                 ),
-              const TabBar(
+              TabBar(
                 labelColor: M.sageDark,
                 unselectedLabelColor: M.sub,
                 indicatorColor: M.sage,
@@ -246,7 +250,7 @@ class _ProjectPageState extends State<ProjectPage> {
   Widget _docsTab(ProjectData d) => ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
         Glass(
           onTap: busy ? null : _upload,
-          child: const Row(children: [
+          child: Row(children: [
             Icon(Icons.cloud_upload_outlined),
             SizedBox(width: 12),
             Expanded(
@@ -282,8 +286,8 @@ class _ProjectPageState extends State<ProjectPage> {
               padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
               child: Row(children: [
                 doc.isWord
-                    ? const Icon(Icons.description_outlined, color: Color(0xFF6F8296)) // Word：灰蓝
-                    : const Icon(Icons.picture_as_pdf_outlined, color: M.roseDark),
+                    ? Icon(Icons.description_outlined, color: M.wordBlue) // Word：灰蓝
+                    : Icon(Icons.picture_as_pdf_outlined, color: M.roseDark),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -292,11 +296,11 @@ class _ProjectPageState extends State<ProjectPage> {
                         doc.isWord
                             ? 'Word · ${doc.status}${doc.pageCount > 0 ? ' · ${doc.pageCount} 个小节' : ''}'
                             : '${doc.status} · 已解析 ${doc.parsedPages}/${doc.pageCount} 页',
-                        style: const TextStyle(color: M.sub, fontSize: 12)),
+                        style: TextStyle(color: M.sub, fontSize: 12)),
                     if (doc.note.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
-                        child: Text(doc.note, style: const TextStyle(color: M.roseDark, fontSize: 12, height: 1.4)),
+                        child: Text(doc.note, style: TextStyle(color: M.roseDark, fontSize: 12, height: 1.4)),
                       ),
                   ]),
                 ),
@@ -331,7 +335,7 @@ class _ProjectPageState extends State<ProjectPage> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(d.chapters.join('\n'), style: const TextStyle(height: 1.8)),
               const SizedBox(height: 4),
-              const Text('识别得不对？在资料右侧菜单选「编辑章节」，可以手动调整、按页数切分或让 AI 重新分章。',
+              Text('识别得不对？在资料右侧菜单选「编辑章节」，可以手动调整、按页数切分或让 AI 重新分章。',
                   style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
             ]),
           ),
@@ -351,15 +355,15 @@ class _ProjectPageState extends State<ProjectPage> {
               Text(j.state, style: TextStyle(fontSize: 12, color: color)),
             ]),
             const SizedBox(height: 4),
-            LinearProgressIndicator(value: j.state == '排队中' ? 0 : j.frac, minHeight: 4, color: bad ? M.rose : M.sage, backgroundColor: Colors.white54),
+            LinearProgressIndicator(value: j.state == '排队中' ? 0 : j.frac, minHeight: 4, color: bad ? M.rose : M.sage, backgroundColor: M.glass.withValues(alpha: 0.5)),
             const SizedBox(height: 2),
             Text(j.message, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: color)),
           ]),
         ),
         if (bad)
-          IconButton(tooltip: '重试', icon: const Icon(Icons.refresh_rounded, color: M.roseDark), onPressed: () => s.enqueueParse([j.doc])),
+          IconButton(tooltip: '重试', icon: Icon(Icons.refresh_rounded, color: M.roseDark), onPressed: () => s.enqueueParse([j.doc])),
         if (!j.active)
-          IconButton(tooltip: '移除', icon: const Icon(Icons.close_rounded, size: 18, color: M.sub), onPressed: () => s.dismissJob(j.doc.id)),
+          IconButton(tooltip: '移除', icon: Icon(Icons.close_rounded, size: 18, color: M.sub), onPressed: () => s.dismissJob(j.doc.id)),
       ]),
     );
   }
@@ -367,7 +371,7 @@ class _ProjectPageState extends State<ProjectPage> {
   Widget _byChapter<T>(List<T> items, String Function(T) chapter, String Function(T) section, Widget Function(T) tile,
       {Widget Function(String chapter)? quiz}) {
     if (items.isEmpty) {
-      return const Padding(
+      return Padding(
           padding: EdgeInsets.all(24), child: Text('还没有内容。上传并解析 PDF 或 Word 后点「生成」。', style: TextStyle(color: M.sub)));
     }
     final groups = <String, List<T>>{};
@@ -384,7 +388,7 @@ class _ProjectPageState extends State<ProjectPage> {
               data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
                 title: Text(e.key, style: const TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text('${e.value.length} 项', style: const TextStyle(color: M.sub, fontSize: 12)),
+                subtitle: Text('${e.value.length} 项', style: TextStyle(color: M.sub, fontSize: 12)),
                 trailing: quiz == null
                     ? null
                     : TextButton(
@@ -400,7 +404,7 @@ class _ProjectPageState extends State<ProjectPage> {
 
   Widget _cardTile(Flashcard c) => ListTile(
         title: MathText(c.front, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-        subtitle: MathText(c.back, style: const TextStyle(fontSize: 13, color: M.sub)),
+        subtitle: MathText(c.back, style: TextStyle(fontSize: 13, color: M.sub)),
         trailing: c.page > 0
             ? TextButton(
                 onPressed: () => showSourceSheet(context, docId: c.docId, page: c.page, chapter: c.chapter, section: c.section),
@@ -409,7 +413,7 @@ class _ProjectPageState extends State<ProjectPage> {
       );
 
   Widget _questionTile(Question q) => ListTile(
-        leading: Text(q.type, style: const TextStyle(color: M.sageDark, fontSize: 12)),
+        leading: Text(q.type, style: TextStyle(color: M.sageDark, fontSize: 12)),
         title: MathText(q.stem, style: const TextStyle(fontSize: 14)),
         trailing: q.page > 0
             ? TextButton(

@@ -2,13 +2,14 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../services/latex.dart';
+import 'glass.dart' show M;
 
 // 颜色与 glass.dart 中的莫兰迪配色一致（避免循环依赖，这里单独定义）
-const _text = Color(0xFF3E3C39);
-const _sub = Color(0xFF7D7973);
-const _sage = Color(0xFF8FA68B);
-const _sageDark = Color(0xFF66805F);
-const _rose = Color(0xFFA86F6F);
+Color get _text => M.text;
+Color get _sub => M.sub;
+Color get _sage => M.sage;
+Color get _sageDark => M.sageDark;
+Color get _rose => M.roseDark;
 
 /// Markdown 块类型
 enum MdBlockType { paragraph, heading, bullet, ordered, quote, rule, math }
@@ -120,6 +121,8 @@ String stripMetaPreamble(String s) {
 /// Markdown + 公式混排文本：标题、粗体/斜体、代码、列表、引用、分隔线、行内与独立公式。
 /// 公式统一用 flutter_math_fork 排版；含公式时整体缓存成独立图层，滚动不重绘。
 class MathText extends StatelessWidget {
+  /// 公式字号倍率（外观设置 → 公式字号）。
+  static double mathScale = 1.0;
   final String text;
   final TextStyle? style;
   final TextAlign textAlign;
@@ -136,7 +139,7 @@ class MathText extends StatelessWidget {
     Widget mathWidget(TexSegment seg, TextStyle s, {bool display = false}) => Math.tex(
           seg.text,
           mathStyle: display ? MathStyle.display : MathStyle.text,
-          textStyle: TextStyle(fontSize: (s.fontSize ?? 15) * (display ? 1.1 : 1.05), color: s.color),
+          textStyle: TextStyle(fontSize: (s.fontSize ?? 15) * (display ? 1.1 : 1.05) * mathScale, color: s.color),
           onErrorFallback: (e) => fallback(seg.text, s),
         );
 
@@ -156,7 +159,7 @@ class MathText extends StatelessWidget {
               style: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: (s.fontSize ?? 15) * 0.92,
-                  backgroundColor: Colors.white.withValues(alpha: 0.6))));
+                  backgroundColor: M.glass.withValues(alpha: 0.6))));
         } else {
           final seg = doc.math[int.parse(m[5]!)];
           out.add(WidgetSpan(alignment: PlaceholderAlignment.middle, child: mathWidget(seg, s)));
@@ -207,7 +210,7 @@ class MathText extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
             decoration: BoxDecoration(
               border: Border(left: BorderSide(color: _sage.withValues(alpha: 0.8), width: 3)),
-              color: Colors.white.withValues(alpha: 0.35),
+              color: M.glass.withValues(alpha: 0.35),
             ),
             child: rich(blk.text, st.copyWith(color: _sub), align: TextAlign.start),
           ));
