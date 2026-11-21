@@ -45,6 +45,10 @@
     <td align="center"><img src="docs/screenshots/27_auto_count.png" width="190"><br><sub>自动数量</sub></td>
     <td align="center"><img src="docs/screenshots/28_chapter_view.png" width="190"><br><sub>章节内容</sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/29_help_home.png" width="190"><br><sub>使用帮助</sub></td>
+    <td align="center"><img src="docs/screenshots/30_help_article.png" width="190"><br><sub>帮助文章</sub></td>
+  </tr>
 </table>
 
 ## 功能
@@ -82,6 +86,7 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式
 - 莫兰迪配色、玻璃质感界面，支持深色模式
 - 字体大小、公式字号可调；可减少动态效果、关闭触感反馈
+- 内置「使用帮助」（我的 → 使用帮助）：按场景分步讲解各项功能，含常见问题，可搜索，离线可用；填密钥、编辑章节、出题等页面右上角的 **?** 可直接打开对应说明
 - 复习进度自动保存，切出应用后可继续
 
 ## 下载

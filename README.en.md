@@ -48,6 +48,10 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
     <td align="center"><img src="docs/screenshots/27_auto_count.png" width="190"><br><sub>Automatic count</sub></td>
     <td align="center"><img src="docs/screenshots/28_chapter_view.png" width="190"><br><sub>Chapter content</sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/29_help_home.png" width="190"><br><sub>In-app help</sub></td>
+    <td align="center"><img src="docs/screenshots/30_help_article.png" width="190"><br><sub>Help article</sub></td>
+  </tr>
 </table>
 
 ## Features
@@ -84,6 +88,7 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
 **Experience**
 - Full LaTeX typesetting and Markdown formatting
 - Calm Morandi color palette with a glass-style interface, plus dark mode
+- Built-in help (我的 → 使用帮助, in Chinese): step-by-step guides for every feature plus an FAQ, searchable and available offline; the **?** button on the key, chapter editor, and generation screens opens the matching guide
 - Adjustable text and formula size; reduce motion and haptics toggles
 - Review progress is saved automatically
 

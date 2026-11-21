@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-11-21
+
+### 新增
+
+- 应用内「使用帮助」：在「我的 → 使用帮助」打开，共 13 篇按场景分步的中文说明（快速开始、配置模型和密钥、上传与解析、章节、生成、质量控制、复习、做题和错题本、AI 解释历史、学习数据、备份迁移恢复、外观和提醒、常见问题），内置在应用中，离线可用。
+  - 帮助首页可搜索全部文章，按分类浏览；文章支持公式排版和上一篇 / 下一篇，适配深色模式。
+  - 出题模型、文档解析、编辑章节、生成选项和待审核页面右上角新增 **?**，直接打开对应说明；首次引导最后一页可打开使用帮助。
+  - 出题时遇到密钥未填写、无效或余额不足的提示，多了「怎么解决」按钮，打开密钥配置说明。
+- 联系作者：「关于」页和帮助中心显示作者 QQ，点按即可复制；帮助中心同时保留 GitHub 问题反馈入口。
+
 ## [1.3.1] - 2026-11-21
 
 ### 新增
@@ -97,7 +107,8 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式显示。
 - 学习统计页面。
 
-[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.1.9...v1.2.0
