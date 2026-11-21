@@ -1,30 +1,65 @@
-# 闪卡刷题（AI Flashcards）v1
+# AI 闪卡刷题
 
-用 AI 从你上传的 PDF 教材生成闪卡和练习题的安卓 App（Flutter 开发），莫兰迪配色 + 毛玻璃界面。所有数据只存在手机本地。
+*AI Flashcards — turn your PDF textbooks into flashcards and quizzes with AI (Android, Flutter).*
+
+把 PDF 教材交给 AI，自动生成闪卡和练习题，用 FSRS 间隔重复算法安排复习。界面采用莫兰迪配色 + 玻璃质感。
+
+<p>
+<img src="docs/screenshots/1_home.png" width="200">
+<img src="docs/screenshots/2_flashcard.png" width="200">
+<img src="docs/screenshots/3_quiz.png" width="200">
+</p>
+<p>
+<img src="docs/screenshots/4_ai_explain.png" width="200">
+<img src="docs/screenshots/13_review_next.png" width="200">
+<img src="docs/screenshots/6_pdf_settings.png" width="200">
+</p>
+
+## 功能
+- **按项目管理**：新建项目（如「概率论」）→ 上传 PDF（可一次多选）→ AI 生成闪卡和题目，按章节浏览，每条都带解析和出处页码，可点回原文核对。
+- **PDF 解析**：默认 DeepSeek OCR，扫描版也能识别；支持**混合模式**（文字模式 + 版面模式同时勾选，App 在本地逐页判断，图表页用版面模式、其余用文字模式，每页只上传一次）。也可用 Kimi 文件解析或本地提取文字层。大文件自动分批，失败可重试，结果本地缓存不重复花钱。
+- **生成选项**：范围（整份/章节/页码）、数量、题型（单选、多选、判断、填空、简答、计算）、难度、侧重点、自定义要求；可存模板、设项目默认；高级设置可修改全部提示词。
+- **闪卡复习**：点按翻面，左右滑动评分；FSRS 算法安排复习；上一张 / 下一张回看；进度随时保存，被系统杀掉也能恢复。
+- **测验**：客观题自动判分，简答/计算题由 AI 批改打分；答完显示解析；可回看上一题。
+- **AI 解释**：闪卡和题目上都有，半屏面板结合原文讲解并举例，可追问，结果缓存。
+- **错题本**：答错自动收录，可标记「不确定」「AI 出错了」，一键针对知识点出新题，连续答对 3 次自动移出；支持按项目筛选、跨项目重做。
+- **数学公式**：所有地方用真正的 LaTeX 排版引擎显示，像教材一样。
+- **自带 API 密钥**：兼容 OpenAI 格式的任意服务（默认 DeepSeek，也可用通义千问、Kimi 等）。
 
 ## 安装
-把 `ai_flashcards_v1.apk` 传到安卓手机上，点开安装（需要允许“安装未知来源应用”）。
+到 [Releases](../../releases) 下载 APK：
+- 绝大多数手机选 **`ai-flashcards-*-arm64-v8a.apk`**
+- 很老的 32 位手机选 `armeabi-v7a`，模拟器选 `x86_64`
 
-## 第一次使用：填写 DeepSeek 密钥
-1. 到 [DeepSeek 开放平台](https://platform.deepseek.com/) 申请 API 密钥（`sk-` 开头）。
-2. 打开 App → 底部 **我的** → **出题模型** → 在「API 密钥」里粘贴密钥。
-   - 接口地址默认 `https://api.deepseek.com`，模型默认 `deepseek-flash`，难题可点 `deepseek-v4-pro` 切换。
-   - 点「测试连接」确认能用。
-3. **我的 → PDF 解析**：默认用 DeepSeek OCR，密钥留空会自动使用上面那个密钥。
-   - 纯文字教材选「纯文字教材」，带图表的选「带图表/版面」。
-   - 也可以改用 Kimi 文件解析（填 Kimi 密钥），或「本地提取文字层」（免费，扫描版读不出来）。
+下载后点开安装（需允许“安装未知来源应用”）。
 
-密钥保存在系统安全存储里，不会上传到别处。
+## 配置 API 密钥
+1. 到 [DeepSeek 开放平台](https://platform.deepseek.com/) 申请 API 密钥。
+2. App → **我的 → 出题模型**：填入密钥（接口地址默认 `https://api.deepseek.com`，模型默认 `deepseek-flash`，可切换），点「测试连接」。
+3. **我的 → PDF 解析**：选择解析方式和模式；OCR 密钥留空时使用上面的密钥。
 
-## 使用流程
-1. 首页 **新建项目**（如「概率论」）→ 进入项目 → **上传 PDF** → 开始解析（大文件自动按每 30 页一批上传，失败自动重试，已解析的页不会重复花钱）。
-2. 点 **生成**，在生成选项里选范围（整份/章节/页码）、数量、题型、难度、侧重点，也可以写自定义要求；常用设置可存成模板或设为项目默认。
-3. **复习**：闪卡点击翻面，「没记住 / 记住了」或左右滑动；按 FSRS 算法安排下次复习。进度随时保存，切出或被系统杀掉后会回到原来那张。
-4. **测验**：选择/判断/填空自动判分，简答/计算由 AI 批改打分；答错自动进错题本，连续答对 3 次自动移出。
-5. 闪卡和题目上都有 **AI 解释**：半屏面板，结合教材原文讲解并举例，可追问；关掉后仍停在原来那张。
-6. **我的 → 高级：提示词** 可修改出题、解释、批改用的提示词，随时恢复默认。
+## 隐私
+- 所有资料、解析结果、卡片和错题只保存在手机本地，没有任何服务器。
+- API 密钥保存在系统安全存储（Android Keystore）中。
+- PDF 内容只会发送给你在设置里配置的 API 服务商（如 DeepSeek / Kimi）；选择「本地提取」则完全不联网。
 
-## 开发
-- Flutter 3.50（stable），`flutter analyze`、`flutter test` 均通过。
-- 截图：`flutter test test/screenshots_test.dart --update-goldens`（输出在 `test/goldens/`）。
-- 存储：`lib/data/doc_store.dart` 定义存储接口（SQLite / 内存实现），`lib/data/repository.dart` 为业务仓库；以后加 WebDAV 同步只需新增实现。
+## 从源码构建
+需要 Flutter 3.50.1（stable）、Android SDK、JDK 17。
+```bash
+flutter pub get
+flutter test
+flutter build apk --release --split-per-abi
+```
+发布签名：在 `android/key.properties`（或环境变量 `AI_FLASHCARDS_KEY_PROPERTIES` 指向的文件）里填写 `storeFile / storePassword / keyAlias / keyPassword`；没有该文件时自动使用 debug 签名。
+
+界面截图由测试生成：`flutter test test/screenshots_test.dart --update-goldens`。
+
+## 已知限制
+- 真实 API 调用（OCR、出题、批改）在开发中只做了模拟测试，请以实际使用为准。
+- 混合模式靠文字层判断页面类型（字数少或有「图 x.x」图注 → 版面模式），整本扫描版会全部使用版面模式。
+- Kimi 解析按批返回整段文字，页码精度较低。
+- 章节识别基于「第X章」「1.2 小节」等标题格式，特殊排版可能识别不准。
+- 目前只有 Android 版；暂不支持网盘同步。
+
+## 许可
+[MIT](LICENSE)。测试用字体 Noto Sans SC 采用 [SIL OFL 1.1](test/fonts/OFL.txt)。

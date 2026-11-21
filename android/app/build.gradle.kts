@@ -1,8 +1,16 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// 发布签名：读取 key.properties（路径可用环境变量 AI_FLASHCARDS_KEY_PROPERTIES 指定，
+// 默认 android/key.properties，已被 .gitignore 忽略）。找不到时回退到 debug 签名，方便他人自行编译。
+val keyPropsFile = System.getenv("AI_FLASHCARDS_KEY_PROPERTIES")?.let { file(it) } ?: rootProject.file("key.properties")
+val keyProps = Properties().apply { if (keyPropsFile.exists()) keyPropsFile.inputStream().use { load(it) } }
+val hasReleaseKey = keyPropsFile.exists()
 
 android {
     namespace = "com.hungryg.ai_flashcards"
@@ -29,11 +37,20 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                keyAlias = keyProps.getProperty("keyAlias")
+                keyPassword = keyProps.getProperty("keyPassword")
+                storeFile = file(keyProps.getProperty("storeFile"))
+                storePassword = keyProps.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseKey) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
     }
 }
