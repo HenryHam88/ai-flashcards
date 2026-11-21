@@ -233,7 +233,7 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
                 ]),
               ),
             const SizedBox(height: 4),
-            Text('Word（.docx 和旧版 .doc）会整份交给所选模型解析，不在手机上本地解析。',
+            Text('Word（.docx 和旧版 .doc）会整份交给所选模型解析，不在手机上本地解析。TXT 不受这里的设置影响，总是在手机上直接读取。',
                 style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
           ]),
         ),

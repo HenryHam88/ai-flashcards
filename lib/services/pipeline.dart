@@ -15,6 +15,7 @@ import 'pdf_tools.dart';
 import 'prompts.dart';
 import 'quality.dart';
 import 'settings.dart';
+import 'text_import.dart';
 
 typedef Progress = void Function(String message, double fraction);
 
@@ -221,7 +222,7 @@ class ParseService {
     final cs = chapters;
     if (cs == null) {
       final pages = await repo.pages(doc.projectId, docId: doc.id);
-      await repo.replaceChunks(doc.projectId, doc.id, chunkPages(doc.projectId, doc.id, pages, mdHeadings: doc.isWord));
+      await repo.replaceChunks(doc.projectId, doc.id, chunkPages(doc.projectId, doc.id, pages, mdHeadings: doc.isSectioned));
       return;
     }
     final plan = await cs.autoPlan(doc, bytes: bytes, onProgress: onProgress);
@@ -272,6 +273,7 @@ class ParseService {
   /// 返回失败的批次数（0 表示全部成功）。
   Future<int> parseDoc(PdfDoc doc, Progress onProgress) async {
     if (doc.isWord) return _parseWord(doc, onProgress);
+    if (doc.isText) return _parseText(doc, onProgress);
     final bytes = await File(doc.path).readAsBytes();
     if (doc.pageCount == 0) doc.pageCount = await PdfTools.pageCount(bytes);
     final cached = {for (final p in await repo.pages(doc.projectId, docId: doc.id)) p.page};
@@ -394,6 +396,33 @@ extension on ParseService {
     doc.note = sections.isEmpty ? '解析模型没有返回文字' : '';
     await repo.saveDoc(doc);
     onProgress(sections.isEmpty ? '没有解析出文字' : '解析完成：${sections.length} 个小节', 1);
+    return sections.isEmpty ? 1 : 0;
+  }
+}
+
+extension on ParseService {
+  /// TXT：在手机上直接读取（不联网、不调用任何接口），识别编码后按段落切成小节，再照常分章。
+  Future<int> _parseText(PdfDoc doc, Progress onProgress) async {
+    doc.status = '解析中';
+    doc.note = '';
+    await repo.saveDoc(doc);
+    onProgress('正在读取 TXT…', 0.2);
+    final bytes = await File(doc.path).readAsBytes();
+    final decoded = decodeTextBytes(bytes);
+    final sections = splitTextPages(cleanImportedText(decoded.text));
+    await repo.deletePages(doc.projectId, doc.id); // 小节数可能变化，整份重写
+    await repo.savePages([
+      for (var i = 0; i < sections.length; i++)
+        PageText(docId: doc.id, projectId: doc.projectId, page: i + 1, text: sections[i], source: 'txt')
+    ]);
+    doc.pageCount = sections.length;
+    onProgress('按标题识别章节…', 0.7);
+    await _rechunk(doc, onProgress);
+    doc.parsedPages = sections.length;
+    doc.status = sections.isEmpty ? '部分失败' : '已解析';
+    doc.note = sections.isEmpty ? '文件里没有文字' : '';
+    await repo.saveDoc(doc);
+    onProgress(sections.isEmpty ? '没有读取到文字' : '读取完成：${sections.length} 个小节（${decoded.encoding}）', 1);
     return sections.isEmpty ? 1 : 0;
   }
 }

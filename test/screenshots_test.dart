@@ -538,4 +538,11 @@ void main() {
     state.settings.reviewSession = {'projectId': 'py', 'ids': ['py1', 'py2'], 'index': 1, 'flipped': true};
     await shoot(t, const ReviewPage(projectId: 'py', resume: true), '33_latex_list');
   });
+
+  testWidgets('TXT 资料', (t) async {
+    await state.repo.saveDoc(PdfDoc(
+        id: 't1', projectId: 'p1', name: '概率论课堂笔记', path: '', type: 'txt', status: '已解析', pageCount: 14, parsedPages: 14));
+    await state.repo.saveDoc(PdfDoc(id: 'w1', projectId: 'p1', name: '第二章讲义', path: '', type: 'docx', status: '已解析', pageCount: 6, parsedPages: 6));
+    await shoot(t, const ProjectPage(projectId: 'p1'), '34_txt_doc');
+  });
 }

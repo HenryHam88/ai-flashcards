@@ -46,12 +46,17 @@ class PdfDoc {
     this.note = '',
   });
   bool get isWord => type == 'docx' || type == 'doc';
+  /// TXT：在手机上直接读取，按段落切成小节。
+  bool get isText => type == 'txt';
+  /// 没有真实页码、按「小节」计数的资料（Word、TXT）。
+  bool get isSectioned => isWord || isText;
 
   /// 资料类型：按扩展名判断。
   static String typeOf(String fileName) {
     final l = fileName.toLowerCase();
     if (l.endsWith('.docx')) return 'docx';
     if (l.endsWith('.doc')) return 'doc';
+    if (l.endsWith('.txt')) return 'txt';
     return 'pdf';
   }
   Map<String, dynamic> toJson() => {
@@ -100,6 +105,7 @@ class PageText {
         'deepseek' => 'DeepSeek OCR',
         'kimi' => 'Kimi',
         'local' => '本地（PDF 文字层）',
+        'txt' => '本地（TXT）',
         _ => '',
       };
 }

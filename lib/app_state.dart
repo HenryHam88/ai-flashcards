@@ -335,6 +335,10 @@ class AppState extends ChangeNotifier {
       final h = [chapter, section].where((e) => e.isNotEmpty && e != '未分章').join(' · ');
       return h.isEmpty ? 'Word 第 $page 节' : h;
     }
+    if (repo.isTextDoc(docId)) {
+      final h = [chapter, section].where((e) => e.isNotEmpty && e != '未分章').join(' · ');
+      return h.isEmpty ? '第 $page 节' : '$h · 第 $page 节';
+    }
     return '第 $page 页';
   }
 

@@ -29,7 +29,8 @@ const typicalFormulas = <String>[
 ];
 
 /// 收集现有所有示例数据中的文字：示例项目、章节页、表格页、帮助文章和典型公式。
-Future<List<String>> mathCorpus() async {
+/// 返回 键 → 文字：帮助文章以「help:文章 id」为键（文章内容更新时仍对比同一篇的公式），其余以文字本身为键。
+Future<Map<String, String>> mathCorpus() async {
   final repo = Repository(MemoryDocStore());
   await seedSampleData(repo);
   await seedTablePages(repo);
@@ -51,10 +52,9 @@ Future<List<String>> mathCorpus() async {
       walk(r.$3);
     }
   }
-  for (final a in helpArticles) {
-    out.add(a.body);
-  }
   out.addAll(typicalFormulas);
-  final l = out.toList()..sort();
-  return l;
+  return {
+    for (final t in out.toList()..sort()) t: t,
+    for (final a in helpArticles) 'help:${a.id}': a.body,
+  };
 }

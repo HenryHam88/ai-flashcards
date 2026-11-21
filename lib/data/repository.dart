@@ -33,6 +33,7 @@ class Repository {
   }
 
   bool isWordDoc(String docId) => docTypes[docId] == 'docx' || docTypes[docId] == 'doc';
+  bool isTextDoc(String docId) => docTypes[docId] == 'txt';
 
   Future<List<PdfDoc>> docs(String projectId) async {
     final l = (await store.list('docs', projectId: projectId)).map(PdfDoc.fromJson).toList();

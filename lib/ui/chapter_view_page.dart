@@ -94,7 +94,7 @@ class _ChapterViewPageState extends State<ChapterViewPage> {
   final keys = <int, GlobalKey>{};
 
   PdfDoc get doc => widget.doc;
-  String get unit => doc.isWord ? '节' : '页';
+  String get unit => doc.isSectioned ? '节' : '页';
 
   @override
   void initState() {

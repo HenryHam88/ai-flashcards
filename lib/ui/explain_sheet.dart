@@ -11,7 +11,7 @@ Future<void> showSourceSheet(BuildContext context, {required String docId, requi
   final s = context.read<AppState>();
   final text = await s.sourceText(docId, page);
   if (!context.mounted) return;
-  final word = s.repo.isWordDoc(docId);
+  final word = s.repo.isWordDoc(docId) || s.repo.isTextDoc(docId); // 出处文字里已含章节名
   await showGlassSheet(context, (ctx, sc) => ListView(controller: sc, padding: const EdgeInsets.all(20), children: [
         Text('原文出处 · ${s.sourceLabel(docId, page, chapter, section)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
         if (chapter.isNotEmpty && !word) Text(chapter, style: TextStyle(color: M.sub)),

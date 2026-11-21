@@ -27,7 +27,7 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
 
   AppState get s => context.read<AppState>();
   PdfDoc get doc => widget.doc;
-  String get unit => doc.isWord ? '节' : '页';
+  String get unit => doc.isSectioned ? '节' : '页';
 
   @override
   void initState() {
@@ -107,9 +107,9 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
   }
 
   Future<void> _fixed() async {
-    final n = await _askPage('每几$unit切成一章？', initial: defaultEvery(total, word: doc.isWord));
+    final n = await _askPage('每几$unit切成一章？', initial: defaultEvery(total, word: doc.isSectioned));
     if (n == null || n < 1) return;
-    _set(fixedRanges(total, n, word: doc.isWord), src: 'fixed');
+    _set(fixedRanges(total, n, word: doc.isSectioned), src: 'fixed');
   }
 
   Future<void> _ai() async {
@@ -187,8 +187,8 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
                 Glass(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
-                      Icon(doc.isWord ? Icons.description_outlined : Icons.picture_as_pdf_outlined,
-                          size: 20, color: doc.isWord ? M.wordBlue : M.roseDark),
+                      Icon(doc.isWord ? Icons.description_outlined : doc.isText ? Icons.article_outlined : Icons.picture_as_pdf_outlined,
+                          size: 20, color: doc.isWord ? M.wordBlue : doc.isText ? M.sageDark : M.roseDark),
                       const SizedBox(width: 8),
                       Expanded(
                           child: Text(doc.name,

@@ -12,7 +12,7 @@ void main() {
   test('现有示例的公式片段与 v1.3.3 完全一致', () async {
     final corpus = await mathCorpus();
     final now = {
-      for (final s in corpus) s: [for (final m in MdMath.parse(s).math) '${m.display ? 'D' : 'I'}:${m.text}']
+      for (final e in corpus.entries) e.key: [for (final m in MdMath.parse(e.value).math) '${m.display ? 'D' : 'I'}:${m.text}']
     };
     final f = File('test/fixtures/math_segments.json');
     if (Platform.environment['UPDATE_MATH_FIXTURE'] == '1') {
@@ -21,9 +21,9 @@ void main() {
     final before = (jsonDecode(f.readAsStringSync()) as Map).map((k, v) => MapEntry(k as String, (v as List).cast<String>()));
     expect(now.keys.toSet(), before.keys.toSet(), reason: '语料变化，请检查');
     var formulas = 0;
-    for (final s in corpus) {
-      expect(now[s], before[s], reason: s);
-      formulas += before[s]!.length;
+    for (final k in corpus.keys) {
+      expect(now[k], before[k], reason: k);
+      formulas += before[k]!.length;
     }
     expect(formulas, greaterThan(80));
   });

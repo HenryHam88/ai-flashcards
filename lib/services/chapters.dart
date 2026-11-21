@@ -324,7 +324,7 @@ class ChapterService {
   ChapterService(this.repo, this.settings, {this.llm});
 
   Future<List<(String, int, int)>> _outline(PdfDoc doc, Uint8List? bytes) async {
-    if (doc.isWord || bytes == null) return const [];
+    if (doc.isSectioned || bytes == null) return const [];
     try {
       return await PdfTools.outline(bytes);
     } catch (_) {
@@ -338,12 +338,12 @@ class ChapterService {
     final client = await llm?.call();
     if (client == null) return [];
     final total = pages.last.page;
-    final unit = doc.isWord ? '节' : '页';
+    final unit = doc.isSectioned ? '节' : '页';
     try {
       final j = await client.chatJson(_aiPrompt
           .replaceAll('{{unit}}', unit)
           .replaceAll('{{total}}', '$total')
-          .replaceAll('{{outline}}', buildOutline(pages, word: doc.isWord)));
+          .replaceAll('{{outline}}', buildOutline(pages, word: doc.isSectioned)));
       return rangesFromAi(j, total);
     } catch (_) {
       return [];
@@ -371,7 +371,7 @@ class ChapterService {
       src = 'ai';
     }
     if (r.isEmpty) {
-      r = fixedRanges(total, defaultEvery(total, word: doc.isWord), word: doc.isWord);
+      r = fixedRanges(total, defaultEvery(total, word: doc.isSectioned), word: doc.isSectioned);
       src = 'fixed';
     }
     return ChapterPlan(docId: doc.id, projectId: doc.projectId, source: src, chapters: r);
@@ -382,7 +382,7 @@ class ChapterService {
     await repo.saveChapterPlan(plan);
     final pages = await repo.pages(doc.projectId, docId: doc.id);
     await repo.replaceChunks(
-        doc.projectId, doc.id, chunkPages(doc.projectId, doc.id, pages, mdHeadings: doc.isWord, chapterOf: plan.titleFor));
+        doc.projectId, doc.id, chunkPages(doc.projectId, doc.id, pages, mdHeadings: doc.isSectioned, chapterOf: plan.titleFor));
     await reassign(doc.projectId, doc.id, plan);
   }
 

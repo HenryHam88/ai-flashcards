@@ -25,6 +25,7 @@ import 'home_page.dart';
 import 'quiz_page.dart';
 import 'review_page.dart';
 import 'wrong_book_page.dart';
+import '../services/text_import.dart' show txtWarnBytes;
 
 class ProjectData {
   final Project project;
@@ -95,15 +96,16 @@ class _ProjectPageState extends State<ProjectPage> {
   }
 
   Future<void> _upload() async {
-    final picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['pdf', 'docx', 'doc']);
+    final picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['pdf', 'docx', 'doc', 'txt']);
     if (picked.isEmpty) return;
     final dir = Directory(p.join((await getApplicationDocumentsDirectory()).path, 'pdfs'));
     await dir.create(recursive: true);
     final added = <PdfDoc>[];
+    final large = <String>[]; // 超过 10 MB 的 TXT
     for (final f in picked) {
       if (f.path == null) continue;
       final lower = f.name.toLowerCase();
-      if (!['.pdf', '.docx', '.doc'].any(lower.endsWith)) continue;
+      if (!['.pdf', '.docx', '.doc', '.txt'].any(lower.endsWith)) continue;
       final type = PdfDoc.typeOf(f.name);
       final id = newId();
       final dest = p.join(dir.path, '$id.$type');
@@ -114,6 +116,7 @@ class _ProjectPageState extends State<ProjectPage> {
           pages = await PdfTools.pageCount(await File(dest).readAsBytes());
         } catch (_) {}
       }
+      if (type == 'txt' && await File(dest).length() > txtWarnBytes) large.add(f.name);
       final d = PdfDoc(id: id, projectId: widget.projectId, name: p.basenameWithoutExtension(f.name), path: dest, pageCount: pages, type: type);
       await s.repo.saveDoc(d);
       added.add(d);
@@ -125,8 +128,9 @@ class _ProjectPageState extends State<ProjectPage> {
         builder: (ctx) => AlertDialog(
           backgroundColor: M.sheet,
           title: const Text('现在解析？'),
-          content: Text('已添加 ${added.length} 份资料。会排队依次解析（最多同时 ${AppState.parseConcurrency} 份），PDF 每批 ${s.settings.ocrBatchPages} 页，Word 整份交给解析模型；每份单独显示进度，失败可单独重试。'
-              '${added.any((d) => d.isWord) && !Settings.supportsWord(s.settings.ocrProvider) ? '\n\n注意：${ParseService.wordUnsupported}。' : ''}'),
+          content: Text('已添加 ${added.length} 份资料。会排队依次解析（最多同时 ${AppState.parseConcurrency} 份），PDF 每批 ${s.settings.ocrBatchPages} 页，Word 整份交给解析模型${added.any((d) => d.isText) ? '，TXT 在手机上直接读取（不联网、不花钱）' : ''}；每份单独显示进度，失败可单独重试。'
+              '${added.any((d) => d.isWord) && !Settings.supportsWord(s.settings.ocrProvider) ? '\n\n注意：${ParseService.wordUnsupported}。' : ''}'
+              '${large.isEmpty ? '' : '\n\n注意：${large.join('、')} 超过 10 MB，读取和出题会比较慢，建议只保留需要的章节。'}'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('稍后')),
             TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('开始解析')),
@@ -339,8 +343,8 @@ class _ProjectPageState extends State<ProjectPage> {
             SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('上传 PDF / Word', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                Text('支持 PDF 和 Word（.docx / .doc），可一次选择多个（在文件选择器里长按可多选）', style: TextStyle(color: M.sub, fontSize: 12)),
+                Text('上传 PDF / Word / TXT', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                Text('支持 PDF、Word（.docx / .doc）和 TXT，可一次选择多个（在文件选择器里长按可多选）', style: TextStyle(color: M.sub, fontSize: 12)),
               ]),
             ),
           ]),
@@ -371,14 +375,16 @@ class _ProjectPageState extends State<ProjectPage> {
               child: Row(children: [
                 doc.isWord
                     ? Icon(Icons.description_outlined, color: M.wordBlue) // Word：灰蓝
-                    : Icon(Icons.picture_as_pdf_outlined, color: M.roseDark),
+                    : doc.isText
+                        ? Icon(Icons.article_outlined, color: M.sageDark) // TXT：灰绿
+                        : Icon(Icons.picture_as_pdf_outlined, color: M.roseDark),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(doc.name, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
                     Text(
-                        doc.isWord
-                            ? 'Word · ${doc.status}${doc.pageCount > 0 ? ' · ${doc.pageCount} 个小节' : ''}'
+                        doc.isSectioned
+                            ? '${doc.isText ? 'TXT' : 'Word'} · ${doc.status}${doc.pageCount > 0 ? ' · ${doc.pageCount} 个小节' : ''}'
                             : '${doc.status} · 已解析 ${doc.parsedPages}/${doc.pageCount} 页',
                         style: TextStyle(color: M.sub, fontSize: 12)),
                     if (doc.note.isNotEmpty)
@@ -411,7 +417,7 @@ class _ProjectPageState extends State<ProjectPage> {
                   itemBuilder: (_) => [
                     PopupMenuItem(
                         value: 'parse',
-                        child: Text(doc.isWord
+                        child: Text(doc.isSectioned
                             ? (doc.status == '已解析' ? '重新解析' : '解析')
                             : (doc.parsedPages >= doc.pageCount && doc.pageCount > 0 ? '重新切分章节' : '解析（继续未完成的页）'))),
                     if (doc.parsedPages > 0) const PopupMenuItem(value: 'view', child: Text('查看章节内容')),
@@ -465,7 +471,7 @@ class _ProjectPageState extends State<ProjectPage> {
       {Widget Function(String chapter)? quiz}) {
     if (items.isEmpty) {
       return Padding(
-          padding: EdgeInsets.all(24), child: Text('还没有内容。上传并解析 PDF 或 Word 后点「生成」。', style: TextStyle(color: M.sub)));
+          padding: EdgeInsets.all(24), child: Text('还没有内容。上传并解析 PDF、Word 或 TXT 后点「生成」。', style: TextStyle(color: M.sub)));
     }
     final groups = <String, List<T>>{};
     for (final i in items) {
@@ -543,7 +549,7 @@ class _ProjectPageState extends State<ProjectPage> {
         trailing: c.page > 0
             ? TextButton(
                 onPressed: () => showSourceSheet(context, docId: c.docId, page: c.page, chapter: c.chapter, section: c.section),
-                child: Text(s.repo.isWordDoc(c.docId) ? '原文' : 'P${c.page}'))
+                child: Text(s.repo.isWordDoc(c.docId) ? '原文' : s.repo.isTextDoc(c.docId) ? '第${c.page}节' : 'P${c.page}'))
             : null,
       );
 
@@ -556,7 +562,7 @@ class _ProjectPageState extends State<ProjectPage> {
         trailing: q.page > 0
             ? TextButton(
                 onPressed: () => showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter, section: q.section),
-                child: Text(s.repo.isWordDoc(q.docId) ? '原文' : 'P${q.page}'))
+                child: Text(s.repo.isWordDoc(q.docId) ? '原文' : s.repo.isTextDoc(q.docId) ? '第${q.page}节' : 'P${q.page}'))
             : null,
       );
 }
