@@ -5,6 +5,8 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme/glass.dart';
 import 'feedback_sheet.dart';
+import '../help/help_articles.dart' show HelpIds;
+import 'help_page.dart' show HelpButton;
 
 /// 审核生成结果。
 /// - 不传 ids：显示「待审核」里的内容（开启了「生成后先审核」时生成的）；
@@ -117,6 +119,7 @@ class _InboxPageState extends State<InboxPage> {
     final nc = items.whereType<Flashcard>().length, nq = items.whereType<Question>().length;
     return GlassScaffold(
       title: widget.isBatch ? '审核这批' : '待审核',
+      actions: const [HelpButton(HelpIds.quality)],
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : Column(children: [

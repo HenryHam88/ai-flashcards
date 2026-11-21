@@ -5,6 +5,8 @@ import '../app_state.dart';
 import '../models.dart';
 import '../services/pipeline.dart' show questionsPerKp;
 import '../theme/glass.dart';
+import '../help/help_articles.dart' show HelpIds;
+import 'help_page.dart' show HelpButton;
 import 'home_page.dart';
 
 /// 生成选项面板：每次生成前弹出。返回选好的 GenOptions，取消返回 null。
@@ -79,7 +81,10 @@ class _GenSheetState extends State<_GenSheet> {
     final templates = s.settings.genTemplates;
     const h = TextStyle(fontWeight: FontWeight.w700, fontSize: 15);
     return ListView(controller: widget.controller, padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
-      const Text('生成选项', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+      Row(children: [
+        const Expanded(child: Text('生成选项', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
+        const HelpButton(HelpIds.generate),
+      ]),
       const SizedBox(height: 10),
       if (templates.isNotEmpty) ...[
         const Text('模板', style: h),

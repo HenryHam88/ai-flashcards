@@ -12,6 +12,7 @@ import 'package:ai_flashcards/ui/auto_count_sheet.dart';
 import 'package:ai_flashcards/ui/chapter_editor_page.dart';
 import 'package:ai_flashcards/ui/chapter_view_page.dart';
 import 'package:ai_flashcards/ui/explain_history_page.dart';
+import 'package:ai_flashcards/ui/help_page.dart';
 import 'package:ai_flashcards/ui/inbox_page.dart';
 import 'package:ai_flashcards/ui/onboarding_page.dart';
 import 'package:ai_flashcards/ui/settings_pages.dart';
@@ -471,6 +472,20 @@ void main() {
       await t.pump();
       await t.enterText(find.byType(TextField), '条件概率');
       FocusManager.instance.primaryFocus?.unfocus();
+      for (var i = 0; i < 6; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+    });
+  });
+
+  testWidgets('使用帮助：首页与文章', (t) async {
+    await shoot(t, const HelpHomePage(), '29_help_home');
+  });
+
+  testWidgets('使用帮助：文章页', (t) async {
+    await shoot(t, const HelpArticlePage(articleId: 'review'), '30_help_article', after: () async {
+      final el = t.element(find.byType(HelpArticlePage));
+      await t.runAsync(() => precacheImage(const AssetImage('assets/help/help_review.webp'), el));
       for (var i = 0; i < 6; i++) {
         await t.pump(const Duration(milliseconds: 100));
       }

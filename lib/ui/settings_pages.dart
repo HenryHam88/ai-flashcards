@@ -14,6 +14,8 @@ import '../app_state.dart';
 import '../services/backup.dart';
 import '../services/reminder.dart';
 import '../theme/glass.dart';
+import '../help/help_articles.dart' show authorQQ;
+import 'help_page.dart' show HelpHomePage, copyQQ;
 
 const repoUrl = 'https://github.com/HenryHam88/ai-flashcards';
 
@@ -897,6 +899,18 @@ class _AboutPageState extends State<AboutPage> {
               subtitle: updateText ?? '从 GitHub 查询最新发布版本',
               onTap: _check),
           SettingsTile(icon: Icons.article_outlined, title: '更新日志', onTap: () => go(const ChangelogPage())),
+        ]),
+        SettingsGroup(title: '联系作者', children: [
+          SettingsTile(
+              icon: Icons.chat_bubble_outline_rounded,
+              title: '作者 QQ：$authorQQ',
+              subtitle: '点按复制',
+              onTap: () => copyQQ(context)),
+          SettingsTile(
+              icon: Icons.help_outline_rounded,
+              title: '使用帮助',
+              subtitle: '快速上手、各功能怎么用、常见问题',
+              onTap: () => go(const HelpHomePage())),
         ]),
         SettingsGroup(title: '开源', children: [
           SettingsTile(

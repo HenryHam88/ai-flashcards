@@ -5,7 +5,9 @@ import '../app_state.dart';
 import '../models.dart';
 import '../services/chapters.dart';
 import '../theme/glass.dart';
+import '../help/help_articles.dart' show HelpIds;
 import 'chapter_view_page.dart';
+import 'help_page.dart' show HelpButton;
 import 'home_page.dart' show promptText;
 
 /// 编辑一份资料的章节：重命名、新增、删除、与下一章合并、按页拆分、调整起始页；
@@ -173,6 +175,7 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
       child: GlassScaffold(
         title: '编辑章节',
         actions: [
+          const HelpButton(HelpIds.chapters),
           TextButton(
             onPressed: busy || loading ? null : _save,
             child: Text('保存', style: TextStyle(fontWeight: FontWeight.w700, color: dirty ? M.sageDark : M.sub)),

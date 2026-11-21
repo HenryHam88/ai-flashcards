@@ -5,7 +5,9 @@ import '../app_state.dart';
 import '../services/prompts.dart';
 import '../services/settings.dart';
 import '../theme/glass.dart';
+import '../help/help_articles.dart' show HelpIds;
 import 'explain_history_page.dart';
+import 'help_page.dart';
 import 'settings_pages.dart';
 import 'wrong_book_page.dart';
 
@@ -67,7 +69,12 @@ class MePage extends StatelessWidget {
               subtitle: st.autoBackup ? '备份、换手机迁移 · 已开启每周自动备份' : '备份、换手机迁移、分享项目',
               onTap: () => go(const DataPage())),
         ]),
-        SettingsGroup(title: '关于', children: [
+        SettingsGroup(title: '帮助与关于', children: [
+          SettingsTile(
+              icon: Icons.help_outline_rounded,
+              title: '使用帮助',
+              subtitle: '快速上手、各功能怎么用、常见问题',
+              onTap: () => go(const HelpHomePage())),
           SettingsTile(
               icon: Icons.info_outline_rounded,
               title: '关于闪卡刷题',
@@ -138,6 +145,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
     final st = s.settings;
     return GlassScaffold(
       title: '出题模型',
+      actions: const [HelpButton(HelpIds.keys)],
       body: ListView(padding: const EdgeInsets.all(20), children: [
         Glass(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -193,6 +201,7 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
     final st = context.read<AppState>().settings;
     return GlassScaffold(
       title: '文档解析（PDF / Word）',
+      actions: const [HelpButton(HelpIds.upload)],
       body: ListView(padding: const EdgeInsets.all(20), children: [
         Glass(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

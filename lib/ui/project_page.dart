@@ -19,6 +19,7 @@ import 'explain_sheet.dart';
 import 'feedback_sheet.dart';
 import 'auto_count_sheet.dart';
 import 'gen_sheet.dart';
+import 'help_page.dart' show errorToast;
 import 'inbox_page.dart';
 import 'home_page.dart';
 import 'quiz_page.dart';
@@ -87,7 +88,7 @@ class _ProjectPageState extends State<ProjectPage> {
     try {
       await job();
     } catch (e) {
-      if (mounted) toast(context, '$e');
+      if (mounted) errorToast(context, '$e');
     }
     if (mounted) setState(() => (busy = false, progress = null));
     s.changed();
@@ -143,7 +144,7 @@ class _ProjectPageState extends State<ProjectPage> {
     try {
       gen = await s.generator(projectId: d.project.id);
     } catch (e) {
-      if (mounted) toast(context, '$e');
+      if (mounted) errorToast(context, '$e');
       return;
     }
     List<KnowledgePoint>? planned;

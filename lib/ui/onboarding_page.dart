@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../theme/glass.dart';
+import 'help_page.dart' show openHelp;
 import 'me_page.dart';
 
 /// 首次启动引导：三页，随时可跳过。
@@ -74,6 +75,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LlmSettingsPage())),
           ),
         ),
+        footer: TextButton.icon(
+          onPressed: () => openHelp(context),
+          icon: Icon(Icons.help_outline_rounded, size: 18, color: M.sageDark),
+          label: Text('不知道怎么弄？看看使用帮助', style: TextStyle(color: M.sageDark)),
+        ),
       ),
     ];
     final last = page == pages.length - 1;
@@ -127,7 +133,8 @@ class _Slide extends StatelessWidget {
   final String title;
   final String body;
   final Widget? extra;
-  const _Slide({required this.hero, required this.title, required this.body, this.extra});
+  final Widget? footer;
+  const _Slide({required this.hero, required this.title, required this.body, this.extra, this.footer});
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -148,6 +155,7 @@ class _Slide extends StatelessWidget {
             Text(body, textAlign: TextAlign.center, style: TextStyle(color: M.sub, fontSize: 15, height: 1.7)),
           ],
           ?extra,
+          if (footer != null) Padding(padding: const EdgeInsets.only(top: 8), child: footer),
         ]),
       );
 }
