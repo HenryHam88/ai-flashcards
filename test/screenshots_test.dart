@@ -22,6 +22,8 @@ import 'package:ai_flashcards/ui/quiz_page.dart';
 import 'package:ai_flashcards/ui/review_page.dart';
 import 'package:ai_flashcards/ui/wrong_book_page.dart';
 import 'package:ai_flashcards/ui/due_page.dart';
+import 'package:ai_flashcards/ui/chapter_reparse.dart';
+import 'package:ai_flashcards/services/chapter_reparse.dart';
 import 'package:ai_flashcards/models.dart';
 import 'package:ai_flashcards/services/study_queue.dart';
 import 'package:flutter/services.dart';
@@ -605,7 +607,7 @@ void main() {
 
   testWidgets('今日新卡已满：今天再学 10 张', (t) async {
     await seedTodayNew(20);
-    await shoot(t, const ReviewPage(projectId: 'p1', mode: StudyMode.newOnly), '38_new_limit', after: () async {
+    await shoot(t, const ReviewPage(projectId: 'p1', mode: StudyMode.newOnly), '40_new_limit', after: () async {
       expect(find.text('今天再学 10 张'), findsOneWidget);
       await t.tap(find.text('今天再学 10 张'));
       for (var i = 0; i < 6; i++) {
@@ -634,5 +636,58 @@ void main() {
     }
     expect(find.text('到期安排'), findsOneWidget);
     expect(find.textContaining('现在复习这些'), findsOneWidget);
+  });
+
+  testWidgets('按章重新解析：新旧对比', (t) async {
+    final doc = PdfDoc(id: 'd1', projectId: 'p1', name: '概率论教材', path: '', type: 'pdf', status: '已解析', pageCount: 40, parsedPages: 40);
+    final r = ReparseResult(doc, ChapterRange('第一章 随机事件与概率', 12, 15), ReparseEngine.deepseekRich, [
+      ReparsePage(12,
+          oldText: '1.3 条件概率\n设 A, B 是两个事件，且 P(B)>0，称 P(A|B)=P(AB)/P(B) 为在事件 B 发生的条件下事件 A 发生的条件概率。',
+          oldSource: 'local',
+          oldParsed: true,
+          newText: r'## 1.3 条件概率' '\n' r'设 $A, B$ 是两个事件，且 $P(B)>0$，称' '\n' r'$$P(A\mid B)=\frac{P(AB)}{P(B)}$$' '\n' r'为在事件 $B$ 发生的条件下事件 $A$ 发生的**条件概率**。',
+          newSource: 'deepseek_rich'),
+      ReparsePage(13,
+          oldText: '',
+          oldSource: 'local',
+          oldParsed: true,
+          newText: r'**定理 1.2（乘法公式）** 若 $P(A)>0$，则 $P(AB)=P(A)P(B\mid A)$。' '\n' '推广到 n 个事件同样成立。',
+          newSource: 'deepseek_rich'),
+      ReparsePage(14, oldText: '全概率公式 ……', oldSource: 'local', oldParsed: true, newText: '全概率公式 ……', newSource: 'deepseek_rich'),
+      ReparsePage(15, oldText: '例 1.8 ……', oldSource: 'local', oldParsed: true, newText: '', newSource: 'deepseek_rich', failed: true),
+    ]);
+    await shoot(t, ReparseDiffPage(result: r), '38_chapter_reparse', after: () async {
+      expect(find.text('保存所选 2'), findsOneWidget);
+      await t.tap(find.text('用新的').last);
+      await t.pump(const Duration(milliseconds: 100));
+      expect(find.text('保存所选 1'), findsOneWidget);
+      await t.tap(find.text('保留旧的'));
+      await t.pump(const Duration(milliseconds: 100));
+    });
+  });
+
+  testWidgets('本章知识点：重新分析后的对比', (t) async {
+    final doc = PdfDoc(id: 'd1', projectId: 'p1', name: '概率论教材', path: '', type: 'pdf', status: '已解析', pageCount: 40, parsedPages: 40);
+    KnowledgePoint k(String id, String title, String content, {String type = '定义'}) =>
+        KnowledgePoint(id: id, projectId: 'p1', docId: 'd1', title: title, content: content, type: type, page: 12);
+    final d = KpDiff.of([
+      k('o1', '条件概率的定义', r'$P(A\mid B)=P(AB)/P(B)$'),
+      k('o2', '事件的独立性', '两事件同时发生的概率等于各自概率之积'),
+    ], [
+      k('n1', '条件概率的定义', r'$P(A\mid B)=\frac{P(AB)}{P(B)}$，要求 $P(B)>0$'),
+      k('n2', '乘法公式', r'$P(AB)=P(A)P(B\mid A)$', type: '定理'),
+      k('n3', '全概率公式', r'$P(A)=\sum_i P(B_i)P(A\mid B_i)$', type: '定理'),
+    ]);
+    await shoot(
+        t,
+        Builder(
+            builder: (context) => Scaffold(
+                backgroundColor: M.sheet,
+                body: SafeArea(
+                    child: ChapterKpSheet(
+                        doc: doc, range: ChapterRange('第一章 随机事件与概率', 12, 15), scroll: ScrollController(), diff: d)))),
+        '41_chapter_kps', after: () async {
+      expect(find.text('新增'), findsNWidgets(2));
+    });
   });
 }

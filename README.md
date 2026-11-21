@@ -56,6 +56,7 @@
     <td align="center"><img src="docs/screenshots/35_new_vs_review.png" width="190"><br><sub>新学 / 待复习</sub></td>
     <td align="center"><img src="docs/screenshots/36_card_badge.png" width="190"><br><sub>卡片标签</sub></td>
     <td align="center"><img src="docs/screenshots/37_due_by_day.png" width="190"><br><sub>每日到期卡片</sub></td>
+    <td align="center"><img src="docs/screenshots/38_chapter_reparse.png" width="190"><br><sub>按章重新解析</sub></td>
   </tr>
 </table>
 
@@ -67,6 +68,7 @@
 - 扫描版 PDF 也能识别，公式保留为 LaTeX
 - 自动识别章节（书签、目录页、标题格式，识别不到时由 AI 分章），也可手动编辑
 - 章节内容：按页查看每章解析出的原文（公式按教材样式排版），可切换章节、搜索高亮、复制，显示解析来源，一键「用这章出题」
+- 某一章解析得不好可以只重新解析这一章（可换引擎），逐页对比新旧文字后再决定替换，可恢复上次解析；可查看和重新分析本章知识点
 - 按整份、章节或页码范围生成；可设置数量、题型、难度和侧重点
 - 数量可选「自动（按知识点）」：先列出所选内容的知识点，按每个知识点约 1 张闪卡、1–3 道题（随难度）估算，显示「预计约 N 张/道」确认后再生成；有单次上限，避免数量和费用过高
 - 题型：单选、多选、判断、填空、简答、计算

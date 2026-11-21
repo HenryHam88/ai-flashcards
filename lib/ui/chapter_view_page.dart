@@ -6,6 +6,8 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme/glass.dart';
 import '../theme/html_clean.dart' show displayPlainText;
+import 'chapter_editor_page.dart';
+import 'chapter_reparse.dart';
 
 // ============================================================================
 // 章节内容（只读）：按页显示某一章解析出的文字，公式按教材样式排版。
@@ -88,6 +90,7 @@ class _ChapterViewPageState extends State<ChapterViewPage> {
   late int index = widget.initialIndex;
   bool loading = true;
   bool searching = false;
+  bool hasUndo = false; // 这一章有「恢复上次解析」的快照
   final query = TextEditingController();
   int current = 0; // 当前定位到第几个匹配
   final scroll = ScrollController();
@@ -127,6 +130,26 @@ class _ChapterViewPageState extends State<ChapterViewPage> {
       index = index.clamp(0, chapters.length - 1);
       loading = false;
     });
+    _checkUndo();
+  }
+
+  Future<void> _checkUndo() async {
+    final snap = await context.read<AppState>().reparser.snapshot(doc, chapter);
+    if (mounted) setState(() => hasUndo = snap != null);
+  }
+
+  Future<void> _menu(String v) async {
+    final r = chapter;
+    var changed = false;
+    void redetect() => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChapterEditorPage(doc: doc)));
+    if (v == 'reparse') {
+      changed = await startChapterReparse(context, doc, r, onRedetect: widget.chapters != null ? null : redetect);
+    } else if (v == 'undo') {
+      changed = await undoChapterReparse(context, doc, r);
+    } else if (v == 'kps' || v == 'reanalyze') {
+      await showChapterKps(context, doc, r, reanalyze: v == 'reanalyze');
+    }
+    if (changed && mounted) await _load();
   }
 
   ChapterRange get chapter => chapters[index];
@@ -139,6 +162,7 @@ class _ChapterViewPageState extends State<ChapterViewPage> {
       current = 0;
       keys.clear();
     });
+    _checkUndo();
     if (scroll.hasClients) scroll.jumpTo(0);
   }
 
@@ -194,6 +218,16 @@ class _ChapterViewPageState extends State<ChapterViewPage> {
           tooltip: '复制本章文字',
           icon: const Icon(Icons.copy_rounded),
           onPressed: () => _copy(chapterPlainText(chapter.title, ps, unit: unit), '本章文字'),
+        ),
+        PopupMenuButton<String>(
+          tooltip: '更多',
+          onSelected: _menu,
+          itemBuilder: (_) => [
+            const PopupMenuItem(value: 'reparse', child: Text('重新解析这一章')),
+            if (hasUndo) const PopupMenuItem(value: 'undo', child: Text('恢复上次解析')),
+            const PopupMenuItem(value: 'kps', child: Text('查看知识点')),
+            const PopupMenuItem(value: 'reanalyze', child: Text('重新分析知识点')),
+          ],
         ),
       ],
       body: Column(children: [

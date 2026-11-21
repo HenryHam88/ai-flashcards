@@ -23,7 +23,7 @@ abstract class DocStore {
   /// 所有集合名。
   static const allCollections = [
     'projects', 'docs', 'pages', 'chunks', 'kps', 'cards', 'questions', 'wrong', 'logs', 'explain', 'chapters',
-    'feedback', 'sessions', 'inbox_cards', 'inbox_questions'
+    'feedback', 'sessions', 'inbox_cards', 'inbox_questions', 'reparse'
   ];
 }
 
@@ -94,7 +94,7 @@ class MemoryDocStore implements DocStore {
 
 class SqliteDocStore implements DocStore {
   /// 数据库结构版本；备份文件里也写这个数，用来判断能否导入。
-  static const schemaVersion = 5; // v5：反馈、学习时长、待审核
+  static const schemaVersion = 6; // v5：反馈、学习时长、待审核；v6：按章重新解析的快照
   static const collections = DocStore.allCollections;
   final Database db;
   SqliteDocStore._(this.db);

@@ -17,6 +17,7 @@ import 'services/quality.dart';
 import 'services/settings.dart';
 import 'theme/rich_text.dart' show stripMetaPreamble;
 import 'services/study_queue.dart';
+import 'services/chapter_reparse.dart';
 
 /// 全局状态：持有仓库与设置，提供业务操作。UI 通过 Provider 读取。
 /// 单个 PDF 的解析任务状态（用于多文件队列的逐个进度显示）。
@@ -72,6 +73,10 @@ class AppState extends ChangeNotifier {
   }
 
   ParseService get parser => ParseService(repo, settings, chapters: chapterService);
+
+  /// 按章重新解析 / 重新分析知识点。测试可注入。
+  ChapterReparseService Function()? reparseFactory;
+  ChapterReparseService get reparser => reparseFactory?.call() ?? ChapterReparseService(repo, settings);
 
   /// 分章服务：没有配置出题模型密钥时不调用 AI（直接按页数切分）。
   ChapterService get chapterService => ChapterService(repo, settings, llm: () async {

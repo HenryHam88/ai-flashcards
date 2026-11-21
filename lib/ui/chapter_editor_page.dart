@@ -6,6 +6,7 @@ import '../models.dart';
 import '../services/chapters.dart';
 import '../theme/glass.dart';
 import '../help/help_articles.dart' show HelpIds;
+import 'chapter_reparse.dart';
 import 'chapter_view_page.dart';
 import 'help_page.dart' show HelpButton;
 import 'home_page.dart' show promptText;
@@ -72,6 +73,25 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
       return;
     }
     Navigator.pop(context, r);
+  }
+
+  /// 重新解析 / 恢复上次解析 / 知识点：都按已保存的分章进行，有未保存的修改时先提示保存。
+  Future<void> _chapterAction(String v, int i) async {
+    if (dirty) {
+      toast(context, '章节有未保存的修改，请先保存');
+      return;
+    }
+    final r = list[i];
+    switch (v) {
+      case 'reparse':
+        await startChapterReparse(context, doc, r, onRedetect: _auto);
+      case 'undo':
+        await undoChapterReparse(context, doc, r);
+      case 'kps':
+        await showChapterKps(context, doc, r);
+      case 'reanalyze':
+        await showChapterKps(context, doc, r, reanalyze: true);
+    }
   }
 
   Future<void> _rename(int i) async {
@@ -273,6 +293,8 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
                   _set(mergeWithNext(list, i));
                 case 'delete':
                   _set(deleteChapter(list, i));
+                case 'reparse' || 'undo' || 'kps' || 'reanalyze':
+                  _chapterAction(v, i);
               }
             },
             itemBuilder: (_) => [
@@ -282,6 +304,11 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
               if (i > 0) const PopupMenuItem(value: 'start', child: Text('调整起始页')),
               if (i < list.length - 1) const PopupMenuItem(value: 'merge', child: Text('与下一章合并')),
               if (list.length > 1) const PopupMenuItem(value: 'delete', child: Text('删除（并入相邻章节）')),
+              const PopupMenuDivider(),
+              const PopupMenuItem(value: 'reparse', child: Text('重新解析这一章')),
+              const PopupMenuItem(value: 'undo', child: Text('恢复上次解析')),
+              const PopupMenuItem(value: 'kps', child: Text('查看知识点')),
+              const PopupMenuItem(value: 'reanalyze', child: Text('重新分析知识点')),
             ],
           ),
         ]),

@@ -60,7 +60,7 @@ class Repository {
 
   Future<void> deleteDoc(PdfDoc d) async {
     await store.delete('chapters', d.id);
-    for (final c in ['pages', 'chunks']) {
+    for (final c in ['pages', 'chunks', 'reparse']) {
       await store.deleteWhere(c, projectId: d.projectId, field: 'docId', equals: d.id);
     }
     await store.delete('docs', d.id);
@@ -92,6 +92,19 @@ class Repository {
       (await store.list('kps', projectId: projectId)).map(KnowledgePoint.fromJson).toList();
   Future<void> saveKps(List<KnowledgePoint> l) =>
       store.putAll('kps', l.map((e) => (e.id, e.projectId, e.toJson())).toList());
+  Future<void> deleteKps(List<String> ids) async {
+    for (final id in ids) {
+      await store.delete('kps', id);
+    }
+  }
+
+  Future<void> deletePage(String docId, int page) => store.delete('pages', '${docId}_$page');
+
+  // ---------- 按章重新解析的快照（恢复上次解析） ----------
+  Future<Map<String, dynamic>?> reparseSnapshot(String id) => store.get('reparse', id);
+  Future<void> saveReparseSnapshot(String id, String projectId, Map<String, dynamic> j) =>
+      store.put('reparse', id, projectId, j);
+  Future<void> deleteReparseSnapshot(String id) => store.delete('reparse', id);
 
   // ---------- 闪卡 / 题目 ----------
   Future<List<Flashcard>> cards({String? projectId}) async =>
