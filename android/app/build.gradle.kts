@@ -13,7 +13,7 @@ val keyProps = Properties().apply { if (keyPropsFile.exists()) keyPropsFile.inpu
 val hasReleaseKey = keyPropsFile.exists()
 
 android {
-    namespace = "com.hungryg.ai_flashcards"
+    namespace = "io.github.henryham88.ai_flashcards"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -24,7 +24,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.hungryg.ai_flashcards"
+        applicationId = "io.github.henryham88.ai_flashcards"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
