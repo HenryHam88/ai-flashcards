@@ -89,7 +89,7 @@ class _HomeShellState extends State<HomeShell> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(26),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
               child: Container(
                 height: 66,
                 decoration: BoxDecoration(

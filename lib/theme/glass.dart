@@ -1,4 +1,3 @@
-import 'dart:ui';
 
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:material_ui/material_ui.dart';
@@ -47,35 +46,54 @@ ThemeData buildTheme({String? fontFamily}) {
   );
 }
 
-/// 背景：燕麦底 + 几团大的模糊莫兰迪色块，让毛玻璃有东西可「透」。
+/// 背景：燕麦底 + 几团大的柔和莫兰迪色块。
+/// 性能：色块用径向渐变画出「模糊」效果，不做实时高斯模糊；并用 RepaintBoundary 缓存成一层，
+/// 滚动时只合成、不重绘。
 class BlobBackground extends StatelessWidget {
   final Widget child;
   const BlobBackground({super.key, required this.child});
   @override
   Widget build(BuildContext context) {
-    Widget blob(Color c, double size) =>
-        Container(width: size, height: size, decoration: BoxDecoration(color: c, shape: BoxShape.circle));
-    return Container(
-      color: M.bg,
-      child: Stack(children: [
-        Positioned.fill(
-          child: ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: 70, sigmaY: 70),
-            child: Stack(children: [
-              Positioned(top: -60, left: -80, child: blob(M.greyBlue.withValues(alpha: 0.7), 320)),
-              Positioned(top: 260, right: -110, child: blob(M.rose.withValues(alpha: 0.5), 300)),
-              Positioned(bottom: -80, left: 10, child: blob(M.sage.withValues(alpha: 0.55), 320)),
-              Positioned(top: 120, left: 120, child: blob(M.oat.withValues(alpha: 0.6), 220)),
-            ]),
-          ),
-        ),
-        Positioned.fill(child: child),
-      ]),
-    );
+    return Stack(children: [
+      const Positioned.fill(child: RepaintBoundary(child: CustomPaint(painter: _BlobPainter(), isComplex: true))),
+      Positioned.fill(child: child),
+    ]);
   }
 }
 
-/// 毛玻璃面板：半透明白 + 背景模糊 + 细白描边 + 柔和阴影。
+class _BlobPainter extends CustomPainter {
+  const _BlobPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = M.bg);
+    void blob(Offset c, double r, Color color) {
+      final rect = Rect.fromCircle(center: c, radius: r);
+      canvas.drawRect(
+          rect,
+          Paint()
+            ..shader = RadialGradient(colors: [
+              color,
+              color.withValues(alpha: color.a * 0.55),
+              color.withValues(alpha: 0),
+            ], stops: const [0, 0.45, 1])
+                .createShader(rect));
+    }
+
+    final w = size.width;
+    blob(Offset(w * 0.18, 70), 260, M.greyBlue.withValues(alpha: 0.55));
+    blob(Offset(w * 1.0, 420), 250, M.rose.withValues(alpha: 0.38));
+    blob(Offset(w * 0.4, size.height - 40), 280, M.sage.withValues(alpha: 0.45));
+    blob(Offset(w * 0.55, 230), 200, M.oat.withValues(alpha: 0.5));
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// 玻璃面板：半透明白 + 斜向渐变高光 + 细白描边 + 柔和阴影。
+/// 性能：背景本身已是柔和色块，所以默认不做实时 BackdropFilter 模糊（「仿玻璃」），
+/// 滚动时零模糊开销；并包一层 RepaintBoundary，列表滚动时卡片只平移不重绘。
+/// 少数固定不动的元素（底部导航、底部面板）才使用真实模糊。
 class Glass extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -95,37 +113,29 @@ class Glass extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = BorderRadius.circular(radius);
-    return Container(
-      decoration: BoxDecoration(borderRadius: r, boxShadow: [
-        BoxShadow(color: const Color(0xFF6B6259).withValues(alpha: 0.10), blurRadius: 24, offset: const Offset(0, 8)),
-      ]),
-      child: ClipRRect(
-        borderRadius: r,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: r,
-              child: Container(
-                padding: padding,
-                decoration: BoxDecoration(
-                  borderRadius: r,
-                  color: (tint ?? Colors.white).withValues(alpha: tint == null ? opacity : 0.55),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.75), width: 1),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      (tint ?? Colors.white).withValues(alpha: tint == null ? opacity + 0.12 : 0.62),
-                      (tint ?? Colors.white).withValues(alpha: tint == null ? opacity - 0.1 : 0.45),
-                    ],
-                  ),
-                ),
-                child: child,
-              ),
-            ),
+    final base = tint ?? Colors.white;
+    final hi = tint == null ? opacity + 0.16 : 0.66;
+    final lo = tint == null ? opacity - 0.06 : 0.48;
+    return RepaintBoundary(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: r,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [base.withValues(alpha: hi), base.withValues(alpha: lo)],
+          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1),
+          boxShadow: [
+            BoxShadow(color: const Color(0xFF6B6259).withValues(alpha: 0.08), blurRadius: 12, offset: const Offset(0, 5)),
+          ],
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: r,
+            child: Padding(padding: padding, child: child),
           ),
         ),
       ),
@@ -171,11 +181,11 @@ Future<T?> showGlassSheet<T>(BuildContext context, Widget Function(BuildContext,
       expand: false,
       builder: (ctx, sc) => ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        // 性能：面板里内容可滚动，实时模糊每帧都要重算，这里改用接近不透明的燕麦白
+        child: RepaintBoundary(
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF4F1EC).withValues(alpha: 0.82),
+              color: const Color(0xFFF4F1EC).withValues(alpha: 0.95),
               border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.9))),
             ),
             child: Column(children: [
@@ -244,12 +254,16 @@ class MathText extends StatelessWidget {
       }
     }
     flush();
-    if (blocks.length == 1) return blocks.first;
-    return Column(
+    if (segs.every((e) => !e.isMath)) {
+      return blocks.isEmpty ? const SizedBox() : blocks.first;
+    }
+    // 公式排版较重：单独成层，滚动时不重绘
+    if (blocks.length == 1) return RepaintBoundary(child: blocks.first);
+    return RepaintBoundary(child: Column(
       crossAxisAlignment: textAlign == TextAlign.center ? CrossAxisAlignment.center : CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: blocks,
-    );
+    ));
   }
 }
 

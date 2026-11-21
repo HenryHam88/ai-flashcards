@@ -7,6 +7,7 @@ import 'package:ai_flashcards/data/repository.dart';
 import 'package:ai_flashcards/main.dart';
 import 'package:ai_flashcards/services/settings.dart';
 import 'package:ai_flashcards/ui/me_page.dart';
+import 'package:ai_flashcards/ui/project_page.dart';
 import 'package:ai_flashcards/ui/quiz_page.dart';
 import 'package:ai_flashcards/ui/review_page.dart';
 import 'package:ai_flashcards/ui/wrong_book_page.dart';
@@ -155,5 +156,18 @@ void main() {
     }
     expect(find.text('测验  1/2'), findsOneWidget);
     expect(wrongRedoKey(null, ['a', 'b']), isNot(wrongRedoKey('p1', ['a', 'b'])));
+  });
+
+  testWidgets('项目页（闪卡列表）', (t) async {
+    await shoot(t, const ProjectPage(projectId: 'p1'), 'project', after: () async {
+      await t.tap(find.text('闪卡'));
+      for (var i = 0; i < 8; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+      await t.tap(find.text('第一章 随机事件与概率'));
+      for (var i = 0; i < 8; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+    });
   });
 }
