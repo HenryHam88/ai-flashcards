@@ -84,12 +84,24 @@ class PageText {
   String projectId;
   int page;
   String text;
-  PageText({required this.docId, required this.projectId, required this.page, required this.text});
+  /// 解析来源（仅用于显示）：deepseek_text / deepseek_rich / kimi / local；旧数据为空。
+  String source;
+  PageText({required this.docId, required this.projectId, required this.page, required this.text, this.source = ''});
   String get id => '${docId}_$page';
   Map<String, dynamic> toJson() =>
-      {'id': id, 'docId': docId, 'projectId': projectId, 'page': page, 'text': text};
-  factory PageText.fromJson(Map<String, dynamic> j) =>
-      PageText(docId: j['docId'], projectId: j['projectId'], page: j['page'], text: j['text'] ?? '');
+      {'id': id, 'docId': docId, 'projectId': projectId, 'page': page, 'text': text, if (source.isNotEmpty) 'source': source};
+  factory PageText.fromJson(Map<String, dynamic> j) => PageText(
+      docId: j['docId'], projectId: j['projectId'], page: j['page'], text: j['text'] ?? '', source: j['source'] ?? '');
+
+  /// 解析来源的显示名。
+  static String sourceLabel(String s) => switch (s) {
+        'deepseek_text' => 'DeepSeek OCR · 文字模式',
+        'deepseek_rich' => 'DeepSeek OCR · 版面模式',
+        'deepseek' => 'DeepSeek OCR',
+        'kimi' => 'Kimi',
+        'local' => '本地（PDF 文字层）',
+        _ => '',
+      };
 }
 
 class Chunk {
@@ -472,6 +484,10 @@ class GenOptions {
   String difficulty; // 基础/中等/拔高/混合
   List<String> focus;
   String custom;
+  /// 数量模式：false = 固定数量（默认）；true = 自动（按知识点估算，生成前确认）。
+  bool autoCount;
+  bool autoCards; // 自动模式下是否出闪卡
+  bool autoQuestions; // 自动模式下是否出题目
   GenOptions({
     this.scope = 'whole',
     List<String>? chapters,
@@ -483,6 +499,9 @@ class GenOptions {
     this.difficulty = '混合',
     List<String>? focus,
     this.custom = '',
+    this.autoCount = false,
+    this.autoCards = true,
+    this.autoQuestions = true,
   })  : chapters = chapters ?? [],
         types = types ?? [QType.single, QType.judge, QType.fill],
         focus = focus ?? ['概念定义', '公式定理'];
@@ -497,6 +516,7 @@ class GenOptions {
         'difficulty': difficulty,
         'focus': focus,
         'custom': custom,
+        if (autoCount) ...{'autoCount': true, 'autoCards': autoCards, 'autoQuestions': autoQuestions},
       };
   factory GenOptions.fromJson(Map<String, dynamic> j) => GenOptions(
         scope: j['scope'] ?? 'whole',
@@ -509,6 +529,9 @@ class GenOptions {
         difficulty: j['difficulty'] ?? '混合',
         focus: ((j['focus'] as List?) ?? []).map((e) => e.toString()).toList(),
         custom: j['custom'] ?? '',
+        autoCount: j['autoCount'] == true,
+        autoCards: j['autoCards'] != false,
+        autoQuestions: j['autoQuestions'] != false,
       );
   GenOptions copy() => GenOptions.fromJson(toJson());
 }

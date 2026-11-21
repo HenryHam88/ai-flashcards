@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../services/chapters.dart';
 import '../theme/glass.dart';
+import 'chapter_view_page.dart';
 import 'home_page.dart' show promptText;
 
 /// 编辑一份资料的章节：重命名、新增、删除、与下一章合并、按页拆分、调整起始页；
@@ -57,6 +58,18 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
     final n = int.tryParse(v?.trim() ?? '');
     if (v != null && n == null && mounted) toast(context, '请输入数字');
     return n;
+  }
+
+  /// 只读查看这一章解析出的文字。点「用这章出题」时：章节已保存则带着选项返回项目页，未保存先提示保存。
+  Future<void> _view(int i) async {
+    final r = await Navigator.push<GenOptions>(
+        context, MaterialPageRoute(builder: (_) => ChapterViewPage(doc: doc, initialIndex: i, chapters: list)));
+    if (r == null || !mounted) return;
+    if (dirty) {
+      toast(context, '章节有未保存的修改，请先保存再出题');
+      return;
+    }
+    Navigator.pop(context, r);
   }
 
   Future<void> _rename(int i) async {
@@ -197,7 +210,7 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
                 const SizedBox(height: 6),
                 Padding(
                   padding: EdgeInsets.fromLTRB(4, 6, 4, 8),
-                  child: Text('点章节可重命名；右侧菜单可拆分、合并、调整起始页或删除。',
+                  child: Text('点章节可重命名，点眼睛图标查看解析出的内容；右侧菜单可拆分、合并、调整起始页或删除。',
                       style: TextStyle(color: M.sub, fontSize: 12)),
                 ),
                 for (var i = 0; i < list.length; i++) _tile(i),
@@ -236,10 +249,17 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
               Text('第 ${c.start}–${c.end} $unit · 共 $pages $unit', style: TextStyle(color: M.sub, fontSize: 12)),
             ]),
           ),
+          IconButton(
+            tooltip: '查看内容',
+            icon: Icon(Icons.visibility_outlined, color: M.sub, size: 22),
+            onPressed: () => _view(i),
+          ),
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert_rounded, color: M.sub),
             onSelected: (v) {
               switch (v) {
+                case 'view':
+                  _view(i);
                 case 'rename':
                   _rename(i);
                 case 'split':
@@ -253,6 +273,7 @@ class _ChapterEditorPageState extends State<ChapterEditorPage> {
               }
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(value: 'view', child: Text('查看内容')),
               const PopupMenuItem(value: 'rename', child: Text('重命名')),
               if (c.end > c.start) PopupMenuItem(value: 'split', child: Text('在某一$unit拆分')),
               if (i > 0) const PopupMenuItem(value: 'start', child: Text('调整起始页')),

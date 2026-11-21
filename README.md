@@ -42,8 +42,8 @@
   <tr>
     <td align="center"><img src="docs/screenshots/24_quality_review.png" width="190"><br><sub>生成审核</sub></td>
     <td align="center"><img src="docs/screenshots/26_mastery.png" width="190"><br><sub>掌握度与薄弱点</sub></td>
-    <td></td>
-    <td></td>
+    <td align="center"><img src="docs/screenshots/27_auto_count.png" width="190"><br><sub>自动数量</sub></td>
+    <td align="center"><img src="docs/screenshots/28_chapter_view.png" width="190"><br><sub>章节内容</sub></td>
   </tr>
 </table>
 
@@ -53,7 +53,9 @@
 - 支持 PDF 和 Word（.docx / .doc），可批量导入，每份资料单独显示进度
 - 扫描版 PDF 也能识别，公式保留为 LaTeX
 - 自动识别章节（书签、目录页、标题格式，识别不到时由 AI 分章），也可手动编辑
+- 章节内容：按页查看每章解析出的原文（公式按教材样式排版），可切换章节、搜索高亮、复制，显示解析来源，一键「用这章出题」
 - 按整份、章节或页码范围生成；可设置数量、题型、难度和侧重点
+- 数量可选「自动（按知识点）」：先列出所选内容的知识点，按每个知识点约 1 张闪卡、1–3 道题（随难度）估算，显示「预计约 N 张/道」确认后再生成；有单次上限，避免数量和费用过高
 - 题型：单选、多选、判断、填空、简答、计算
 - 每张卡片和每道题都标注出处，一键查看原文
 - 生成后自动质检：核对出处、检查公式能否渲染、选择题是否合理、是否与已有内容重复；有问题的统一让 AI 修正一次，修不好就丢弃，并告诉你「生成 30 张，自动修正 2 张，去重 3 张」

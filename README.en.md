@@ -45,8 +45,8 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
   <tr>
     <td align="center"><img src="docs/screenshots/24_quality_review.png" width="190"><br><sub>Review new cards</sub></td>
     <td align="center"><img src="docs/screenshots/26_mastery.png" width="190"><br><sub>Mastery and weak spots</sub></td>
-    <td></td>
-    <td></td>
+    <td align="center"><img src="docs/screenshots/27_auto_count.png" width="190"><br><sub>Automatic count</sub></td>
+    <td align="center"><img src="docs/screenshots/28_chapter_view.png" width="190"><br><sub>Chapter content</sub></td>
   </tr>
 </table>
 
@@ -56,7 +56,9 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
 - PDF and Word (.docx / .doc), batch import with per-file progress
 - Scanned PDFs are supported; formulas are kept as LaTeX
 - Automatic chapter detection (bookmarks, table of contents, heading formats, with AI as a fallback), plus a manual chapter editor
+- Chapter content viewer: read the parsed text of each chapter page by page with textbook-style formulas, switch chapters, search with highlighting, copy, see which parser produced it, and generate from that chapter in one tap
 - Generate from the whole document, selected chapters, or a page range; choose count, question types, difficulty, and focus
+- "Automatic (by knowledge point)" count: the knowledge points in the selection are listed first, then about 1 card and 1–3 questions per point (by difficulty) are proposed as "about N items" for you to confirm; a per-generation cap keeps count and cost in check
 - Question types: single choice, multiple choice, true/false, fill-in-the-blank, short answer, calculation
 - Every card and question links back to its source in the original text
 - Automatic quality checks after generation: source matching, formula rendering, multiple-choice validity, and near-duplicate detection; failing items get one batched AI fix or are dropped, with a summary such as "30 generated, 2 auto-fixed, 3 duplicates removed"

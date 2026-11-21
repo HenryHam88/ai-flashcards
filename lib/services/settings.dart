@@ -144,6 +144,10 @@ class Settings {
   bool get reviewBeforeAdd => prefs.getBool('review_before_add') ?? false;
   set reviewBeforeAdd(bool v) => prefs.setBool('review_before_add', v);
 
+  /// 「自动（按知识点）」数量的单次上限（闪卡 + 题目），防止数量和费用过高。
+  int get autoCap => prefs.getInt('auto_cap') ?? 40;
+  set autoCap(int v) => prefs.setInt('auto_cap', v);
+
   // ---------- 首次启动 ----------
   bool get onboarded => prefs.getBool('onboarded') ?? false;
   set onboarded(bool v) => prefs.setBool('onboarded', v);
@@ -153,6 +157,7 @@ class Settings {
     'llm_base', 'llm_model', 'ocr_provider', 'ocr_modes', 'ocr_base', 'ocr_batch', 'kimi_base', 'gen_templates',
     'daily_new_limit', 'daily_review_limit', 'desired_retention', 'day_start_hour', 'theme_mode', 'text_scale',
     'math_scale', 'reduce_motion', 'haptics', 'reminder_on', 'reminder_minutes', 'auto_backup', 'review_before_add',
+    'auto_cap',
   ];
   static const secretKeys = ['llm_key', 'ocr_key', 'kimi_key'];
 

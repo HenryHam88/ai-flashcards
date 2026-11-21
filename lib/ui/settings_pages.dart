@@ -214,6 +214,17 @@ class _LearningSettingsPageState extends State<LearningSettingsPage> {
           ),
         ]),
         SettingsGroup(title: '出题质量', children: [
+          SliderTile(
+            icon: Icons.auto_awesome_motion_outlined,
+            title: '自动数量上限',
+            valueLabel: '${st.autoCap} 张/道',
+            hint: '出题数量选「自动（按知识点）」时，每次生成闪卡和题目合计最多多少；超出时按比例减少，控制数量和费用。',
+            value: st.autoCap.toDouble(),
+            min: 10,
+            max: 200,
+            divisions: 38,
+            onChanged: (v) => setState(() => st.autoCap = v.round()),
+          ),
           SwitchTile(
             icon: Icons.fact_check_outlined,
             title: '生成后先审核',

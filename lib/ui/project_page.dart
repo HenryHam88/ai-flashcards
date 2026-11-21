@@ -13,9 +13,11 @@ import '../services/pipeline.dart';
 import '../services/settings.dart';
 import '../theme/glass.dart';
 import 'chapter_editor_page.dart';
+import 'chapter_view_page.dart';
 import 'settings_pages.dart' show showExportSheet;
 import 'explain_sheet.dart';
 import 'feedback_sheet.dart';
+import 'auto_count_sheet.dart';
 import 'gen_sheet.dart';
 import 'inbox_page.dart';
 import 'home_page.dart';
@@ -137,8 +139,41 @@ class _ProjectPageState extends State<ProjectPage> {
   Future<void> _generate(ProjectData d, {GenOptions? preset}) async {
     final o = await showGenOptionsSheet(context, d.project, d.chapters, preset: preset);
     if (o == null) return;
+    final GenerationService gen;
+    try {
+      gen = await s.generator(projectId: d.project.id);
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+      return;
+    }
+    List<KnowledgePoint>? planned;
+    if (o.autoCount) {
+      // 自动数量：先列出知识点并估算，用户确认后再生成；规划失败时改为手动设置数量
+      GenPlan? plan;
+      String? err;
+      await _run(() async {
+        try {
+          plan = await gen.plan(d.project.id, o, _progress);
+        } catch (e) {
+          err = '$e';
+        }
+      });
+      if (!mounted) return;
+      final picked = plan != null
+          ? await showAutoCountConfirm(context, plan!)
+          : await showFixedCountFallback(context, err ?? '未知错误', o);
+      if (picked == null) return;
+      o
+        ..cardCount = picked.$1
+        ..questionCount = picked.$2;
+      if (plan != null) {
+        planned = plan!.kps;
+      } else {
+        o.autoCount = false;
+      }
+    }
     await _run(() async {
-      final r = await (await s.generator(projectId: d.project.id)).generate(d.project.id, o, _progress);
+      final r = await gen.generate(d.project.id, o, _progress, planned: planned);
       if (!mounted) return;
       // 生成后横幅：可以马上审核这一批（开启「生成后先审核」时内容在待审核里）
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -356,9 +391,17 @@ class _ProjectPageState extends State<ProjectPage> {
                   onSelected: (v) async {
                     if (v == 'parse') {
                       s.enqueueParse([doc]);
-                    } else if (v == 'chapters') {
-                      await Navigator.push(context, MaterialPageRoute(builder: (_) => ChapterEditorPage(doc: doc)));
+                    } else if (v == 'chapters' || v == 'view') {
+                      // 章节编辑 / 章节内容里点了「用这章出题」时会带回预填好的生成选项
+                      final r = await Navigator.push<GenOptions>(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => v == 'view' ? ChapterViewPage(doc: doc) : ChapterEditorPage(doc: doc)));
                       s.changed();
+                      if (r != null && mounted) {
+                        final nd = await _load();
+                        if (nd != null && mounted) await _generate(nd, preset: r);
+                      }
                     } else if (v == 'delete') {
                       await s.repo.deleteDoc(doc);
                       s.changed();
@@ -370,6 +413,7 @@ class _ProjectPageState extends State<ProjectPage> {
                         child: Text(doc.isWord
                             ? (doc.status == '已解析' ? '重新解析' : '解析')
                             : (doc.parsedPages >= doc.pageCount && doc.pageCount > 0 ? '重新切分章节' : '解析（继续未完成的页）'))),
+                    if (doc.parsedPages > 0) const PopupMenuItem(value: 'view', child: Text('查看章节内容')),
                     if (doc.parsedPages > 0) const PopupMenuItem(value: 'chapters', child: Text('编辑章节')),
                     const PopupMenuItem(value: 'delete', child: Text('删除')),
                   ],
@@ -383,7 +427,7 @@ class _ProjectPageState extends State<ProjectPage> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(d.chapters.join('\n'), style: const TextStyle(height: 1.8)),
               const SizedBox(height: 4),
-              Text('识别得不对？在资料右侧菜单选「编辑章节」，可以手动调整、按页数切分或让 AI 重新分章。',
+              Text('想看解析出的原文，在资料右侧菜单选「查看章节内容」；识别得不对，选「编辑章节」可以手动调整、按页数切分或让 AI 重新分章。',
                   style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
             ]),
           ),

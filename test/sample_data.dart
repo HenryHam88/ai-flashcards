@@ -137,3 +137,30 @@ Future<void> seedStudyHistory(Repository repo, DateTime now) async {
   await repo.saveCards(cards);
   await repo.saveWrong(WrongEntry(id: 'q1', projectId: 'p2', questionId: 'q1', mark: '答错'));
 }
+
+/// 章节内容截图 / 测试用：第一章第 11–13 页的解析结果（带解析来源）。
+Future<ChapterPlan> seedChapterPages(Repository repo) async {
+  await repo.savePages([
+    PageText(docId: 'd1', projectId: 'p1', page: 11, source: 'deepseek_text', text: r'''**性质 1** $P(\varnothing)=0$。
+**性质 2**（有限可加性）若 $A_1,A_2,\dots,A_n$ 两两互不相容，则
+$$P(A_1\cup A_2\cup\cdots\cup A_n)=\sum_{i=1}^{n}P(A_i)$$
+**性质 3** 对任一事件 $A$，$P(\bar A)=1-P(A)$。'''),
+    PageText(docId: 'd1', projectId: 'p1', page: 12, source: 'deepseek_rich', text: r'''**定义** 设 $A,B$ 是两个事件，且 $P(B)>0$，称
+$$P(A\mid B)=\frac{P(AB)}{P(B)}$$
+为在事件 $B$ 发生的条件下事件 $A$ 发生的**条件概率**。
+**乘法定理** 设 $P(B)>0$，则有 $P(AB)=P(B)\,P(A\mid B)$。
+**例 1** 一盒子装有 4 只产品，其中 3 只一等品、1 只二等品。从中取产品两次，每次任取一只，作不放回抽样。求在第一次取到一等品的条件下，第二次取到一等品的条件概率：$P(B\mid A)=\dfrac{2}{3}$。'''),
+    PageText(docId: 'd1', projectId: 'p1', page: 13, source: 'deepseek_rich', text: '图 1-3'),
+  ]);
+  final plan = ChapterPlan(docId: 'd1', projectId: 'p1', source: 'toc', chapters: [
+    ChapterRange('前置内容', 1, 10),
+    ChapterRange('第一章 随机事件与概率', 11, 13),
+    ChapterRange('第二章 随机变量及其分布', 14, 40),
+  ]);
+  await repo.saveChapterPlan(plan);
+  await repo.replaceChunks('p1', 'd1', [
+    Chunk(id: 'k11', projectId: 'p1', docId: 'd1', chapter: '第一章 随机事件与概率', section: '1.3 概率的性质', pageStart: 11, pageEnd: 11, text: ''),
+    Chunk(id: 'k12', projectId: 'p1', docId: 'd1', chapter: '第一章 随机事件与概率', section: '1.4 条件概率', pageStart: 12, pageEnd: 13, text: ''),
+  ]);
+  return plan;
+}

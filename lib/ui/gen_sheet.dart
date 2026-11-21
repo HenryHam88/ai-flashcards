@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../services/pipeline.dart' show questionsPerKp;
 import '../theme/glass.dart';
 import 'home_page.dart';
 
@@ -123,8 +124,32 @@ class _GenSheetState extends State<_GenSheet> {
         ),
       const SizedBox(height: 12),
       const Text('数量', style: h),
-      _counter('闪卡', o.cardCount, (v) => o.cardCount = v),
-      _counter('题目', o.questionCount, (v) => o.questionCount = v),
+      const SizedBox(height: 6),
+      _chips(['固定数量', '自动（按知识点）'], [o.autoCount ? '自动（按知识点）' : '固定数量'],
+          single: true, onSingle: (v) => o.autoCount = v != '固定数量'),
+      if (!o.autoCount) ...[
+        _counter('闪卡', o.cardCount, (v) => o.cardCount = v),
+        _counter('题目', o.questionCount, (v) => o.questionCount = v),
+      ] else ...[
+        const SizedBox(height: 8),
+        Text('先让 AI 列出所选内容里的知识点（定义、定理、公式、例题），再按每个知识点约 1 张闪卡、'
+            '${questionsPerKp(o.difficulty)} 道题（随难度：基础 1、中等 2、拔高 3）估算数量。生成前会显示预计数量，确认后才开始。',
+            style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, children: [
+          FilterChip(
+              label: const Text('出闪卡'),
+              selected: o.autoCards,
+              showCheckmark: true,
+              onSelected: (v) => setState(() => o.autoCards = v)),
+          FilterChip(
+              label: const Text('出题目'),
+              selected: o.autoQuestions,
+              showCheckmark: true,
+              onSelected: (v) => setState(() => o.autoQuestions = v)),
+        ]),
+        _counter('单次上限（闪卡 + 题目）', s.settings.autoCap, (v) => s.settings.autoCap = v.clamp(5, 200)),
+      ],
       const Text('题型', style: h),
       const SizedBox(height: 6),
       _chips(QType.all, o.types),
@@ -191,7 +216,11 @@ class _GenSheetState extends State<_GenSheet> {
         expand: true,
         onTap: () {
           final r = _collect();
-          if (r.types.isEmpty && r.questionCount > 0) {
+          if (r.autoCount && !r.autoCards && !r.autoQuestions) {
+            toast(context, '请至少选择闪卡或题目');
+            return;
+          }
+          if (r.types.isEmpty && (r.autoCount ? r.autoQuestions : r.questionCount > 0)) {
             toast(context, '请至少选择一种题型');
             return;
           }

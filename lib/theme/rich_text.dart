@@ -126,7 +126,12 @@ class MathText extends StatelessWidget {
   final String text;
   final TextStyle? style;
   final TextAlign textAlign;
-  const MathText(this.text, {super.key, this.style, this.textAlign = TextAlign.start});
+  /// 搜索高亮：普通文字中的匹配加底色；公式源码包含关键词时整个公式加底色。
+  final String? highlight;
+  const MathText(this.text, {super.key, this.style, this.textAlign = TextAlign.start, this.highlight});
+
+  /// 高亮颜色（搜索结果）。
+  static Color get highlightColor => M.oat.withValues(alpha: 0.9);
 
   @override
   Widget build(BuildContext context) {
@@ -143,11 +148,36 @@ class MathText extends StatelessWidget {
           onErrorFallback: (e) => fallback(seg.text, s),
         );
 
+    final hl = highlight?.trim().toLowerCase() ?? '';
+    InlineSpan plain(String t) {
+      if (hl.isEmpty) return TextSpan(text: t);
+      final lower = t.toLowerCase();
+      final parts = <InlineSpan>[];
+      var i = 0;
+      while (true) {
+        final j = lower.indexOf(hl, i);
+        if (j < 0) break;
+        if (j > i) parts.add(TextSpan(text: t.substring(i, j)));
+        parts.add(TextSpan(text: t.substring(j, j + hl.length), style: TextStyle(backgroundColor: highlightColor)));
+        i = j + hl.length;
+      }
+      if (parts.isEmpty) return TextSpan(text: t);
+      if (i < t.length) parts.add(TextSpan(text: t.substring(i)));
+      return TextSpan(children: parts);
+    }
+
+    Widget marked(TexSegment seg, Widget w) => hl.isNotEmpty && seg.text.toLowerCase().contains(hl)
+        ? Container(
+            decoration: BoxDecoration(color: highlightColor, borderRadius: BorderRadius.circular(4)),
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: w)
+        : w;
+
     List<InlineSpan> inline(String src, TextStyle s) {
       final out = <InlineSpan>[];
       var pos = 0;
       for (final m in MdMath.inlineRe.allMatches(src)) {
-        if (m.start > pos) out.add(TextSpan(text: src.substring(pos, m.start)));
+        if (m.start > pos) out.add(plain(src.substring(pos, m.start)));
         if (m[1] != null || m[2] != null) {
           final bs = s.copyWith(fontWeight: FontWeight.w700);
           out.add(TextSpan(style: const TextStyle(fontWeight: FontWeight.w700), children: inline(m[1] ?? m[2]!, bs)));
@@ -162,11 +192,11 @@ class MathText extends StatelessWidget {
                   backgroundColor: M.glass.withValues(alpha: 0.6))));
         } else {
           final seg = doc.math[int.parse(m[5]!)];
-          out.add(WidgetSpan(alignment: PlaceholderAlignment.middle, child: mathWidget(seg, s)));
+          out.add(WidgetSpan(alignment: PlaceholderAlignment.middle, child: marked(seg, mathWidget(seg, s))));
         }
         pos = m.end;
       }
-      if (pos < src.length) out.add(TextSpan(text: src.substring(pos)));
+      if (pos < src.length) out.add(plain(src.substring(pos)));
       return out;
     }
 
@@ -223,7 +253,7 @@ class MathText extends StatelessWidget {
             child: Center(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: mathWidget(doc.math[int.parse(blk.text)], st, display: true),
+                child: marked(doc.math[int.parse(blk.text)], mathWidget(doc.math[int.parse(blk.text)], st, display: true)),
               ),
             ),
           ));

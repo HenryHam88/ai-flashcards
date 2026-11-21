@@ -228,6 +228,13 @@ class ParseService {
     await cs.apply(doc, plan);
   }
 
+  /// 记录每页的解析来源（只用于「章节内容」里显示，不影响解析）。
+  String sourceTag(String purpose) => switch (settings.ocrProvider) {
+        OcrProvider.deepseek => purpose == Settings.ocrRich ? 'deepseek_rich' : 'deepseek_text',
+        OcrProvider.kimi => 'kimi',
+        OcrProvider.local => 'local',
+      };
+
   static const wordUnsupported = '当前解析模型不支持 Word，请在「文档解析」设置里切换到支持 Word 的模型（DeepSeek OCR 或 Kimi），或把文档另存为 PDF';
 
   Future<PdfParser?> _parser(String purpose) async {
@@ -311,7 +318,12 @@ class ParseService {
         }
         await repo.savePages([
           for (var i = 0; i < texts.length; i++)
-            PageText(docId: doc.id, projectId: doc.projectId, page: b.from + i, text: LatexUtil.normalize(texts[i]))
+            PageText(
+                docId: doc.id,
+                projectId: doc.projectId,
+                page: b.from + i,
+                text: LatexUtil.normalize(texts[i]),
+                source: parser == null ? 'local' : sourceTag(b.purpose))
         ]);
         doc.parsedPages = (await repo.pages(doc.projectId, docId: doc.id)).length;
         await repo.saveDoc(doc);
@@ -373,7 +385,7 @@ extension on ParseService {
     await repo.deletePages(doc.projectId, doc.id); // 小节数可能变化，整份重写
     await repo.savePages([
       for (var i = 0; i < sections.length; i++)
-        PageText(docId: doc.id, projectId: doc.projectId, page: i + 1, text: sections[i])
+        PageText(docId: doc.id, projectId: doc.projectId, page: i + 1, text: sections[i], source: sourceTag(purpose))
     ]);
     doc.pageCount = sections.length;
     await _rechunk(doc, onProgress);
@@ -402,6 +414,80 @@ class GenerationResult {
     final d = quality.detail;
     return '生成 ${cards + questions} 张（闪卡 $cards，题目 $questions）${d.isEmpty ? '' : '，$d'}';
   }
+}
+
+// ================= 自动数量（按知识点） =================
+
+/// 每个知识点出几道题：基础 1、中等 / 混合 2、拔高 3。
+int questionsPerKp(String difficulty) => switch (difficulty) {
+      '基础' => 1,
+      '拔高' => 3,
+      _ => 2,
+    };
+
+/// 自动数量的估算结果。[rawCards] / [rawQuestions] 是不设上限时的数量。
+class AutoCount {
+  final int cards, questions, rawCards, rawQuestions, cap;
+  const AutoCount(this.cards, this.questions, this.rawCards, this.rawQuestions, this.cap);
+  int get total => cards + questions;
+  int get rawTotal => rawCards + rawQuestions;
+  bool get capped => rawTotal > total;
+}
+
+/// 按知识点推算数量：闪卡约每个知识点 1 张，题目每个知识点 1–3 道（随难度）。
+/// 合计超过 [cap] 时按比例缩减，两类都要时各至少 1。
+AutoCount deriveAutoCount(int kpCount,
+    {required String difficulty, bool cards = true, bool questions = true, int cap = 40}) {
+  final rc = cards ? kpCount : 0;
+  final rq = questions ? kpCount * questionsPerKp(difficulty) : 0;
+  final limit = max(1, cap);
+  if (rc + rq <= limit) return AutoCount(rc, rq, rc, rq, limit);
+  var c = (limit * rc / (rc + rq)).round();
+  if (rc > 0 && rq > 0 && limit >= 2) c = c.clamp(1, limit - 1);
+  return AutoCount(c, limit - c, rc, rq, limit);
+}
+
+/// 自动数量的规划结果：所选范围内的知识点 + 推算的数量。生成时直接复用这些知识点，不再重复分析。
+class GenPlan {
+  final List<KnowledgePoint> kps;
+  final AutoCount count;
+  final int chunks;
+  GenPlan(this.kps, this.count, this.chunks);
+
+  /// 按章节分组（保持出现顺序），用于确认面板的知识点列表。
+  Map<String, List<KnowledgePoint>> get byChapter {
+    final m = <String, List<KnowledgePoint>>{};
+    for (final k in kps) {
+      m.putIfAbsent(k.chapter.isEmpty ? '未分章' : k.chapter, () => []).add(k);
+    }
+    return m;
+  }
+}
+
+class PlanException implements Exception {
+  final String message;
+  PlanException(this.message);
+  @override
+  String toString() => message;
+}
+
+/// 解析知识点 JSON（knowledge_points 或 items），忽略不是对象的条目。
+List<KnowledgePoint> parseKps(String projectId, Chunk c, Map<String, dynamic> j) {
+  final list = listOfMaps(j['knowledge_points'] ?? j['items']);
+  return [
+    for (var k = 0; k < list.length; k++)
+      KnowledgePoint(
+        id: '${c.id}_k$k',
+        projectId: projectId,
+        docId: c.docId,
+        chapter: c.chapter,
+        section: c.section,
+        title: '${list[k]['title'] ?? ''}',
+        type: '${list[k]['type'] ?? ''}',
+        content: LatexUtil.autoFix('${list[k]['content'] ?? ''}'),
+        page: asInt(list[k]['page'], c.pageStart).clamp(c.pageStart, max(c.pageStart, c.pageEnd)),
+      )
+  ];
 }
 
 class GenerationService {
@@ -469,22 +555,7 @@ class GenerationService {
         'text': c.text,
       });
       final j = await llm.chatJson(prompt);
-      final list = listOfMaps(j['knowledge_points'] ?? j['items']);
-      final kps = <KnowledgePoint>[];
-      for (var k = 0; k < list.length; k++) {
-        final m = list[k];
-        kps.add(KnowledgePoint(
-          id: '${c.id}_k$k',
-          projectId: projectId,
-          docId: c.docId,
-          chapter: c.chapter,
-          section: c.section,
-          title: '${m['title'] ?? ''}',
-          type: '${m['type'] ?? ''}',
-          content: LatexUtil.autoFix('${m['content'] ?? ''}'),
-          page: asInt(m['page'], c.pageStart).clamp(c.pageStart, max(c.pageStart, c.pageEnd)),
-        ));
-      }
+      final kps = parseKps(projectId, c, j);
       await repo.saveKps(kps);
       result.addAll(kps);
     }
@@ -493,14 +564,39 @@ class GenerationService {
 
   static String optionsText(List<String> l) => l.isEmpty ? '不限' : l.join('、');
 
+  /// 自动数量第 1 步（规划）：列出所选范围内的知识点（定义、定理、公式、例题…），据此推算数量。
+  /// 用的是同一个知识点提取步骤（结果会缓存），所以随后生成时不会再分析一遍。失败时抛 [PlanException]。
+  Future<GenPlan> plan(String projectId, GenOptions o, Progress p, {int? cap}) async {
+    final allChunks = await repo.chunks(projectId);
+    if (allChunks.isEmpty) throw PlanException('还没有解析好的资料，请先上传并解析资料');
+    final chunks = _scope(allChunks, o);
+    if (chunks.isEmpty) throw PlanException('所选范围内没有内容');
+    p('分析知识点…', 0.05);
+    final List<KnowledgePoint> kps;
+    try {
+      kps = await extractKps(projectId, chunks, (m, f) => p(m.replaceFirst('提取知识点', '分析知识点'), f * 2));
+    } catch (e) {
+      throw PlanException('分析知识点失败：$e');
+    }
+    if (kps.isEmpty) throw PlanException('没有识别到知识点');
+    kps.sort((a, b) => b.priority.compareTo(a.priority));
+    final count = deriveAutoCount(kps.length,
+        difficulty: o.difficulty,
+        cards: o.autoCards,
+        questions: o.autoQuestions && o.types.isNotEmpty,
+        cap: cap ?? settings.autoCap);
+    return GenPlan(kps, count, chunks.length);
+  }
+
   /// 第 3 步：根据知识点生成闪卡和题目。LaTeX 不合格的整批重新生成（最多 2 次）。
-  Future<GenerationResult> generate(String projectId, GenOptions o, Progress p) async {
+  /// [planned]：自动数量规划时得到的知识点，直接复用。
+  Future<GenerationResult> generate(String projectId, GenOptions o, Progress p, {List<KnowledgePoint>? planned}) async {
     final allChunks = await repo.chunks(projectId);
     if (allChunks.isEmpty) throw LlmException('还没有解析好的资料，请先上传并解析 PDF');
     final chunks = _scope(allChunks, o);
     if (chunks.isEmpty) throw LlmException('所选范围内没有内容');
     p('准备中…', 0.05);
-    var kps = await extractKps(projectId, chunks, p);
+    var kps = planned != null && planned.isNotEmpty ? [...planned] : await extractKps(projectId, chunks, p);
     if (kps.isEmpty) throw LlmException('没有提取到知识点');
     for (final c in chunks) {
       _chunkText[c.id] = c.text;
@@ -523,8 +619,16 @@ class GenerationService {
     var totalCards = 0, totalQ = 0;
     for (var bi = 0; bi < batches.length && (cardsLeft > 0 || qLeft > 0); bi++) {
       final remainingBatches = batches.length - bi;
-      final nc = (cardsLeft / remainingBatches).ceil();
-      final nq = (qLeft / remainingBatches).ceil();
+      var nc = (cardsLeft / remainingBatches).ceil();
+      var nq = (qLeft / remainingBatches).ceil();
+      if (o.autoCount) {
+        // 自动数量：按每批知识点个数分配，让每个知识点都覆盖到
+        final restKps = batches.skip(bi).fold<int>(0, (a, b) => a + b.length);
+        final last = bi == batches.length - 1;
+        nc = last ? max(0, cardsLeft) : (max(0, cardsLeft) * batches[bi].length / restKps).round();
+        nq = last ? max(0, qLeft) : (max(0, qLeft) * batches[bi].length / restKps).round();
+        if (nc == 0 && nq == 0) continue;
+      }
       p('生成闪卡和题目（${bi + 1}/${batches.length}）', 0.5 + 0.5 * bi / batches.length);
       var (cards, qs, rejects) = await _generateBatch(projectId, batches[bi], nc, nq, o);
       if (qualityCheck) {

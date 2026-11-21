@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-21
+
+### 新增
+
+- 出题数量新增「自动（按知识点）」：先列出所选内容中的知识点（定义、定理、公式、例题等），按每个知识点约 1 张闪卡、1–3 道题（基础 1、中等 / 混合 2、拔高 3）估算数量。生成前显示「预计约 N 张/道」和可展开的知识点列表，可微调后再开始；生成时直接使用这份知识点列表，不再重复分析。支持按章节和多份资料，生成后照常质检。
+  - 单次上限默认 40（闪卡 + 题目），可在学习设置和出题面板中调整，超出时按比例减少。
+  - 分析失败时会说明原因，并请你手动设置这次的数量。
+  - 固定数量仍是默认方式，原有行为不变。
+- 章节内容（只读）：在资料菜单「查看章节内容」或章节编辑页的眼睛图标 / 菜单「查看内容」打开，按页显示该章解析出的文字，标出页码和小节，公式按教材样式排版。
+  - 上一章 / 下一章和下拉切换，章内搜索并高亮、逐个跳转，复制整章或单页文字。
+  - 显示解析来源（DeepSeek OCR 文字 / 版面模式、Kimi、本地文字层）；没有文字或文字很少的页会提示。
+  - 「用这章出题」直接打开预填了该章节的生成面板。
+
 ## [1.3.0] - 2026-11-21
 
 ### 新增
@@ -84,7 +97,8 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式显示。
 - 学习统计页面。
 
-[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.1.9...v1.2.0
 [1.1.9]: https://github.com/HenryHam88/ai-flashcards/compare/v1.1.8...v1.1.9

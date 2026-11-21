@@ -7,7 +7,10 @@ import 'package:ai_flashcards/data/repository.dart';
 import 'package:ai_flashcards/main.dart';
 import 'package:ai_flashcards/services/settings.dart';
 import 'package:ai_flashcards/theme/glass.dart';
+import 'package:ai_flashcards/services/pipeline.dart';
+import 'package:ai_flashcards/ui/auto_count_sheet.dart';
 import 'package:ai_flashcards/ui/chapter_editor_page.dart';
+import 'package:ai_flashcards/ui/chapter_view_page.dart';
 import 'package:ai_flashcards/ui/explain_history_page.dart';
 import 'package:ai_flashcards/ui/inbox_page.dart';
 import 'package:ai_flashcards/ui/onboarding_page.dart';
@@ -428,6 +431,46 @@ void main() {
       await t.tap(find.text('概率论 第3章').hitTestable().first);
       await t.pump(const Duration(milliseconds: 200));
       await t.dragFrom(const Offset(200, 500), const Offset(0, -80));
+      for (var i = 0; i < 6; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+    });
+  });
+
+  testWidgets('自动数量：预计数量与知识点列表', (t) async {
+    const kps1 = [
+      ('样本空间与随机事件', '定义', 9), ('事件的关系与运算', '定义', 10), ('频率与概率', '定义', 11),
+      (r'概率的有限可加性', '定理', 11), (r'$P(\bar A)=1-P(A)$', '公式', 11), ('古典概型', '方法', 12),
+      (r'条件概率 $P(A\mid B)$', '定义', 12), ('乘法公式', '公式', 12), ('全概率公式', '定理', 13),
+      ('贝叶斯公式', '定理', 13), ('不放回抽样例题', '例题', 12), ('事件的独立性', '定义', 14),
+    ];
+    const kps2 = [
+      ('随机变量', '定义', 39), ('分布律', '定义', 40), ('二项分布', '公式', 41),
+      ('泊松分布', '公式', 42), ('分布函数的性质', '定理', 44), ('正态分布标准化', '方法', 48),
+    ];
+    final kps = [
+      for (final (i, k) in kps1.indexed)
+        KnowledgePoint(id: 'a$i', projectId: 'p1', chapter: '第一章 随机事件与概率', title: k.$1, type: k.$2, page: k.$3),
+      for (final (i, k) in kps2.indexed)
+        KnowledgePoint(id: 'b$i', projectId: 'p1', chapter: '第二章 随机变量及其分布', title: k.$1, type: k.$2, page: k.$3),
+    ];
+    final plan = GenPlan(kps, deriveAutoCount(kps.length, difficulty: '中等', cap: 40), 2);
+    await shoot(t, const ProjectPage(projectId: 'p1'), '27_auto_count', after: () async {
+      showAutoCountConfirm(t.element(find.byType(ProjectPage)), plan, expandList: true);
+      for (var i = 0; i < 10; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+    });
+  });
+
+  testWidgets('章节内容：按页查看与搜索', (t) async {
+    await seedChapterPages(state.repo);
+    final doc = (await state.repo.docs('p1')).firstWhere((d) => d.id == 'd1');
+    await shoot(t, ChapterViewPage(doc: doc, initialIndex: 1), '28_chapter_view', after: () async {
+      await t.tap(find.byTooltip('在本章搜索'));
+      await t.pump();
+      await t.enterText(find.byType(TextField), '条件概率');
+      FocusManager.instance.primaryFocus?.unfocus();
       for (var i = 0; i < 6; i++) {
         await t.pump(const Duration(milliseconds: 100));
       }
