@@ -62,9 +62,9 @@ class BlobBackground extends StatelessWidget {
           child: ImageFiltered(
             imageFilter: ImageFilter.blur(sigmaX: 70, sigmaY: 70),
             child: Stack(children: [
-              Positioned(top: -60, left: -80, child: blob(M.greyBlue.withValues(alpha: 0.55), 300)),
-              Positioned(top: 260, right: -110, child: blob(M.rose.withValues(alpha: 0.40), 280)),
-              Positioned(bottom: -80, left: 10, child: blob(M.sage.withValues(alpha: 0.45), 300)),
+              Positioned(top: -60, left: -80, child: blob(M.greyBlue.withValues(alpha: 0.7), 320)),
+              Positioned(top: 260, right: -110, child: blob(M.rose.withValues(alpha: 0.5), 300)),
+              Positioned(bottom: -80, left: 10, child: blob(M.sage.withValues(alpha: 0.55), 320)),
               Positioned(top: 120, left: 120, child: blob(M.oat.withValues(alpha: 0.6), 220)),
             ]),
           ),
@@ -212,13 +212,19 @@ class MathText extends StatelessWidget {
     Widget fallback(String tex) => Text(tex, style: st.copyWith(fontFamily: 'monospace', color: M.roseDark));
     for (final s in segs) {
       if (!s.isMath) {
-        spans.add(TextSpan(text: s.text));
+        // 简单支持 **加粗**（AI 解释常用）
+        final parts = s.text.split('**');
+        for (var k = 0; k < parts.length; k++) {
+          if (parts[k].isEmpty) continue;
+          spans.add(TextSpan(
+              text: parts[k], style: k.isOdd && parts.length > 2 ? const TextStyle(fontWeight: FontWeight.w700) : null));
+        }
       } else if (!s.display) {
         spans.add(WidgetSpan(
           alignment: PlaceholderAlignment.middle,
           child: Math.tex(s.text,
               mathStyle: MathStyle.text,
-              textStyle: st.copyWith(fontSize: (st.fontSize ?? 15) * 1.05),
+              textStyle: TextStyle(fontSize: (st.fontSize ?? 15) * 1.05, color: st.color),
               onErrorFallback: (e) => fallback(s.text)),
         ));
       } else {
@@ -230,7 +236,7 @@ class MathText extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               child: Math.tex(s.text,
                   mathStyle: MathStyle.display,
-                  textStyle: st.copyWith(fontSize: (st.fontSize ?? 15) * 1.1),
+                  textStyle: TextStyle(fontSize: (st.fontSize ?? 15) * 1.1, color: st.color),
                   onErrorFallback: (e) => fallback(s.text)),
             ),
           ),

@@ -1,17 +1,30 @@
-# ai_flashcards
+# 闪卡刷题（AI Flashcards）v1
 
-A new Flutter project.
+用 AI 从你上传的 PDF 教材生成闪卡和练习题的安卓 App（Flutter 开发），莫兰迪配色 + 毛玻璃界面。所有数据只存在手机本地。
 
-## Getting Started
+## 安装
+把 `ai_flashcards_v1.apk` 传到安卓手机上，点开安装（需要允许“安装未知来源应用”）。
 
-This project is a starting point for a Flutter application.
+## 第一次使用：填写 DeepSeek 密钥
+1. 到 [DeepSeek 开放平台](https://platform.deepseek.com/) 申请 API 密钥（`sk-` 开头）。
+2. 打开 App → 底部 **我的** → **出题模型** → 在「API 密钥」里粘贴密钥。
+   - 接口地址默认 `https://api.deepseek.com`，模型默认 `deepseek-flash`，难题可点 `deepseek-v4-pro` 切换。
+   - 点「测试连接」确认能用。
+3. **我的 → PDF 解析**：默认用 DeepSeek OCR，密钥留空会自动使用上面那个密钥。
+   - 纯文字教材选「纯文字教材」，带图表的选「带图表/版面」。
+   - 也可以改用 Kimi 文件解析（填 Kimi 密钥），或「本地提取文字层」（免费，扫描版读不出来）。
 
-A few resources to get you started if this is your first Flutter project:
+密钥保存在系统安全存储里，不会上传到别处。
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## 使用流程
+1. 首页 **新建项目**（如「概率论」）→ 进入项目 → **上传 PDF** → 开始解析（大文件自动按每 30 页一批上传，失败自动重试，已解析的页不会重复花钱）。
+2. 点 **生成**，在生成选项里选范围（整份/章节/页码）、数量、题型、难度、侧重点，也可以写自定义要求；常用设置可存成模板或设为项目默认。
+3. **复习**：闪卡点击翻面，「没记住 / 记住了」或左右滑动；按 FSRS 算法安排下次复习。进度随时保存，切出或被系统杀掉后会回到原来那张。
+4. **测验**：选择/判断/填空自动判分，简答/计算由 AI 批改打分；答错自动进错题本，连续答对 3 次自动移出。
+5. 闪卡和题目上都有 **AI 解释**：半屏面板，结合教材原文讲解并举例，可追问；关掉后仍停在原来那张。
+6. **我的 → 高级：提示词** 可修改出题、解释、批改用的提示词，随时恢复默认。
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 开发
+- Flutter 3.50（stable），`flutter analyze`、`flutter test` 均通过。
+- 截图：`flutter test test/screenshots_test.dart --update-goldens`（输出在 `test/goldens/`）。
+- 存储：`lib/data/doc_store.dart` 定义存储接口（SQLite / 内存实现），`lib/data/repository.dart` 为业务仓库；以后加 WebDAV 同步只需新增实现。

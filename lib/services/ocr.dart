@@ -38,7 +38,7 @@ class OcrText {
   static String clean(String s) {
     var r = s.replaceAllMapped(_refBox, (m) {
       final label = m[1]!.trim().toLowerCase();
-      if (label == 'image' || label == 'figure') return '[插图]\n';
+      if (label == 'image' || label == 'figure') return '[插图]';
       return '';
     });
     r = r.replaceAll(_strayTag, '').replaceAll(_strayCoords, '');
