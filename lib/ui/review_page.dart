@@ -1,0 +1,248 @@
+import 'dart:math';
+
+import 'package:material_ui/material_ui.dart';
+import 'package:provider/provider.dart';
+
+import '../app_state.dart';
+import '../models.dart';
+import '../theme/glass.dart';
+import 'explain_sheet.dart';
+
+/// 闪卡复习。进度（如 12/32）每一步都写入本地，切出 App、被系统杀掉后都能恢复。
+class ReviewPage extends StatefulWidget {
+  final String? projectId;
+  final bool resume;
+  const ReviewPage({super.key, this.projectId, this.resume = false});
+  @override
+  State<ReviewPage> createState() => _ReviewPageState();
+}
+
+class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
+  List<Flashcard> cards = [];
+  int index = 0;
+  bool flipped = false;
+  bool loading = true;
+  double dx = 0;
+
+  AppState get s => context.read<AppState>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _init();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _persist();
+  }
+
+  Future<void> _init() async {
+    final saved = s.settings.reviewSession;
+    if (saved != null && (widget.resume || saved['projectId'] == widget.projectId)) {
+      final ids = (saved['ids'] as List).cast<String>();
+      final loaded = <Flashcard>[];
+      for (final id in ids) {
+        final c = await s.repo.card(id);
+        if (c != null) loaded.add(c);
+      }
+      cards = loaded;
+      index = min(saved['index'] as int, max(0, loaded.length));
+      flipped = saved['flipped'] == true;
+    } else {
+      cards = await s.dueCards(projectId: widget.projectId);
+      index = 0;
+    }
+    loading = false;
+    _persist();
+    if (mounted) setState(() {});
+  }
+
+  void _persist() {
+    if (cards.isEmpty || index >= cards.length) {
+      s.settings.reviewSession = null;
+    } else {
+      s.settings.reviewSession = {
+        'projectId': widget.projectId,
+        'ids': cards.map((c) => c.id).toList(),
+        'index': index,
+        'flipped': flipped,
+      };
+    }
+  }
+
+  Future<void> _rate(bool remembered) async {
+    if (index >= cards.length) return;
+    await s.reviewCard(cards[index], remembered);
+    setState(() {
+      index++;
+      flipped = false;
+      dx = 0;
+    });
+    _persist();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final done = !loading && index >= cards.length;
+    final card = done || loading ? null : cards[index];
+    return GlassScaffold(
+      titleWidget: Text(loading ? '' : (done ? '完成' : '${index + 1} / ${cards.length}'),
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
+      leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => Navigator.pop(context)),
+      actions: [
+        if (card != null)
+          IconButton(
+            tooltip: '查看原文',
+            icon: const Icon(Icons.menu_book_outlined),
+            onPressed: () => showSourceSheet(context, docId: card.docId, page: card.page, chapter: card.chapter),
+          ),
+      ],
+      body: loading
+          ? const Center(child: CircularProgressIndicator(color: M.sage))
+          : done
+              ? _done()
+              : SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                    child: Column(children: [
+                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Container(width: 7, height: 7, decoration: const BoxDecoration(color: M.sage, shape: BoxShape.circle)),
+                        const SizedBox(width: 6),
+                        Text(card!.chapter.isEmpty ? '学习中' : '学习中 · ${card.chapter}',
+                            style: const TextStyle(color: M.sub, fontSize: 13)),
+                      ]),
+                      const SizedBox(height: 12),
+                      Expanded(child: _cardView(card)),
+                      const SizedBox(height: 14),
+                      Row(children: [
+                        Expanded(
+                          child: GlassButton(
+                              label: 'AI 解释',
+                              icon: Icons.auto_awesome_rounded,
+                              onTap: () => showExplainSheet(context, card: card)),
+                        ),
+                      ]),
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        Expanded(
+                            child: GlassButton(
+                                label: '没记住', icon: Icons.cancel_outlined, tint: M.rose, onTap: () => _rate(false))),
+                        const SizedBox(width: 14),
+                        Expanded(
+                            child: GlassButton(
+                                label: '记住了', icon: Icons.check_circle_outline, tint: M.sage, onTap: () => _rate(true))),
+                      ]),
+                    ]),
+                  ),
+                ),
+    );
+  }
+
+  Widget _cardView(Flashcard card) {
+    return GestureDetector(
+      onTap: () {
+        setState(() => flipped = !flipped);
+        _persist();
+      },
+      onHorizontalDragUpdate: (d) => setState(() => dx += d.delta.dx),
+      onHorizontalDragEnd: (d) {
+        if (dx > 110) {
+          _rate(true);
+        } else if (dx < -110) {
+          _rate(false);
+        } else {
+          setState(() => dx = 0);
+        }
+      },
+      child: Transform.translate(
+        offset: Offset(dx, 0),
+        child: Transform.rotate(
+          angle: dx / 1200,
+          child: TweenAnimationBuilder<double>(
+            key: ValueKey(card.id),
+            tween: Tween(begin: 0, end: flipped ? pi : 0),
+            duration: const Duration(milliseconds: 380),
+            curve: Curves.easeInOut,
+            builder: (context, angle, _) {
+              final showBack = angle > pi / 2;
+              return Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.001)
+                  ..rotateY(angle),
+                child: Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()..rotateY(showBack ? pi : 0),
+                  child: Stack(children: [
+                    Positioned.fill(
+                      child: Glass(
+                        radius: 28,
+                        tint: dx > 40 ? M.sage : (dx < -40 ? M.rose : null),
+                        padding: const EdgeInsets.all(24),
+                        child: Center(
+                          child: SingleChildScrollView(
+                            child: Column(mainAxisSize: MainAxisSize.min, children: [
+                              if (!showBack)
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.white.withValues(alpha: 0.6),
+                                      border: Border.all(color: Colors.white)),
+                                  child: const Icon(Icons.question_mark_rounded, color: M.text),
+                                ),
+                              if (showBack) const Text('答案', style: TextStyle(color: M.sageDark, fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 18),
+                              MathText(showBack ? card.back : card.front,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      fontSize: showBack ? 18 : 21, fontWeight: showBack ? FontWeight.w500 : FontWeight.w700, height: 1.5)),
+                              if (showBack && card.explanation.isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                MathText(card.explanation,
+                                    textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: M.sub, height: 1.5)),
+                              ],
+                              const SizedBox(height: 18),
+                              Text(showBack ? (card.page > 0 ? '出处：第 ${card.page} 页' : '') : '•  点击翻面  •',
+                                  style: const TextStyle(color: M.sub, fontSize: 13)),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _done() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Glass(
+            padding: const EdgeInsets.all(28),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.celebration_outlined, color: M.sageDark, size: 40),
+              const SizedBox(height: 12),
+              Text(cards.isEmpty ? '现在没有到期的闪卡' : '本轮 ${cards.length} 张已复习完',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 16),
+              GlassButton(label: '返回', onTap: () => Navigator.pop(context)),
+            ]),
+          ),
+        ),
+      );
+}
