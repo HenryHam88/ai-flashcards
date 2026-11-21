@@ -40,6 +40,7 @@ Future<void> _load(String family, List<String> paths) async {
 
 Future<void> loadFonts() async {
   await _load('NotoSansSC', ['test/fonts/NotoSansSC.ttf']);
+  await _load('monospace', ['test/fonts/DejaVuSansMono.ttf']);
   final flutterRoot = Platform.environment['FLUTTER_ROOT'] ?? '/workspace/toolchains/flutter';
   await _load('MaterialIcons', ['$flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf']);
   final pubCache = Platform.environment['PUB_CACHE'] ?? '${Platform.environment['HOME']}/.pub-cache';
@@ -500,5 +501,41 @@ void main() {
         await t.pump(const Duration(milliseconds: 100));
       }
     });
+  });
+
+  Future<void> seedPythonCards() async {
+    await state.repo.saveProject(Project(id: 'py', name: 'Python 程序设计'));
+    await state.repo.saveCards([
+      Flashcard(id: 'py1', projectId: 'py', chapter: '第一章 Python 入门', front: r'\texttt{print()} 函数的作用是什么？第一个程序输出了什么？',
+          back: r'\texttt{print()} 将字符串输出到屏幕；示例输出 \texttt{Hello World！这是我的第一个Python程序!}，并用等号行包围。',
+          explanation: r'\texttt{print()} 是Python内置输出函数，可以一次输出多个值，默认以空格分隔、以换行结尾。', page: 3),
+      Flashcard(id: 'py2', projectId: 'py', chapter: '第一章 Python 入门', front: r'\textbf{input()} 和 \textbf{print()} 有哪些要点？',
+          back: r'''\begin{itemize}
+\item \texttt{input(prompt)} 读取一行输入，返回\underline{字符串}
+\item 转成数字：\texttt{int(input())}，例如输入 3 得到 \(x=3\)
+\item \texttt{print(a, b, sep='\_')} 用 \texttt{\_} 分隔
+\end{itemize}''',
+          explanation: r'''\begin{tabular}{|l|l|}
+\hline
+函数 & 返回值 \\
+\hline
+\texttt{input()} & 字符串 \\
+\texttt{print()} & \texttt{None} \\
+\hline
+\end{tabular}
+平均值 \[\bar x=\frac{1}{n}\sum_{i=1}^{n}x_i\]''', page: 4),
+    ]);
+  }
+
+  testWidgets('LaTeX 文本命令：\\texttt 闪卡', (t) async {
+    await seedPythonCards();
+    state.settings.reviewSession = {'projectId': 'py', 'ids': ['py1', 'py2'], 'index': 0, 'flipped': true};
+    await shoot(t, const ReviewPage(projectId: 'py', resume: true), '32_latex_text');
+  });
+
+  testWidgets('LaTeX 列表、表格与 \\( \\)', (t) async {
+    await seedPythonCards();
+    state.settings.reviewSession = {'projectId': 'py', 'ids': ['py1', 'py2'], 'index': 1, 'flipped': true};
+    await shoot(t, const ReviewPage(projectId: 'py', resume: true), '33_latex_list');
   });
 }

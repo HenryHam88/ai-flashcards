@@ -4,16 +4,16 @@ import 'package:material_ui/material_ui.dart';
 import '../services/latex.dart';
 import 'glass.dart' show M;
 import 'html_clean.dart';
+import 'latex_text.dart';
 
 // 颜色与 glass.dart 中的莫兰迪配色一致（避免循环依赖，这里单独定义）
 Color get _text => M.text;
 Color get _sub => M.sub;
 Color get _sage => M.sage;
 Color get _sageDark => M.sageDark;
-Color get _rose => M.roseDark;
 
 /// Markdown 块类型
-enum MdBlockType { paragraph, heading, bullet, ordered, quote, rule, math, table }
+enum MdBlockType { paragraph, heading, bullet, ordered, quote, rule, math, table, code }
 
 class MdBlock {
   final MdBlockType type;
@@ -31,7 +31,9 @@ class MdDoc {
   final List<TexSegment> math;
   /// 表格（HTML 表格与 Markdown 管道表格）；table 块的 text 是这里的下标。
   final List<HtmlTable> tables;
-  const MdDoc(this.blocks, this.math, [this.tables = const []]);
+  /// 成对 ``` 包起来的代码块原文；code 块的 text 是这里的下标。
+  final List<String> codeBlocks;
+  const MdDoc(this.blocks, this.math, [this.tables = const [], this.codeBlocks = const []]);
 }
 
 /// Markdown + LaTeX 混排解析器。
@@ -47,6 +49,11 @@ class MdMath {
   static final _mathOnly = RegExp('^\\s*$ph(\\d+)$ph\\s*\$');
   static const tph = '\u0001';
   static final _tableOnly = RegExp('^\\s*$tph(\\d+)$tph\\s*\$');
+  static final _codeOnly = RegExp('^\\s*$codeBlockTok(\\d+)$codeBlockTok\\s*\$');
+  // OCR 常见：# 后面直接跟中文（没有空格）也当标题
+  static final _headingCjk = RegExp(r'^\s{0,3}(#{1,6})(?=[\u4e00-\u9fff])(.*?)\s*$');
+  // 只有 Markdown 符号、没有内容的行（OCR 残留）
+  static final _bareMarks = RegExp(r'^\s*(\*{1,2}|#{1,6})\s*$');
 
   static MdDoc parse(String input) {
     final math = <TexSegment>[];
@@ -61,8 +68,11 @@ class MdMath {
       b.write(seg.display ? '\n$tok\n' : tok);
     }
     // 显示层清理：HTML 表格 → 表格块，零散 HTML 标签 / 实体 / OCR 定位标记 → Markdown 文字（公式已保护，不受影响）
+    // 显示层整理 LaTeX 文本命令、环境和代码块（公式占位符不动，只可能追加原本裸露的数学环境）
+    final codeBlocks = <String>[];
+    final prepared = prepareLatexText(b.toString().replaceAll(tph, ''), math, codeBlocks);
     final tables = <HtmlTable>[];
-    final body = cleanForDisplay(b.toString().replaceAll(tph, ''), table: (t) {
+    final body = cleanForDisplay(prepared, table: (t) {
       tables.add(t);
       return '$tph${tables.length - 1}$tph';
     });
@@ -83,6 +93,17 @@ class MdMath {
         continue;
       }
       RegExpMatch? m;
+      if ((m = _codeOnly.firstMatch(line)) != null) {
+        flushPara();
+        blocks.add(MdBlock(MdBlockType.code, m![1]!));
+        continue;
+      }
+      if (_bareMarks.hasMatch(line)) continue;
+      if ((m = _headingCjk.firstMatch(line)) != null && !_heading.hasMatch(line)) {
+        flushPara();
+        blocks.add(MdBlock(MdBlockType.heading, m![2]!, level: m[1]!.length));
+        continue;
+      }
       if ((m = _tableOnly.firstMatch(line)) != null) {
         flushPara();
         blocks.add(MdBlock(MdBlockType.table, m![1]!));
@@ -132,11 +153,13 @@ class MdMath {
       }
     }
     flushPara();
-    return MdDoc(blocks, math, tables);
+    return MdDoc(blocks, math, tables, codeBlocks);
   }
 
   /// 行内标记：**粗体**、*斜体*、`代码`、公式占位符。
-  static final inlineRe = RegExp('\\*\\*(.+?)\\*\\*|__(.+?)__|(?<![\\w*])\\*(?![\\s*])(.+?)(?<!\\s)\\*(?![\\w*])|`([^`]+)`|$ph(\\d+)$ph');
+  static final inlineRe = RegExp('\\*\\*(.+?)\\*\\*|__(.+?)__|(?<![\\w*])\\*(?![\\s*])(.+?)(?<!\\s)\\*(?![\\w*])|`([^`\\n]+)`|$ph(\\d+)$ph'
+      '|${Mk.boldOpen}([\\s\\S]+?)${Mk.boldClose}|${Mk.itOpen}([\\s\\S]+?)${Mk.itClose}|${Mk.ulOpen}([\\s\\S]+?)${Mk.ulClose}'
+      '|${Mk.codeOpen}([\\s\\S]*?)${Mk.codeClose}');
 }
 
 /// 去掉模型开头的「元话语」，如「下面完整重写，公式均使用 LaTeX。」「好的，以下是……」。
@@ -170,20 +193,40 @@ class MathText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final st = DefaultTextStyle.of(context).style.merge(style);
+    // 等宽字体没有中文字形时退回正文字体（设备上正文字体为系统默认时不起作用，与原来一致）
+    final monoFallback = [if (st.fontFamily != null && st.fontFamily != 'monospace') st.fontFamily!];
     final doc = MdMath.parse(text);
     final center = textAlign == TextAlign.center;
 
-    Widget fallback(String tex, TextStyle s) => Text(tex, style: s.copyWith(fontFamily: 'monospace', color: _rose));
+    // 公式无法排版时：显示原始写法（低调的等宽小字），不再用醒目的红字
+    Widget fallback(String tex, TextStyle s) => Text(tex,
+        style: s.copyWith(
+            fontFamily: 'monospace',
+            fontFamilyFallback: monoFallback,
+            fontSize: (s.fontSize ?? 15) * 0.9,
+            color: _sub,
+            backgroundColor: M.glass.withValues(alpha: 0.5)));
 
-    Widget mathWidget(TexSegment seg, TextStyle s, {bool display = false}) => Math.tex(
-          seg.text,
-          mathStyle: display ? MathStyle.display : MathStyle.text,
-          textStyle: TextStyle(fontSize: (s.fontSize ?? 15) * (display ? 1.1 : 1.05) * mathScale, color: s.color),
-          onErrorFallback: (e) => fallback(seg.text, s),
-        );
+    Widget mathWidget(TexSegment seg, TextStyle s, {bool display = false}) {
+      Widget tex(String src, Widget Function(FlutterMathException) onError) => Math.tex(
+            src,
+            mathStyle: display ? MathStyle.display : MathStyle.text,
+            textStyle: TextStyle(fontSize: (s.fontSize ?? 15) * (display ? 1.1 : 1.05) * mathScale, color: s.color),
+            onErrorFallback: onError,
+          );
+      // 只有原本排版失败时才尝试修复（环境改写、中文包进 \text{}）；能显示的公式走的还是原来的路径
+      return tex(seg.text, (e) {
+        final fixed = repairTex(seg.text);
+        if (fixed == seg.text.trim()) return fallback(seg.text, s);
+        return tex(fixed, (_) => fallback(seg.text, s));
+      });
+    }
 
     final hl = highlight?.trim().toLowerCase() ?? '';
-    InlineSpan plain(String t) {
+    InlineSpan plain(String raw) {
+      // 还原转义字符；没有配对的 ** 去掉（2**3 这类夹在字母数字中间的保留）
+      var t = Mk.restore(raw);
+      if (t.contains('**')) t = t.replaceAll(RegExp(r'(?<![A-Za-z0-9_])\*\*|\*\*(?![A-Za-z0-9_])'), '');
       if (hl.isEmpty) return TextSpan(text: t);
       final lower = t.toLowerCase();
       final parts = <InlineSpan>[];
@@ -212,16 +255,19 @@ class MathText extends StatelessWidget {
       var pos = 0;
       for (final m in MdMath.inlineRe.allMatches(src)) {
         if (m.start > pos) out.add(plain(src.substring(pos, m.start)));
-        if (m[1] != null || m[2] != null) {
+        if (m[1] != null || m[2] != null || m[6] != null) {
           final bs = s.copyWith(fontWeight: FontWeight.w700);
-          out.add(TextSpan(style: const TextStyle(fontWeight: FontWeight.w700), children: inline(m[1] ?? m[2]!, bs)));
-        } else if (m[3] != null) {
-          out.add(TextSpan(style: const TextStyle(fontStyle: FontStyle.italic), children: inline(m[3]!, s)));
-        } else if (m[4] != null) {
+          out.add(TextSpan(style: const TextStyle(fontWeight: FontWeight.w700), children: inline(m[1] ?? m[2] ?? m[6]!, bs)));
+        } else if (m[3] != null || m[7] != null) {
+          out.add(TextSpan(style: const TextStyle(fontStyle: FontStyle.italic), children: inline(m[3] ?? m[7]!, s)));
+        } else if (m[8] != null) {
+          out.add(TextSpan(style: const TextStyle(decoration: TextDecoration.underline), children: inline(m[8]!, s)));
+        } else if (m[4] != null || m[9] != null) {
           out.add(TextSpan(
-              text: m[4],
+              text: Mk.restore(m[4] ?? m[9]!),
               style: TextStyle(
                   fontFamily: 'monospace',
+                  fontFamilyFallback: monoFallback,
                   fontSize: (s.fontSize ?? 15) * 0.92,
                   backgroundColor: M.glass.withValues(alpha: 0.6))));
         } else {
@@ -281,6 +327,21 @@ class MathText extends StatelessWidget {
         case MdBlockType.rule:
           widgets.add(Container(
               height: 1, margin: const EdgeInsets.symmetric(vertical: 4), color: _sub.withValues(alpha: 0.25)));
+        case MdBlockType.code:
+          widgets.add(Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: M.glass.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _sub.withValues(alpha: 0.2), width: 0.8),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Text(doc.codeBlocks[int.parse(blk.text)],
+                  style: st.copyWith(fontFamily: 'monospace', fontFamilyFallback: monoFallback, fontSize: fs * 0.88, height: 1.5, color: _text)),
+            ),
+          ));
         case MdBlockType.table:
           widgets.add(_table(doc, doc.tables[int.parse(blk.text)], st, (src, s) => rich(src, s, align: TextAlign.start)));
         case MdBlockType.math:
