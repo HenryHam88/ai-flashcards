@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [1.1.8] - 2026-11-20
+
+### 改进
+
+- 全新应用图标：莫兰迪配色的闪卡造型，支持 Android 8.0+ 自适应图标（各种遮罩形状）和 Android 13+ 主题图标。
+
 ## [1.1.7] - 2026-11-20
 
 首个公开版本。
@@ -22,5 +28,6 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式显示。
 - 学习统计页面。
 
-[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.1.7...HEAD
+[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.1.8...HEAD
+[1.1.8]: https://github.com/HenryHam88/ai-flashcards/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/HenryHam88/ai-flashcards/releases/tag/v1.1.7
