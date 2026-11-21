@@ -18,6 +18,7 @@ import 'services/settings.dart';
 import 'theme/rich_text.dart' show stripMetaPreamble;
 import 'services/study_queue.dart';
 import 'services/chapter_reparse.dart';
+import 'services/concurrency.dart';
 
 /// 全局状态：持有仓库与设置，提供业务操作。UI 通过 Provider 读取。
 /// 单个 PDF 的解析任务状态（用于多文件队列的逐个进度显示）。
@@ -34,7 +35,9 @@ class AppState extends ChangeNotifier {
   final Repository repo;
   final Settings settings;
   final LlmClient Function(AppState s, String key)? llmFactory; // 测试可注入
-  AppState(this.repo, this.settings, {this.llmFactory});
+  AppState(this.repo, this.settings, {this.llmFactory}) {
+    requestLimiter.max = settings.concurrency; // 全局请求限流 = 「并发数」
+  }
 
   /// 应用版本号（main 里从安装包读取）。
   String appVersion = '';
@@ -88,13 +91,15 @@ class AppState extends ChangeNotifier {
   // ---------- 多文件解析队列 ----------
   /// docId → 任务。放在全局状态里，离开项目页后进度也不会丢。
   final jobs = ValueNotifier<Map<String, ParseJob>>({});
-  static const parseConcurrency = 2; // 同时解析的文件数（远低于 DeepSeek 的 15 并发上限）
+  /// 同时解析的文件数：2–4 份（按「并发数」）。所有文件的联网请求共用一个全局限流（requestLimiter），
+  /// 同时在途的请求总数不超过「并发数」，不会因为多份文件同时解析而成倍增加。
+  int get parseConcurrency => settings.concurrency.clamp(2, 4);
   ParseService Function()? parserFactory; // 测试可注入
   bool _pumping = false;
 
   void _touchJobs() => jobs.value = Map.of(jobs.value);
 
-  /// 把多个 PDF 加入队列（已在队列中的忽略），按顺序、最多 2 个并行解析。
+  /// 把多个 PDF 加入队列（已在队列中的忽略），按顺序、最多 [parseConcurrency] 个并行解析。
   void enqueueParse(List<PdfDoc> docs) {
     for (final d in docs) {
       final j = jobs.value[d.id];

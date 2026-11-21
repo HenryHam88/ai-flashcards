@@ -57,6 +57,10 @@
     <td align="center"><img src="docs/screenshots/36_card_badge.png" width="190"><br><sub>卡片标签</sub></td>
     <td align="center"><img src="docs/screenshots/37_due_by_day.png" width="190"><br><sub>每日到期卡片</sub></td>
     <td align="center"><img src="docs/screenshots/38_chapter_reparse.png" width="190"><br><sub>按章重新解析</sub></td>
+    <td align="center"><img src="docs/screenshots/42_concurrency.png" width="190"><br><sub>并发数</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/43_typed_count.png" width="190"><br><sub>直接输入数量</sub></td>
   </tr>
 </table>
 
@@ -69,7 +73,8 @@
 - 自动识别章节（书签、目录页、标题格式，识别不到时由 AI 分章），也可手动编辑
 - 章节内容：按页查看每章解析出的原文（公式按教材样式排版），可切换章节、搜索高亮、复制，显示解析来源，一键「用这章出题」
 - 某一章解析得不好可以只重新解析这一章（可换引擎），逐页对比新旧文字后再决定替换，可恢复上次解析；可查看和重新分析本章知识点
-- 按整份、章节或页码范围生成；可设置数量、题型、难度和侧重点
+- 按整份、章节或页码范围生成；可设置数量（点数字直接输入，闪卡和题目各最多 1500，自动分批生成）、题型、难度和侧重点
+- 「并发数」可调（1–2500，默认 4）：PDF 分批解析、知识点分析和出题分批同时进行，全局共用一个请求上限；遇到 429 自动退避重试
 - 数量可选「自动（按知识点）」：先列出所选内容的知识点，按每个知识点约 1 张闪卡、1–3 道题（随难度）估算，显示「预计约 N 张/道」确认后再生成；有单次上限，避免数量和费用过高
 - 题型：单选、多选、判断、填空、简答、计算
 - 每张卡片和每道题都标注出处，一键查看原文

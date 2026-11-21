@@ -1,13 +1,16 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
+import '../services/concurrency.dart';
 import '../services/prompts.dart';
 import '../services/settings.dart';
 import '../theme/glass.dart';
 import '../help/help_articles.dart' show HelpIds;
 import 'explain_history_page.dart';
 import 'help_page.dart';
+import 'number_input.dart';
 import 'settings_pages.dart';
 import 'wrong_book_page.dart';
 
@@ -304,6 +307,8 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
                 icon: const Icon(Icons.add_circle_outline)),
           ]),
         ),
+        const SizedBox(height: 12),
+        const ConcurrencyCard(),
       ]),
     );
   }
@@ -352,6 +357,53 @@ class _PromptSettingsPageState extends State<PromptSettingsPage> {
               ]),
             ),
           ),
+      ]),
+    );
+  }
+}
+
+/// 「并发数」：同时发出的联网请求上限（OCR 分批、知识点分析、出题分批共用）。
+class ConcurrencyCard extends StatefulWidget {
+  const ConcurrencyCard({super.key});
+  static const docUrl = 'https://api-docs.deepseek.com/zh-cn/quick_start/rate_limit';
+  @override
+  State<ConcurrencyCard> createState() => _ConcurrencyCardState();
+}
+
+class _ConcurrencyCardState extends State<ConcurrencyCard> {
+  @override
+  Widget build(BuildContext context) {
+    final st = context.read<AppState>().settings;
+    return Glass(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        NumberStepper(
+          label: '并发数',
+          value: st.concurrency,
+          min: minConcurrency,
+          max: maxConcurrency,
+          step: 1,
+          dialogTitle: '并发数（$minConcurrency–$maxConcurrency）',
+          hint: 'deepseek-flash 每账号最多 2500 并发，deepseek-v4-pro 最多 500。',
+          onChanged: (v) => setState(() => st.concurrency = v),
+        ),
+        Text(
+            '同时发出的请求数：PDF 分批解析、知识点分析和出题分批共用，多份资料同时解析也共用这一个上限。'
+            '默认 $defaultConcurrency；设为 1 时逐批依次处理（与旧版相同）。点数字可直接输入。',
+            style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
+        const SizedBox(height: 6),
+        Text(
+            'DeepSeek 官方文档：每个账号的并发上限 deepseek-flash 为 2500、deepseek-v4-pro 为 500，'
+            '超出会返回 429（请求过多），应用会自动退避后重试。其他服务商请按其限制设置。',
+            style: TextStyle(color: M.sageDark, fontSize: 12, height: 1.5)),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+            onPressed: () => launchUrl(Uri.parse(ConcurrencyCard.docUrl), mode: LaunchMode.externalApplication),
+            icon: const Icon(Icons.open_in_new_rounded, size: 16),
+            label: const Text('查看 DeepSeek 限速说明'),
+          ),
+        ),
       ]),
     );
   }

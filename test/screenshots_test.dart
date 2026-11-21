@@ -22,6 +22,8 @@ import 'package:ai_flashcards/ui/quiz_page.dart';
 import 'package:ai_flashcards/ui/review_page.dart';
 import 'package:ai_flashcards/ui/wrong_book_page.dart';
 import 'package:ai_flashcards/ui/due_page.dart';
+import 'package:ai_flashcards/ui/gen_sheet.dart';
+import 'package:ai_flashcards/ui/number_input.dart';
 import 'package:ai_flashcards/ui/chapter_reparse.dart';
 import 'package:ai_flashcards/services/chapter_reparse.dart';
 import 'package:ai_flashcards/models.dart';
@@ -688,6 +690,36 @@ void main() {
                         doc: doc, range: ChapterRange('第一章 随机事件与概率', 12, 15), scroll: ScrollController(), diff: d)))),
         '41_chapter_kps', after: () async {
       expect(find.text('新增'), findsNWidgets(2));
+    });
+  });
+
+  testWidgets('文档解析设置：并发数', (t) async {
+    state.settings.concurrency = 16;
+    await shoot(t, const OcrSettingsPage(), '42_concurrency', after: () async {
+      await t.scrollUntilVisible(find.text('查看 DeepSeek 限速说明'), 200, scrollable: find.byType(Scrollable).first);
+      for (var i = 0; i < 5; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('16'), findsOneWidget);
+    });
+  });
+
+  testWidgets('生成选项：点数字直接输入数量', (t) async {
+    final project = (await state.repo.projects()).firstWhere((p) => p.id == 'p1');
+    await shoot(t, const ProjectPage(projectId: 'p1'), '43_typed_count', after: () async {
+      showGenOptionsSheet(t.element(find.byType(ProjectPage)), project, const ['第一章 随机事件与概率', '第二章 随机变量及其分布']);
+      for (var i = 0; i < 10; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+      await t.tap(find.byType(TappableNumber).first);
+      for (var i = 0; i < 10; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+      await t.enterText(find.byKey(const ValueKey('number_input')), '1200');
+      for (var i = 0; i < 5; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('范围 0–1500'), findsOneWidget);
     });
   });
 }

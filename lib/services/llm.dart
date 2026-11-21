@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'concurrency.dart';
 import 'json_utils.dart';
 
 class LlmException implements Exception {
@@ -42,11 +43,13 @@ class LlmClient {
           'stream': false,
           if (json) 'response_format': {'type': 'json_object'},
         };
-        final r = await client
-            .post(_endpoint,
-                headers: {'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json'},
-                body: jsonEncode(body))
-            .timeout(const Duration(seconds: 180));
+        final r = await sendWithBackoff(
+            () => client
+                .post(_endpoint,
+                    headers: {'Authorization': 'Bearer $apiKey', 'Content-Type': 'application/json'},
+                    body: jsonEncode(body))
+                .timeout(const Duration(seconds: 180)),
+            rateLimited: (r) => r.statusCode == 429);
         if (r.statusCode == 401) throw LlmException('API 密钥无效（401）');
         if (r.statusCode == 402) throw LlmException('账户余额不足（402）');
         if (r.statusCode == 429 || r.statusCode >= 500) {

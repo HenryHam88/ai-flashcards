@@ -13,9 +13,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../app_state.dart';
 import '../services/backup.dart';
 import '../services/reminder.dart';
+import '../services/settings.dart' show Settings;
 import '../theme/glass.dart';
 import '../help/help_articles.dart' show authorQQ;
 import 'help_page.dart' show HelpHomePage, copyQQ;
+import 'number_input.dart';
 
 const repoUrl = 'https://github.com/HenryHam88/ai-flashcards';
 
@@ -111,6 +113,8 @@ class SliderTile extends StatelessWidget {
   final double value, min, max;
   final int? divisions;
   final ValueChanged<double> onChanged;
+  /// 点数值可直接输入（可选）。
+  final VoidCallback? onTapValue;
   const SliderTile(
       {super.key,
       required this.icon,
@@ -121,7 +125,8 @@ class SliderTile extends StatelessWidget {
       required this.min,
       required this.max,
       this.divisions,
-      required this.onChanged});
+      required this.onChanged,
+      this.onTapValue});
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -130,7 +135,20 @@ class SliderTile extends StatelessWidget {
             Icon(icon, color: M.text, size: 22),
             const SizedBox(width: 14),
             Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15))),
-            Text(valueLabel, style: TextStyle(color: M.sageDark, fontWeight: FontWeight.w700)),
+            onTapValue == null
+                ? Text(valueLabel, style: TextStyle(color: M.sageDark, fontWeight: FontWeight.w700))
+                : InkWell(
+                    onTap: onTapValue,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text(valueLabel, style: TextStyle(color: M.sageDark, fontWeight: FontWeight.w700)),
+                        const SizedBox(width: 4),
+                        Icon(Icons.edit_outlined, size: 14, color: M.sageDark),
+                      ]),
+                    ),
+                  ),
           ]),
           Slider(
             value: value.clamp(min, max),
@@ -220,12 +238,17 @@ class _LearningSettingsPageState extends State<LearningSettingsPage> {
             icon: Icons.auto_awesome_motion_outlined,
             title: '自动数量上限',
             valueLabel: '${st.autoCap} 张/道',
-            hint: '出题数量选「自动（按知识点）」时，每次生成闪卡和题目合计最多多少；超出时按比例减少，控制数量和费用。',
+            hint: '出题数量选「自动（按知识点）」时，每次生成闪卡和题目合计最多多少（5–3000）；超出时按比例减少，控制数量和费用。',
             value: st.autoCap.toDouble(),
-            min: 10,
-            max: 200,
-            divisions: 38,
-            onChanged: (v) => setState(() => st.autoCap = v.round()),
+            min: Settings.minAutoCap.toDouble(),
+            max: Settings.maxAutoCap.toDouble(),
+            divisions: (Settings.maxAutoCap - Settings.minAutoCap) ~/ 5,
+            onChanged: (v) => setState(() => st.autoCap = (v / 5).round() * 5),
+            onTapValue: () async {
+              final v = await promptNumber(context,
+                  title: '自动数量上限', value: st.autoCap, min: Settings.minAutoCap, max: Settings.maxAutoCap, unit: '张/道');
+              if (v != null) setState(() => st.autoCap = v);
+            },
           ),
           SwitchTile(
             icon: Icons.fact_check_outlined,

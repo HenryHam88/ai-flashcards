@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'concurrency.dart';
 import 'prompts.dart';
 
 /// 密钥存储抽象（正式环境用 flutter_secure_storage，测试用内存）。
@@ -155,7 +156,16 @@ class Settings {
 
   /// 「自动（按知识点）」数量的单次上限（闪卡 + 题目），防止数量和费用过高。
   int get autoCap => prefs.getInt('auto_cap') ?? 40;
-  set autoCap(int v) => prefs.setInt('auto_cap', v);
+  set autoCap(int v) => prefs.setInt('auto_cap', v.clamp(minAutoCap, maxAutoCap));
+  static const minAutoCap = 5, maxAutoCap = 3000;
+
+  /// 并发数：同时发出的联网请求上限（OCR 批次、知识点分析、出题批次共用），1–2500，默认 4。
+  int get concurrency => (prefs.getInt('concurrency') ?? defaultConcurrency).clamp(minConcurrency, maxConcurrency);
+  set concurrency(int v) {
+    final n = v.clamp(minConcurrency, maxConcurrency);
+    prefs.setInt('concurrency', n);
+    requestLimiter.max = n;
+  }
 
   // ---------- 首次启动 ----------
   bool get onboarded => prefs.getBool('onboarded') ?? false;
@@ -166,7 +176,7 @@ class Settings {
     'llm_base', 'llm_model', 'ocr_provider', 'ocr_modes', 'ocr_base', 'ocr_batch', 'kimi_base', 'gen_templates',
     'daily_new_limit', 'daily_review_limit', 'desired_retention', 'day_start_hour', 'theme_mode', 'text_scale',
     'math_scale', 'reduce_motion', 'haptics', 'reminder_on', 'reminder_minutes', 'auto_backup', 'review_before_add',
-    'auto_cap',
+    'auto_cap', 'concurrency',
   ];
   static const secretKeys = ['llm_key', 'ocr_key', 'kimi_key'];
 
@@ -194,6 +204,7 @@ class Settings {
         await prefs.setStringList(e.key, v.map((x) => '$x').toList());
       }
     }
+    requestLimiter.max = concurrency;
   }
 
   Future<Map<String, String>> exportSecrets() async => {

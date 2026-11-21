@@ -4,10 +4,12 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../services/pipeline.dart' show questionsPerKp;
+import '../services/settings.dart' show Settings;
 import '../theme/glass.dart';
 import '../help/help_articles.dart' show HelpIds;
 import 'help_page.dart' show HelpButton;
 import 'home_page.dart';
+import 'number_input.dart';
 
 /// 生成选项面板：每次生成前弹出。返回选好的 GenOptions，取消返回 null。
 /// [preset]：预先填好的选项（例如统计页「针对这些出新题」带上薄弱章节和侧重点）。
@@ -67,13 +69,16 @@ class _GenSheetState extends State<_GenSheet> {
         ],
       );
 
-  Widget _counter(String label, int value, void Function(int) set) => Row(children: [
-        Text(label),
-        const Spacer(),
-        IconButton(onPressed: () => setState(() => set((value - 5).clamp(0, 200))), icon: const Icon(Icons.remove_circle_outline)),
-        SizedBox(width: 36, child: Text('$value', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
-        IconButton(onPressed: () => setState(() => set((value + 5).clamp(0, 200))), icon: const Icon(Icons.add_circle_outline)),
-      ]);
+  /// ±5 或点数字直接输入（数字键盘），超出范围自动取边界。
+  Widget _counter(String label, int value, void Function(int) set, {int min = 0, int max = maxGenCount, String unit = '', String? title}) =>
+      NumberStepper(
+          label: label,
+          value: value,
+          min: min,
+          max: max,
+          unit: unit,
+          dialogTitle: title ?? '$label数量',
+          onChanged: (v) => setState(() => set(v)));
 
   @override
   Widget build(BuildContext context) {
@@ -133,8 +138,13 @@ class _GenSheetState extends State<_GenSheet> {
       _chips(['固定数量', '自动（按知识点）'], [o.autoCount ? '自动（按知识点）' : '固定数量'],
           single: true, onSingle: (v) => o.autoCount = v != '固定数量'),
       if (!o.autoCount) ...[
-        _counter('闪卡', o.cardCount, (v) => o.cardCount = v),
-        _counter('题目', o.questionCount, (v) => o.questionCount = v),
+        _counter('闪卡', o.cardCount, (v) => o.cardCount = v, unit: '张'),
+        _counter('题目', o.questionCount, (v) => o.questionCount = v, unit: '道'),
+        Padding(
+          padding: const EdgeInsets.only(top: 2, bottom: 12),
+          child: Text('点数字可直接输入，各最多 $maxGenCount；数量多时会自动分成多批生成。',
+              style: TextStyle(color: M.sub, fontSize: 12)),
+        ),
       ] else ...[
         const SizedBox(height: 8),
         Text('先让 AI 列出所选内容里的知识点（定义、定理、公式、例题），再按每个知识点约 1 张闪卡、'
@@ -153,7 +163,8 @@ class _GenSheetState extends State<_GenSheet> {
               showCheckmark: true,
               onSelected: (v) => setState(() => o.autoQuestions = v)),
         ]),
-        _counter('单次上限（闪卡 + 题目）', s.settings.autoCap, (v) => s.settings.autoCap = v.clamp(5, 200)),
+        _counter('单次上限（闪卡 + 题目）', s.settings.autoCap, (v) => s.settings.autoCap = v,
+            min: Settings.minAutoCap, max: Settings.maxAutoCap, title: '单次上限（闪卡 + 题目）'),
       ],
       const Text('题型', style: h),
       const SizedBox(height: 6),

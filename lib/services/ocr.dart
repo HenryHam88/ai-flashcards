@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
+import 'concurrency.dart';
+
 class OcrException implements Exception {
   final String message;
   OcrException(this.message);
@@ -97,15 +99,18 @@ class DeepSeekOcr implements PdfParser {
       b = b.substring(0, b.length - 1);
     }
     if (b.endsWith('/v1')) b = b.substring(0, b.length - 3);
-    final req = http.MultipartRequest('POST', Uri.parse('$b/v1/tools/ocr'))
+    http.MultipartRequest req() => http.MultipartRequest('POST', Uri.parse('$b/v1/tools/ocr'))
       ..headers['Authorization'] = 'Bearer $apiKey'
       ..fields['purpose'] = purpose
       ..files.add(http.MultipartFile.fromBytes('file', pdfBytes, filename: fileName, contentType: mimeFor(fileName)));
     try {
-      final streamed = await client.send(req).timeout(const Duration(seconds: 180));
-      final body = await streamed.stream.bytesToString(utf8).timeout(const Duration(seconds: 180));
-      if (streamed.statusCode == 401) throw OcrException('DeepSeek 密钥无效（401）');
-      if (streamed.statusCode != 200) throw OcrException('OCR 请求失败（${streamed.statusCode}）：$body');
+      // MultipartRequest 只能发送一次：每次（含 429 重试）重新构造
+      final (status, body) = await sendWithBackoff(() async {
+        final streamed = await client.send(req()).timeout(const Duration(seconds: 180));
+        return (streamed.statusCode, await streamed.stream.bytesToString(utf8).timeout(const Duration(seconds: 180)));
+      }, rateLimited: (r) => r.$1 == 429);
+      if (status == 401) throw OcrException('DeepSeek 密钥无效（401）');
+      if (status != 200) throw OcrException('OCR 请求失败（$status）：$body');
       return OcrText.parseDeepSeek(body);
     } on TimeoutException {
       throw OcrException('OCR 超时（180 秒），可在设置里调小每批页数');
@@ -129,14 +134,18 @@ class KimiFileExtract implements PdfParser {
     while (b.endsWith('/')) {
       b = b.substring(0, b.length - 1);
     }
-    final up = http.MultipartRequest('POST', Uri.parse('$b/files'))
+    http.MultipartRequest up() => http.MultipartRequest('POST', Uri.parse('$b/files'))
       ..headers['Authorization'] = 'Bearer $apiKey'
       ..fields['purpose'] = 'file-extract'
       ..files.add(http.MultipartFile.fromBytes('file', pdfBytes, filename: fileName, contentType: mimeFor(fileName)));
-    final r = await http.Response.fromStream(await client.send(up).timeout(const Duration(seconds: 180)));
+    final r = await sendWithBackoff(
+        () async => http.Response.fromStream(await client.send(up()).timeout(const Duration(seconds: 180))),
+        rateLimited: (r) => r.statusCode == 429);
     if (r.statusCode != 200) throw OcrException('Kimi 上传失败（${r.statusCode}）：${utf8.decode(r.bodyBytes)}');
     final id = jsonDecode(utf8.decode(r.bodyBytes))['id'];
-    final c = await client.get(Uri.parse('$b/files/$id/content'), headers: {'Authorization': 'Bearer $apiKey'});
+    final c = await sendWithBackoff(
+        () => client.get(Uri.parse('$b/files/$id/content'), headers: {'Authorization': 'Bearer $apiKey'}),
+        rateLimited: (r) => r.statusCode == 429);
     // 用完即删，避免占用 Kimi 的文件配额
     unawaited(client.delete(Uri.parse('$b/files/$id'), headers: {'Authorization': 'Bearer $apiKey'}).catchError((_) => http.Response('', 200)));
     if (c.statusCode != 200) throw OcrException('Kimi 取回内容失败（${c.statusCode}）');
@@ -155,3 +164,4 @@ class KimiFileExtract implements PdfParser {
     return OcrResult(pageCount, [for (var i = 0; i < pageCount; i++) OcrPage(i, i == 0 ? text.trim() : '')]);
   }
 }
+

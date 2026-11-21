@@ -61,7 +61,7 @@ void main() {
     expect(s.ocrModes, [t]);
   });
 
-  test('多文件队列：最多 2 个并行，单个失败不影响其他，可单独重试', () async {
+  test('多文件队列：按并发数同时解析 2–4 份，单个失败不影响其他，可单独重试', () async {
     SharedPreferences.setMockInitialValues({});
     final repo = Repository(MemoryDocStore());
     final settings = Settings(await SharedPreferences.getInstance(), MemorySecretStore());
@@ -74,7 +74,8 @@ void main() {
     while (state.jobs.value.values.any((j) => j.active)) {
       await Future.delayed(const Duration(milliseconds: 10));
     }
-    expect(fake.maxRunning, AppState.parseConcurrency);
+    expect(state.parseConcurrency, 4); // 默认并发数 4
+    expect(fake.maxRunning, state.parseConcurrency);
     expect(fake.order, ['d1', 'd2', 'd3', 'd4', 'd5']);
     expect(state.jobs.value['d2']!.state, '失败');
     expect(state.jobs.value['d1']!.state, '完成');
@@ -86,5 +87,9 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 10));
     }
     expect(state.jobs.value['d2']!.state, '完成');
+    settings.concurrency = 1;
+    expect(state.parseConcurrency, 2); // 并发数 1 时仍同时排 2 份，但全局只发 1 个请求
+    settings.concurrency = 2500;
+    expect(state.parseConcurrency, 4);
   });
 }

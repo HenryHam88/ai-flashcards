@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../models.dart';
 import '../services/pipeline.dart';
 import '../theme/glass.dart';
+import 'number_input.dart';
 
 /// 自动数量确认面板：显示「预计约 N 张/道」和折叠的知识点列表，可微调后开始生成。
 /// 返回 (闪卡数, 题目数)，取消返回 null。
@@ -44,17 +45,8 @@ class CountRow extends StatelessWidget {
   final int step;
   const CountRow({super.key, required this.label, required this.value, required this.onChanged, this.step = 5});
   @override
-  Widget build(BuildContext context) => Row(children: [
-        Text(label),
-        const Spacer(),
-        IconButton(
-            onPressed: value <= 0 ? null : () => onChanged((value - step).clamp(0, 200)),
-            icon: const Icon(Icons.remove_circle_outline)),
-        SizedBox(
-            width: 40,
-            child: Text('$value', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
-        IconButton(onPressed: () => onChanged((value + step).clamp(0, 200)), icon: const Icon(Icons.add_circle_outline)),
-      ]);
+  Widget build(BuildContext context) => NumberStepper(
+      label: label, value: value, onChanged: onChanged, step: step, max: maxGenCount, dialogTitle: '$label数量');
 }
 
 class AutoCountConfirm extends StatefulWidget {

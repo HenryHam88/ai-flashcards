@@ -132,7 +132,7 @@ class _ProjectPageState extends State<ProjectPage> {
         builder: (ctx) => AlertDialog(
           backgroundColor: M.sheet,
           title: const Text('现在解析？'),
-          content: Text('已添加 ${added.length} 份资料。会排队依次解析（最多同时 ${AppState.parseConcurrency} 份），PDF 每批 ${s.settings.ocrBatchPages} 页，Word 整份交给解析模型${added.any((d) => d.isText) ? '，TXT 在手机上直接读取（不联网、不花钱）' : ''}；每份单独显示进度，失败可单独重试。'
+          content: Text('已添加 ${added.length} 份资料。会排队依次解析（最多同时 ${s.parseConcurrency} 份），PDF 每批 ${s.settings.ocrBatchPages} 页，Word 整份交给解析模型${added.any((d) => d.isText) ? '，TXT 在手机上直接读取（不联网、不花钱）' : ''}；每份单独显示进度，失败可单独重试。'
               '${added.any((d) => d.isWord) && !Settings.supportsWord(s.settings.ocrProvider) ? '\n\n注意：${ParseService.wordUnsupported}。' : ''}'
               '${large.isEmpty ? '' : '\n\n注意：${large.join('、')} 超过 10 MB，读取和出题会比较慢，建议只保留需要的章节。'}'),
           actions: [

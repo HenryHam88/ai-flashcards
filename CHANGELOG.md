@@ -6,6 +6,25 @@
 
 ## [Unreleased]
 
+## [1.3.7] - 2026-11-21
+
+### 新增
+
+- 「并发数」设置（「我的 → 文档解析（PDF / Word）」，1–2500，默认 4，可点数字直接输入）：
+  - 一份 PDF 的多批 OCR 同时上传，进度显示「已完成 3/5 批」；每页仍按页码保存，断点续传不变。
+  - 知识点分析按块同时进行，结果按原顺序合并、去重。
+  - 出题分批同时生成：每批数量与依次生成时的算法完全一致（固定数量和自动数量都是），每批照常质检；全部完成后跨批次再去重一次，缺的数量补一轮，最后按批次顺序保存。
+  - 所有请求共用一个全局上限，多份资料同时解析时请求数不会成倍增加。设为 1 时与旧版完全一样，逐批依次处理。
+  - 说明里引用 DeepSeek 官方文档：每账号并发上限 deepseek-flash 2500、deepseek-v4-pro 500，超出返回 429。
+- 遇到 429（请求过多）时自动指数退避 + 随机抖动后重试（最多 5 次，最长等 30 秒），之后仍按原有的 3 次重试处理。出题模型、DeepSeek OCR 和 Kimi 都适用。
+- 生成选项里的数量可以点数字直接输入（数字键盘）：闪卡和题目各 0–1500，超出范围自动取边界；− / + 仍是每次 5。数量多时照常分批生成。「自动数量」确认面板和手动填写数量的对话框同样支持。
+
+### 变更
+
+- 自动数量的单次上限范围改为 5–3000（出题面板和「学习设置 → 自动数量上限」一致，设置里点数值可直接输入）。
+- 同时解析的资料数改为 2–4 份（随「并发数」）；去掉了旧注释里「DeepSeek 约 15 并发」的说法。
+- 安装包变小：arm64 APK 从约 25 MB 降到约 14 MB（.so 压缩存放，开启 R8 与资源精简），功能不变。
+
 ## [1.3.6] - 2026-11-21
 
 ### 新增
@@ -174,7 +193,8 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式显示。
 - 学习统计页面。
 
-[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.6...HEAD
+[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.7...HEAD
+[1.3.7]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.6...v1.3.7
 [1.3.6]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.3...v1.3.4

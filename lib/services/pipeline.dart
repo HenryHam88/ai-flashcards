@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../data/repository.dart';
 import '../models.dart';
 import 'chapters.dart';
+import 'concurrency.dart';
 import 'json_utils.dart';
 import 'latex.dart';
 import 'llm.dart';
@@ -287,14 +288,26 @@ class ParseService {
           .where((b) => [for (var p = b.from; p <= b.to; p++) p].any((p) => !cached.contains(p)))
           .toList();
       final parsers = <String, PdfParser?>{};
-      for (var bi = 0; bi < batches.length; bi++) {
+      for (final b in batches) {
+        if (!parsers.containsKey(b.purpose)) parsers[b.purpose] = await _parser(b.purpose);
+      }
+      // 「并发数」= 1 时逐批顺序解析（与原来完全一样）；大于 1 时最多同时上传这么多批，
+      // 实际在途请求还受全局限流约束。每页的结果按页码保存，与完成顺序无关。
+      final conc = settings.concurrency;
+      var done = 0;
+      final results = await runPool<bool>(batches.length, conc, (bi) async {
         final b = batches[bi];
-        final frac = bi / batches.length;
         final modeName = settings.ocrProvider == OcrProvider.deepseek
             ? (b.purpose == Settings.ocrRich ? '版面' : '文字')
             : '';
-        onProgress('第 ${b.from}–${b.to} 页${modeName.isEmpty ? '' : '（$modeName模式）'} · ${bi + 1}/${batches.length} 批', frac);
-        final parser = parsers.containsKey(b.purpose) ? parsers[b.purpose] : (parsers[b.purpose] = await _parser(b.purpose));
+        final mode = modeName.isEmpty ? '' : '（$modeName模式）';
+        final frac = conc == 1 ? bi / batches.length : done / batches.length;
+        onProgress(
+            conc == 1
+                ? '第 ${b.from}–${b.to} 页$mode · ${bi + 1}/${batches.length} 批'
+                : '第 ${b.from}–${b.to} 页$mode · 已完成 $done/${batches.length} 批',
+            frac);
+        final parser = parsers[b.purpose];
         List<String>? texts;
         Object? err;
         for (var attempt = 0; attempt < 3 && texts == null; attempt++) {
@@ -314,9 +327,8 @@ class ParseService {
           }
         }
         if (texts == null) {
-          failed++;
           if (err is OcrException && err.message.contains('401')) throw err;
-          continue;
+          return false;
         }
         await repo.savePages([
           for (var i = 0; i < texts.length; i++)
@@ -329,7 +341,12 @@ class ParseService {
         ]);
         doc.parsedPages = (await repo.pages(doc.projectId, docId: doc.id)).length;
         await repo.saveDoc(doc);
-      }
+        return true;
+      }, onDone: (d, total) {
+        done = d;
+        if (conc > 1) onProgress('已完成 $d/$total 批', d / total);
+      });
+      failed = results.where((ok) => !ok).length;
     }
     await _rechunk(doc, onProgress, bytes: bytes);
     final pages = await repo.pages(doc.projectId, docId: doc.id);
@@ -568,15 +585,18 @@ class GenerationService {
   /// 第 1–2 步：提取知识点（已提取过的块会复用），并去重。
   Future<List<KnowledgePoint>> extractKps(String projectId, List<Chunk> chunks, Progress p) async {
     final existing = await repo.kps(projectId);
-    final result = <KnowledgePoint>[];
-    for (var i = 0; i < chunks.length; i++) {
+    // 「并发数」= 1 时逐块顺序分析（与原来一样）；大于 1 时同时分析多块。结果按块的顺序合并，再去重。
+    final conc = settings.concurrency;
+    var done = 0;
+    final perChunk = await runPool<List<KnowledgePoint>>(chunks.length, conc, (i) async {
       final c = chunks[i];
       final cachedForChunk = existing.where((k) => k.id.startsWith('${c.id}_k')).toList();
-      if (cachedForChunk.isNotEmpty) {
-        result.addAll(cachedForChunk);
-        continue;
-      }
-      p('提取知识点：${c.chapter} ${c.section}（${i + 1}/${chunks.length}）', 0.1 + 0.4 * i / chunks.length);
+      if (cachedForChunk.isNotEmpty) return cachedForChunk;
+      p(
+          conc == 1
+              ? '提取知识点：${c.chapter} ${c.section}（${i + 1}/${chunks.length}）'
+              : '提取知识点：${c.chapter} ${c.section}（已完成 $done/${chunks.length}）',
+          0.1 + 0.4 * (conc == 1 ? i : done) / chunks.length);
       final prompt = Prompts.fill(settings.prompt('kp'), {
         'chapter': c.chapter,
         'section': c.section,
@@ -586,9 +606,9 @@ class GenerationService {
       final j = await llm.chatJson(prompt);
       final kps = parseKps(projectId, c, j);
       await repo.saveKps(kps);
-      result.addAll(kps);
-    }
-    return dedupeKps(result);
+      return kps;
+    }, onDone: (d, _) => done = d);
+    return dedupeKps([for (final l in perChunk) ...l]);
   }
 
   static String optionsText(List<String> l) => l.isEmpty ? '不限' : l.join('、');
@@ -643,6 +663,9 @@ class GenerationService {
     for (var i = 0; i < kps.length; i += perBatch) {
       batches.add(kps.sublist(i, min(i + perBatch, kps.length)));
     }
+    if (settings.concurrency > 1 && batches.length > 1) {
+      return _generateConcurrent(projectId, o, p, kps, batches, cardDups, qDups, report, reviewFirst);
+    }
     // 按批次平均分配数量
     var cardsLeft = o.cardCount, qLeft = o.questionCount;
     var totalCards = 0, totalQ = 0;
@@ -684,6 +707,91 @@ class GenerationService {
     p('完成', 1);
     return GenerationResult(totalCards, totalQ, kps.length,
         cardIds: cardIds, questionIds: qIds, quality: report, pending: reviewFirst);
+  }
+
+  /// 「并发数」> 1 时的出题：先按与顺序出题完全相同的算法（[allocateBatches]）算好每批的数量，
+  /// 再最多同时生成「并发数」批；每批照常质检。全部完成后跨批次再去重一次（并发时各批的去重可能同时进行），
+  /// 有缺口（去重、模型少给）时补一轮，最后按批次顺序保存。
+  Future<GenerationResult> _generateConcurrent(String projectId, GenOptions o, Progress p, List<KnowledgePoint> kps,
+      List<List<KnowledgePoint>> batches, DupIndex cardDups, DupIndex qDups, QualityReport report, bool reviewFirst) async {
+    final conc = settings.concurrency;
+    final cards = List<List<Flashcard>>.generate(batches.length, (_) => []);
+    final qs = List<List<Question>>.generate(batches.length, (_) => []);
+    Object? error;
+    StackTrace? errorStack;
+
+    Future<void> round(List<(int, int)> alloc, String label) async {
+      final todo = [for (var i = 0; i < alloc.length; i++) if (alloc[i].$1 > 0 || alloc[i].$2 > 0) i];
+      if (todo.isEmpty) return;
+      p('$label（已完成 0/${todo.length}）', 0.5);
+      await runPool<void>(todo.length, conc, (t) async {
+        if (error != null) return;
+        final bi = todo[t];
+        try {
+          var (c, q, rejects) = await _generateBatch(projectId, batches[bi], alloc[bi].$1, alloc[bi].$2, o);
+          if (qualityCheck) {
+            final (c2, q2, r) = await _quality.process(
+                cards: c, questions: q, rejects: rejects, sourceOf: _sourceOf, cardDups: cardDups, questionDups: qDups);
+            c = c2;
+            q = q2;
+            report.add(r);
+          }
+          cards[bi].addAll(c);
+          qs[bi].addAll(q);
+        } catch (e, st) {
+          error ??= e;
+          errorStack ??= st;
+        }
+      }, onDone: (d, total) => p('$label（已完成 $d/$total）', 0.5 + 0.45 * d / total));
+    }
+
+    // 跨批次去重：按批次顺序，后出现的重复项去掉
+    void crossDedup() {
+      if (!qualityCheck) return;
+      final cd = DupIndex(), qd = DupIndex();
+      var removed = 0;
+      for (var bi = 0; bi < batches.length; bi++) {
+        final before = cards[bi].length + qs[bi].length;
+        cards[bi].retainWhere((c) {
+          if (cd.isDup(dupKeyCard(c))) return false;
+          cd.add(dupKeyCard(c));
+          return true;
+        });
+        qs[bi].retainWhere((q) {
+          if (qd.isDup(dupKeyQuestion(q))) return false;
+          qd.add(dupKeyQuestion(q));
+          return true;
+        });
+        removed += before - cards[bi].length - qs[bi].length;
+      }
+      report.deduped += removed;
+      report.kept -= removed;
+    }
+
+    int total(List<List<Object>> l) => l.fold(0, (a, b) => a + b.length);
+    final sizes = [for (final b in batches) b.length];
+    await round(allocateBatches(sizes, o.cardCount, o.questionCount, auto: o.autoCount), '生成闪卡和题目');
+    crossDedup();
+    // 补一轮：缺口按同样的算法分到各批
+    final missC = max(0, o.cardCount - total(cards)), missQ = max(0, o.questionCount - total(qs));
+    if (error == null && (missC > 0 || missQ > 0)) {
+      await round(allocateBatches(sizes, missC, missQ, auto: o.autoCount), '补充生成');
+      crossDedup();
+    }
+    final allCards = [for (final l in cards) ...l], allQs = [for (final l in qs) ...l];
+    if (reviewFirst) {
+      await repo.saveInbox(allCards, allQs);
+    } else {
+      await repo.saveCards(allCards);
+      await repo.saveQuestions(allQs);
+    }
+    if (error != null) Error.throwWithStackTrace(error!, errorStack!);
+    p('完成', 1);
+    return GenerationResult(allCards.length, allQs.length, kps.length,
+        cardIds: allCards.map((e) => e.id).toList(),
+        questionIds: allQs.map((e) => e.id).toList(),
+        quality: report,
+        pending: reviewFirst);
   }
 
   /// 针对单个知识点（错题 / AI 解释面板）换个角度再出几道题。
@@ -731,6 +839,29 @@ class GenerationService {
     }
     return (<Flashcard>[], <Question>[], <RawReject>[]);
   }
+}
+
+/// 每批出多少：与顺序出题循环的算法完全一致（假设每批都按要求的数量给出）。
+/// [sizes] 为每批知识点个数；返回每批的 (闪卡数, 题目数)，(0, 0) 表示这一批不出题。
+List<(int, int)> allocateBatches(List<int> sizes, int cards, int questions, {bool auto = false}) {
+  final out = List<(int, int)>.filled(sizes.length, (0, 0));
+  var cardsLeft = cards, qLeft = questions;
+  for (var bi = 0; bi < sizes.length && (cardsLeft > 0 || qLeft > 0); bi++) {
+    final remainingBatches = sizes.length - bi;
+    var nc = (cardsLeft / remainingBatches).ceil();
+    var nq = (qLeft / remainingBatches).ceil();
+    if (auto) {
+      final restKps = sizes.skip(bi).fold<int>(0, (a, b) => a + b);
+      final last = bi == sizes.length - 1;
+      nc = last ? max(0, cardsLeft) : (max(0, cardsLeft) * sizes[bi] / restKps).round();
+      nq = last ? max(0, qLeft) : (max(0, qLeft) * sizes[bi] / restKps).round();
+      if (nc == 0 && nq == 0) continue;
+    }
+    out[bi] = (nc, nq);
+    cardsLeft -= nc;
+    qLeft -= nq;
+  }
+  return out;
 }
 
 /// 把模型 JSON 转成闪卡/题目，并校验 LaTeX。返回 (合格闪卡, 合格题目, 问题列表)。
