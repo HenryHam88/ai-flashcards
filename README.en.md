@@ -55,6 +55,11 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
     <td align="center"><img src="docs/screenshots/32_latex_text.png" width="190"><br><sub>LaTeX text formatting</sub></td>
     <td align="center"><img src="docs/screenshots/34_txt_doc.png" width="190"><br><sub>TXT files</sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/35_new_vs_review.png" width="190"><br><sub>New vs. due</sub></td>
+    <td align="center"><img src="docs/screenshots/36_card_badge.png" width="190"><br><sub>Card badges</sub></td>
+    <td align="center"><img src="docs/screenshots/37_due_by_day.png" width="190"><br><sub>Due by day</sub></td>
+  </tr>
 </table>
 
 ## Features
@@ -75,10 +80,12 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
 
 **Review and practice**
 - FSRS spaced-repetition scheduling, swipe to grade, step back and forward through cards
+- New and due cards are counted separately (Anki-style): "Learn new", "Review", and "Study all" (due reviews first, then new); 20 new cards a day by default, with "10 more today"; each card is badged new / review / relearn
+- Due by day: see which cards come due on which day (including overdue), filter by project, and review them right away
 - Objective questions are graded automatically; short-answer and calculation questions are graded by AI
 - AI explanations grounded in the source text, with follow-up questions; every explanation is kept in a searchable history you can star and continue
 - Mistake book: wrong answers are collected automatically, filterable by project, with new questions generated for weak points
-- Study data: daily overview (reviews, accuracy, time, streak), a six-month heatmap, 7 / 30-day due forecast, and mastery per project and chapter
+- Study data: daily overview (reviews, accuracy, time, streak), a six-month heatmap, a due forecast for 7 / 30 / 90 days or everything (weekly or monthly bars beyond 30 days; tap a bar to see that day's cards), and mastery per project and chapter
 - Weak-spot suggestions based on lapses, mistakes, and recall, with one tap to review them or generate new questions targeting them
 - Study settings: daily new / review limits, FSRS desired retention, day start time
 - Daily review reminder (local notification, no network needed)

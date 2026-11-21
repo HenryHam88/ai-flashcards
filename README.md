@@ -52,6 +52,11 @@
     <td align="center"><img src="docs/screenshots/32_latex_text.png" width="190"><br><sub>LaTeX 文本格式</sub></td>
     <td align="center"><img src="docs/screenshots/34_txt_doc.png" width="190"><br><sub>TXT 资料</sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/35_new_vs_review.png" width="190"><br><sub>新学 / 待复习</sub></td>
+    <td align="center"><img src="docs/screenshots/36_card_badge.png" width="190"><br><sub>卡片标签</sub></td>
+    <td align="center"><img src="docs/screenshots/37_due_by_day.png" width="190"><br><sub>每日到期卡片</sub></td>
+  </tr>
 </table>
 
 ## 功能
@@ -72,10 +77,12 @@
 
 **复习与测验**
 - FSRS 间隔重复调度，滑动评分，支持上一张 / 下一张回看
+- 新卡和复习分开计数（类似 Anki）：「新学」和「待复习」，入口「学新卡」「复习」「全部学习」（先复习后新卡）；每日新卡默认 20 张，可「今天再学 10 张」；卡片标出新 / 复习 / 重学
+- 每日到期卡片：按天查看哪些卡什么时候到期（含逾期），按项目筛选，一键复习这些
 - 客观题自动判分，简答题和计算题由 AI 批改
 - AI 解释：结合原文讲解、举例，可以继续追问；所有解释自动保存到「解释历史」，可搜索、收藏、随时接着问
 - 错题本：自动收录，按项目筛选，针对薄弱知识点再出新题
-- 学习数据：每日概览（练习次数、正确率、学习时长、连续天数）、半年热力图、未来 7 / 30 天到期预测、各项目和章节的掌握度
+- 学习数据：每日概览（练习次数、正确率、学习时长、连续天数）、半年热力图、未来 7 / 30 / 90 天和全部到期预测（90 天和全部按周或按月合计，点柱子看当天的卡）、各项目和章节的掌握度
 - 薄弱点推荐：根据遗忘次数、错题和记忆率找出最弱的章节，一键「复习这些」或「针对这些出新题」
 - 学习设置：每日新卡 / 复习上限、FSRS 目标记忆率、每日开始时间
 - 每日复习提醒（本地通知，无需联网）
