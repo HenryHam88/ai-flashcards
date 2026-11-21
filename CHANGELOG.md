@@ -6,6 +6,17 @@
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-11-21
+
+### 修复
+
+- 章节内容中，DeepSeek OCR 识别出的表格以 `<table><tr><td>…` 原始标签显示的问题：现在显示为真正的表格。
+  - 支持表头、合并单元格（尽量还原）和单元格内换行；宽表格可左右滑动；单元格里的公式照常排版；适配深色模式。
+  - 闪卡、题目、AI 解释、查看原文等使用同一套显示方式的地方同样生效；Markdown 表格（`| a | b |`）也能显示成表格。
+  - 其它零散的 HTML 标签（换行、段落、粗体、斜体、上下标）和 `&nbsp;` `&lt;` 等字符实体会整理成正常文字；不认识的标签按原样显示，残缺的标签不会导致出错。OCR 的定位标记和图片占位如有残留也会隐藏。
+  - 章节内容的搜索和复制使用整理后的文字，复制表格得到用 Tab 和换行分隔的文本。
+- 只改显示：保存的解析结果和发给 AI 的内容保持不变，已解析的资料无需重新解析即可正常显示。
+
 ## [1.3.2] - 2026-11-21
 
 ### 新增
@@ -107,7 +118,8 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式显示。
 - 学习统计页面。
 
-[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.2.0...v1.3.0
