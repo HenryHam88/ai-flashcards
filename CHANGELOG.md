@@ -6,6 +6,18 @@
 
 ## [Unreleased]
 
+## [1.1.9] - 2026-11-21
+
+### 新增
+
+- 编辑章节：可重命名、新增、删除、与下一章合并、按页拆分、调整起始页，也可按页数一键切分。
+- AI 自动分章：识别不到章节时，由出题模型根据全书大纲自动划分章节（每份资料只调用一次）；也可随时手动触发。
+
+### 改进
+
+- 章节识别更准确：优先读取 PDF 书签和目录页，并支持「第 1 章」「Chapter 1」「Lecture / Unit」「一、」「§1.2」「1.2.3」、Markdown 标题等格式，能容忍 OCR 产生的多余空格。
+- 章节调整后，已生成的闪卡、题目会按出处页码自动归入新章节。
+
 ## [1.1.8] - 2026-11-20
 
 ### 改进
@@ -28,6 +40,7 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式显示。
 - 学习统计页面。
 
-[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.1.8...HEAD
+[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.1.9...HEAD
+[1.1.9]: https://github.com/HenryHam88/ai-flashcards/compare/v1.1.8...v1.1.9
 [1.1.8]: https://github.com/HenryHam88/ai-flashcards/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/HenryHam88/ai-flashcards/releases/tag/v1.1.7

@@ -459,3 +459,50 @@ class GenOptions {
       );
   GenOptions copy() => GenOptions.fromJson(toJson());
 }
+
+/// 一个章节覆盖的页码范围（1 起始、闭区间）。Word 文档的「页」是解析出的小节序号。
+class ChapterRange {
+  String title;
+  int start;
+  int end;
+  ChapterRange(this.title, this.start, this.end);
+  ChapterRange copy() => ChapterRange(title, start, end);
+  Map<String, dynamic> toJson() => {'title': title, 'start': start, 'end': end};
+  factory ChapterRange.fromJson(Map<String, dynamic> j) =>
+      ChapterRange(j['title'] ?? '', (j['start'] as num?)?.toInt() ?? 1, (j['end'] as num?)?.toInt() ?? 1);
+  @override
+  String toString() => '$title[$start-$end]';
+}
+
+/// 一份资料的分章方案（每份资料一条，id = docId）。
+class ChapterPlan {
+  String docId;
+  String projectId;
+  String source; // outline 书签 / toc 目录页 / heading 标题识别 / ai / fixed 按页数 / manual 手动 / single 全文
+  List<ChapterRange> chapters;
+  ChapterPlan({required this.docId, required this.projectId, required this.source, required this.chapters});
+  String get id => docId;
+
+  /// 某页所属章节标题；页码超出范围时归到最近的章节。
+  String titleFor(int page) {
+    if (chapters.isEmpty) return '未分章';
+    for (final c in chapters) {
+      if (page >= c.start && page <= c.end) return c.title;
+    }
+    return page < chapters.first.start ? chapters.first.title : chapters.last.title;
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': docId,
+        'docId': docId,
+        'projectId': projectId,
+        'source': source,
+        'chapters': chapters.map((c) => c.toJson()).toList(),
+      };
+  factory ChapterPlan.fromJson(Map<String, dynamic> j) => ChapterPlan(
+        docId: j['docId'],
+        projectId: j['projectId'],
+        source: j['source'] ?? 'manual',
+        chapters: ((j['chapters'] as List?) ?? []).map((e) => ChapterRange.fromJson((e as Map).cast<String, dynamic>())).toList(),
+      );
+}

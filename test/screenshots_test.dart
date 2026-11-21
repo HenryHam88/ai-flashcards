@@ -6,6 +6,7 @@ import 'package:ai_flashcards/data/doc_store.dart';
 import 'package:ai_flashcards/data/repository.dart';
 import 'package:ai_flashcards/main.dart';
 import 'package:ai_flashcards/services/settings.dart';
+import 'package:ai_flashcards/ui/chapter_editor_page.dart';
 import 'package:ai_flashcards/ui/me_page.dart';
 import 'package:ai_flashcards/ui/project_page.dart';
 import 'package:ai_flashcards/ui/quiz_page.dart';
@@ -315,5 +316,20 @@ void main() {
         id: 'w2', projectId: 'p1', name: '习题课笔记（旧版 .doc）', path: '', type: 'doc', status: '不支持',
         note: '当前解析模型不支持 Word，请在「文档解析」设置里切换到支持 Word 的模型（DeepSeek OCR 或 Kimi），或把文档另存为 PDF'));
     await shoot(t, const ProjectPage(projectId: 'p1'), '16_word_doc_list');
+  });
+
+  testWidgets('编辑章节', (t) async {
+    await state.repo.saveChapterPlan(ChapterPlan(docId: 'd1', projectId: 'p1', source: 'toc', chapters: [
+      ChapterRange('前置内容', 1, 8),
+      ChapterRange('第一章 随机事件与概率', 9, 38),
+      ChapterRange('第二章 随机变量及其分布', 39, 72),
+      ChapterRange('第三章 多维随机变量及其分布', 73, 104),
+      ChapterRange('第四章 随机变量的数字特征', 105, 130),
+      ChapterRange('第五章 大数定律及中心极限定理', 131, 146),
+      ChapterRange('第六章 样本及抽样分布', 147, 166),
+      ChapterRange('第七章 参数估计', 167, 186),
+    ]));
+    final doc = (await state.repo.docs('p1')).firstWhere((d) => d.id == 'd1');
+    await shoot(t, ChapterEditorPage(doc: doc), '18_chapter_editor');
   });
 }

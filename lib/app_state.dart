@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'data/repository.dart';
 import 'models.dart';
+import 'services/chapters.dart';
 import 'services/fsrs.dart';
 import 'services/json_utils.dart';
 import 'services/latex.dart';
@@ -41,7 +42,14 @@ class AppState extends ChangeNotifier {
         LlmClient(baseUrl: settings.llmBaseUrl, apiKey: key, model: settings.llmModel);
   }
 
-  ParseService get parser => ParseService(repo, settings);
+  ParseService get parser => ParseService(repo, settings, chapters: chapterService);
+
+  /// 分章服务：没有配置出题模型密钥时不调用 AI（直接按页数切分）。
+  ChapterService get chapterService => ChapterService(repo, settings, llm: () async {
+        final key = await settings.llmKey();
+        if (key.isEmpty && llmFactory == null) return null;
+        return llm();
+      });
 
   // ---------- 多文件解析队列 ----------
   /// docId → 任务。放在全局状态里，离开项目页后进度也不会丢。

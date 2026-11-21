@@ -12,6 +12,7 @@ import '../services/pdf_tools.dart';
 import '../services/pipeline.dart';
 import '../services/settings.dart';
 import '../theme/glass.dart';
+import 'chapter_editor_page.dart';
 import 'explain_sheet.dart';
 import 'gen_sheet.dart';
 import 'home_page.dart';
@@ -303,6 +304,9 @@ class _ProjectPageState extends State<ProjectPage> {
                   onSelected: (v) async {
                     if (v == 'parse') {
                       s.enqueueParse([doc]);
+                    } else if (v == 'chapters') {
+                      await Navigator.push(context, MaterialPageRoute(builder: (_) => ChapterEditorPage(doc: doc)));
+                      s.changed();
                     } else if (v == 'delete') {
                       await s.repo.deleteDoc(doc);
                       s.changed();
@@ -314,6 +318,7 @@ class _ProjectPageState extends State<ProjectPage> {
                         child: Text(doc.isWord
                             ? (doc.status == '已解析' ? '重新解析' : '解析')
                             : (doc.parsedPages >= doc.pageCount && doc.pageCount > 0 ? '重新切分章节' : '解析（继续未完成的页）'))),
+                    if (doc.parsedPages > 0) const PopupMenuItem(value: 'chapters', child: Text('编辑章节')),
                     const PopupMenuItem(value: 'delete', child: Text('删除')),
                   ],
                 ),
@@ -321,8 +326,15 @@ class _ProjectPageState extends State<ProjectPage> {
             ),
           ),
         if (d.chapters.isNotEmpty) ...[
-          const SectionTitle('识别到的章节'),
-          Glass(child: Text(d.chapters.join('\n'), style: const TextStyle(height: 1.8))),
+          const SectionTitle('章节'),
+          Glass(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(d.chapters.join('\n'), style: const TextStyle(height: 1.8)),
+              const SizedBox(height: 4),
+              const Text('识别得不对？在资料右侧菜单选「编辑章节」，可以手动调整、按页数切分或让 AI 重新分章。',
+                  style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
+            ]),
+          ),
         ],
       ]);
 

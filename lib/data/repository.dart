@@ -49,7 +49,16 @@ class Repository {
 
   Future<void> deletePages(String projectId, String docId) =>
       store.deleteWhere('pages', projectId: projectId, field: 'docId', equals: docId);
+  // ---------- 分章方案 ----------
+  Future<ChapterPlan?> chapterPlan(String docId) async {
+    final j = await store.get('chapters', docId);
+    return j == null ? null : ChapterPlan.fromJson(j);
+  }
+
+  Future<void> saveChapterPlan(ChapterPlan p) => store.put('chapters', p.id, p.projectId, p.toJson());
+
   Future<void> deleteDoc(PdfDoc d) async {
+    await store.delete('chapters', d.id);
     for (final c in ['pages', 'chunks']) {
       await store.deleteWhere(c, projectId: d.projectId, field: 'docId', equals: d.id);
     }

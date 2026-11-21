@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../data/repository.dart';
 import '../models.dart';
+import 'chapters.dart';
 import 'json_utils.dart';
 import 'latex.dart';
 import 'llm.dart';
@@ -47,7 +48,10 @@ List<String> splitWordSections(String text, {int maxChars = 3000}) {
 
 /// 按章节把页文字切成块，每块记录章节名与页码范围；单块过长时再按字数切。
 /// [mdHeadings]：Word 文档用 Markdown 标题判断章节——文中最高一级标题当作章，下一级当作节。
-List<Chunk> chunkPages(String projectId, String docId, List<PageText> pages, {int maxChars = 5000, bool mdHeadings = false}) {
+/// [chapterOf]：有分章方案时由页码决定章节，文中的章标题不再改变章节，只识别小节。
+/// 此时块 id 带内容指纹：内容不变的块沿用已提取的知识点，变化的块重新提取。
+List<Chunk> chunkPages(String projectId, String docId, List<PageText> pages,
+    {int maxChars = 5000, bool mdHeadings = false, String Function(int page)? chapterOf}) {
   var topLevel = 7;
   if (mdHeadings) {
     for (final p in pages) {
@@ -67,7 +71,7 @@ List<Chunk> chunkPages(String projectId, String docId, List<PageText> pages, {in
     final t = buf.toString().trim();
     if (t.isNotEmpty) {
       out.add(Chunk(
-        id: '${docId}_c${out.length}',
+        id: chapterOf == null ? '${docId}_c${out.length}' : '${docId}_c${out.length}_${_fnv(t)}',
         projectId: projectId,
         docId: docId,
         chapter: chapter,
@@ -82,11 +86,26 @@ List<Chunk> chunkPages(String projectId, String docId, List<PageText> pages, {in
   }
 
   for (final p in pages) {
+    if (chapterOf != null) {
+      final ch = chapterOf(p.page);
+      if (ch != chapter) {
+        flush();
+        chapter = ch;
+        section = '';
+      }
+    }
     for (final rawLine in p.text.split('\n')) {
       final line = rawLine.trimRight();
       final md = mdHeadings && line.length < 60 ? _mdHeadingRe.firstMatch(line) : null;
-      final isCh = md != null ? md[1]!.length == topLevel : line.length < 40 && _chapterRe.hasMatch(line);
-      final isSec = !isCh && (md != null ? md[1]!.length == topLevel + 1 : line.length < 40 && _sectionRe.hasMatch(line));
+      var isCh = md != null ? md[1]!.length == topLevel : line.length < 40 && _chapterRe.hasMatch(line);
+      var isSec = !isCh && (md != null ? md[1]!.length == topLevel + 1 : line.length < 40 && _sectionRe.hasMatch(line));
+      if (chapterOf != null) {
+        // 章节由方案决定：章标题行只当普通文字，小节照常识别
+        if (isCh) {
+          isCh = false;
+          isSec = false;
+        }
+      }
       if (isCh || isSec) {
         flush();
         final title = line.replaceFirst(RegExp(r'^\s*#+\s*'), '').trim();
@@ -114,6 +133,14 @@ List<Chunk> chunkPages(String projectId, String docId, List<PageText> pages, {in
     }).join('\n');
   }
   return out;
+}
+
+String _fnv(String s) {
+  var h = 0x811c9dc5;
+  for (final c in s.codeUnits) {
+    h = ((h ^ c) * 0x01000193) & 0xffffffff;
+  }
+  return h.toRadixString(36);
 }
 
 // ================= 知识点去重 =================
@@ -185,7 +212,20 @@ class ParseService {
   final Settings settings;
   final PdfParser? parserOverride; // 测试用
   final http.Client? httpClient; // 测试用
-  ParseService(this.repo, this.settings, {this.parserOverride, this.httpClient});
+  final ChapterService? chapters; // 有则解析后自动分章（书签/目录/标题/AI/按页数）
+  ParseService(this.repo, this.settings, {this.parserOverride, this.httpClient, this.chapters});
+
+  /// 解析完成后切块：有分章服务时先自动分章，再按方案切块。
+  Future<void> _rechunk(PdfDoc doc, Progress onProgress, {Uint8List? bytes}) async {
+    final cs = chapters;
+    if (cs == null) {
+      final pages = await repo.pages(doc.projectId, docId: doc.id);
+      await repo.replaceChunks(doc.projectId, doc.id, chunkPages(doc.projectId, doc.id, pages, mdHeadings: doc.isWord));
+      return;
+    }
+    final plan = await cs.autoPlan(doc, bytes: bytes, onProgress: onProgress);
+    await cs.apply(doc, plan);
+  }
 
   static const wordUnsupported = '当前解析模型不支持 Word，请在「文档解析」设置里切换到支持 Word 的模型（DeepSeek OCR 或 Kimi），或把文档另存为 PDF';
 
@@ -276,8 +316,8 @@ class ParseService {
         await repo.saveDoc(doc);
       }
     }
+    await _rechunk(doc, onProgress, bytes: bytes);
     final pages = await repo.pages(doc.projectId, docId: doc.id);
-    await repo.replaceChunks(doc.projectId, doc.id, chunkPages(doc.projectId, doc.id, pages));
     doc.parsedPages = pages.length;
     doc.status = failed == 0 ? '已解析' : '部分失败';
     await repo.saveDoc(doc);
@@ -334,9 +374,8 @@ extension on ParseService {
       for (var i = 0; i < sections.length; i++)
         PageText(docId: doc.id, projectId: doc.projectId, page: i + 1, text: sections[i])
     ]);
-    final pages = await repo.pages(doc.projectId, docId: doc.id);
-    await repo.replaceChunks(doc.projectId, doc.id, chunkPages(doc.projectId, doc.id, pages, mdHeadings: true));
     doc.pageCount = sections.length;
+    await _rechunk(doc, onProgress);
     doc.parsedPages = sections.length;
     doc.status = sections.isEmpty ? '部分失败' : '已解析';
     doc.note = sections.isEmpty ? '解析模型没有返回文字' : '';

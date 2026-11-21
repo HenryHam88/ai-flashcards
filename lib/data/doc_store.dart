@@ -51,14 +51,14 @@ class MemoryDocStore implements DocStore {
 
 class SqliteDocStore implements DocStore {
   static const collections = [
-    'projects', 'docs', 'pages', 'chunks', 'kps', 'cards', 'questions', 'wrong', 'logs', 'explain'
+    'projects', 'docs', 'pages', 'chunks', 'kps', 'cards', 'questions', 'wrong', 'logs', 'explain', 'chapters'
   ];
   final Database db;
   SqliteDocStore._(this.db);
 
   static Future<SqliteDocStore> open() async {
     final dir = await getDatabasesPath();
-    final db = await openDatabase(p.join(dir, 'ai_flashcards.db'), version: 2, onCreate: (db, v) async {
+    final db = await openDatabase(p.join(dir, 'ai_flashcards.db'), version: 3, onCreate: (db, v) async {
       for (final c in collections) {
         await db.execute('CREATE TABLE $c (id TEXT PRIMARY KEY, project_id TEXT, data TEXT NOT NULL)');
         await db.execute('CREATE INDEX idx_${c}_p ON $c(project_id)');
@@ -71,6 +71,11 @@ class SqliteDocStore implements DocStore {
           j['type'] ??= 'pdf';
           await db.update('docs', {'data': jsonEncode(j)}, where: 'id = ?', whereArgs: [row['id']]);
         }
+      }
+      // v3：新增分章方案表（每份资料一条，可手动编辑）
+      if (from < 3) {
+        await db.execute('CREATE TABLE IF NOT EXISTS chapters (id TEXT PRIMARY KEY, project_id TEXT, data TEXT NOT NULL)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_chapters_p ON chapters(project_id)');
       }
     });
     return SqliteDocStore._(db);

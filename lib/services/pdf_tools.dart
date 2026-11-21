@@ -24,6 +24,28 @@ class PdfTools {
     return out;
   }
 
+  /// PDF 书签（目录大纲）：返回 (标题, 页码 1 起始, 层级 0 起始)。没有书签时为空。
+  static Future<List<(String, int, int)>> outline(Uint8List bytes) => compute(_outline, bytes);
+  static List<(String, int, int)> _outline(Uint8List bytes) {
+    final d = PdfDocument(inputBytes: bytes);
+    final out = <(String, int, int)>[];
+    void walk(PdfBookmarkBase b, int level) {
+      for (var i = 0; i < b.count; i++) {
+        final m = b[i];
+        final page = m.destination?.page ?? m.namedDestination?.destination?.page;
+        if (page != null) {
+          final idx = d.pages.indexOf(page);
+          if (idx >= 0 && m.title.trim().isNotEmpty) out.add((m.title.trim(), idx + 1, level));
+        }
+        if (level < 3) walk(m, level + 1);
+      }
+    }
+
+    walk(d.bookmarks, 0);
+    d.dispose();
+    return out;
+  }
+
   /// 本地提取 [from,to] 页的文字层（扫描版 PDF 会是空的）。
   static Future<List<String>> extractText(Uint8List bytes, int from, int to) =>
       compute(_extract, (bytes, from, to));

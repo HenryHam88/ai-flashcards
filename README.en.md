@@ -43,6 +43,7 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
 **Documents and generation**
 - PDF and Word (.docx / .doc), batch import with per-file progress
 - Scanned PDFs are supported; formulas are kept as LaTeX
+- Automatic chapter detection (bookmarks, table of contents, heading formats, with AI as a fallback), plus a manual chapter editor
 - Generate from the whole document, selected chapters, or a page range; choose count, question types, difficulty, and focus
 - Question types: single choice, multiple choice, true/false, fill-in-the-blank, short answer, calculation
 - Every card and question links back to its source in the original text
@@ -129,7 +130,7 @@ Ask for a rewrite in the card's AI explanation, or mark the question as "AI 出�
 
 - Generation and grading quality depends on the model you choose; double-check important content against the source.
 - With Kimi, source page numbers for PDFs may be imprecise.
-- Chapter detection relies on common heading formats such as "第 X 章" or "1.2"; unusually formatted books may not be split correctly.
+- Chapters of unusually formatted books may be detected incorrectly; adjust them in the chapter editor or let AI re-split them.
 - Android only for now; no multi-device sync yet.
 
 ## Roadmap
