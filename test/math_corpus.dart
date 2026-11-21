@@ -36,7 +36,8 @@ Future<List<String>> mathCorpus() async {
   final out = <String>{};
   void walk(Object? v) {
     if (v is String) {
-      if (v.trim().isNotEmpty) out.add(v);
+      // 时间戳每次运行都不同，不算语料
+      if (v.trim().isNotEmpty && !RegExp(r'^\d{4}-\d\d-\d\d').hasMatch(v)) out.add(v);
     } else if (v is Map) {
       v.values.forEach(walk);
     } else if (v is List) {
