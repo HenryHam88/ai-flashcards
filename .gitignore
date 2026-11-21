@@ -55,3 +55,4 @@ key.properties
 android/local.properties
 *.apk
 *.aab
+test/failures/

@@ -213,6 +213,15 @@ class _LearningSettingsPageState extends State<LearningSettingsPage> {
             onChanged: (v) => setState(() => st.desiredRetention = double.parse(v.toStringAsFixed(2))),
           ),
         ]),
+        SettingsGroup(title: '出题质量', children: [
+          SwitchTile(
+            icon: Icons.fact_check_outlined,
+            title: '生成后先审核',
+            subtitle: '新生成的卡片和题目先放进「待审核」，确认后才加入复习。关闭时直接加入（生成后仍可点「审核这批」）',
+            value: st.reviewBeforeAdd,
+            onChanged: (v) => setState(() => st.reviewBeforeAdd = v),
+          ),
+        ]),
         SettingsGroup(title: '每日开始时间', children: [
           SliderTile(
             icon: Icons.wb_twilight_rounded,

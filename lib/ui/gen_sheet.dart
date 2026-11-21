@@ -7,8 +7,10 @@ import '../theme/glass.dart';
 import 'home_page.dart';
 
 /// 生成选项面板：每次生成前弹出。返回选好的 GenOptions，取消返回 null。
-Future<GenOptions?> showGenOptionsSheet(BuildContext context, Project project, List<String> chapters) {
-  return showGlassSheet<GenOptions>(context, (ctx, sc) => _GenSheet(project: project, chapters: chapters, controller: sc),
+/// [preset]：预先填好的选项（例如统计页「针对这些出新题」带上薄弱章节和侧重点）。
+Future<GenOptions?> showGenOptionsSheet(BuildContext context, Project project, List<String> chapters, {GenOptions? preset}) {
+  return showGlassSheet<GenOptions>(
+      context, (ctx, sc) => _GenSheet(project: project, chapters: chapters, controller: sc, preset: preset),
       initial: 0.85, maxSize: 0.95);
 }
 
@@ -16,14 +18,15 @@ class _GenSheet extends StatefulWidget {
   final Project project;
   final List<String> chapters;
   final ScrollController controller;
-  const _GenSheet({required this.project, required this.chapters, required this.controller});
+  final GenOptions? preset;
+  const _GenSheet({required this.project, required this.chapters, required this.controller, this.preset});
   @override
   State<_GenSheet> createState() => _GenSheetState();
 }
 
 class _GenSheetState extends State<_GenSheet> {
-  late GenOptions o =
-      widget.project.defaultOptions != null ? GenOptions.fromJson(widget.project.defaultOptions!) : GenOptions();
+  late GenOptions o = widget.preset ??
+      (widget.project.defaultOptions != null ? GenOptions.fromJson(widget.project.defaultOptions!) : GenOptions());
   late final custom = TextEditingController(text: o.custom);
   late final from = TextEditingController(text: '${o.pageFrom}');
   late final to = TextEditingController(text: '${o.pageTo}');
@@ -170,7 +173,17 @@ class _GenSheetState extends State<_GenSheet> {
           ),
         ),
       ]),
-      const SizedBox(height: 10),
+      const SizedBox(height: 6),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: s.settings.reviewBeforeAdd,
+        activeThumbColor: M.sageDark,
+        onChanged: (v) => setState(() => s.settings.reviewBeforeAdd = v),
+        title: const Text('生成后先审核', style: TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text('先放进「待审核」，确认后才加入复习；关闭时直接加入，生成后也可点「审核这批」',
+            style: TextStyle(color: M.sub, fontSize: 12)),
+      ),
+      const SizedBox(height: 4),
       GlassButton(
         label: '开始生成',
         icon: Icons.auto_awesome_rounded,

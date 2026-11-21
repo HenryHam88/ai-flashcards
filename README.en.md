@@ -31,7 +31,7 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
     <td align="center"><img src="docs/screenshots/14_explain_markdown.png" width="190"><br><sub>AI explanation</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/5_stats.png" width="190"><br><sub>Statistics</sub></td>
+    <td align="center"><img src="docs/screenshots/25_stats_overview.png" width="190"><br><sub>Study data</sub></td>
     <td align="center"><img src="docs/screenshots/8_wrong_mixed.png" width="190"><br><sub>Mistake book</sub></td>
     <td align="center"><img src="docs/screenshots/16_word_doc_list.png" width="190"><br><sub>Documents</sub></td>
     <td align="center"><img src="docs/screenshots/15_word_doc.png" width="190"><br><sub>Parsing settings</sub></td>
@@ -41,6 +41,12 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
     <td align="center"><img src="docs/screenshots/23_explain_history.png" width="190"><br><sub>Explanation history</sub></td>
     <td align="center"><img src="docs/screenshots/22_dark.png" width="190"><br><sub>Dark mode</sub></td>
     <td align="center"><img src="docs/screenshots/21_onboarding.png" width="190"><br><sub>Onboarding</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/24_quality_review.png" width="190"><br><sub>Review new cards</sub></td>
+    <td align="center"><img src="docs/screenshots/26_mastery.png" width="190"><br><sub>Mastery and weak spots</sub></td>
+    <td></td>
+    <td></td>
   </tr>
 </table>
 
@@ -53,12 +59,17 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
 - Generate from the whole document, selected chapters, or a page range; choose count, question types, difficulty, and focus
 - Question types: single choice, multiple choice, true/false, fill-in-the-blank, short answer, calculation
 - Every card and question links back to its source in the original text
+- Automatic quality checks after generation: source matching, formula rendering, multiple-choice validity, and near-duplicate detection; failing items get one batched AI fix or are dropped, with a summary such as "30 generated, 2 auto-fixed, 3 duplicates removed"
+- Optional "review before adding": new items wait in an inbox where you can accept, edit, delete, or have AI rewrite them
+- Flag any card or question as wrong, too easy, duplicate, out of scope, or unclear; future generation avoids those problems
 
 **Review and practice**
 - FSRS spaced-repetition scheduling, swipe to grade, step back and forward through cards
 - Objective questions are graded automatically; short-answer and calculation questions are graded by AI
 - AI explanations grounded in the source text, with follow-up questions; every explanation is kept in a searchable history you can star and continue
 - Mistake book: wrong answers are collected automatically, filterable by project, with new questions generated for weak points
+- Study data: daily overview (reviews, accuracy, time, streak), a six-month heatmap, 7 / 30-day due forecast, and mastery per project and chapter
+- Weak-spot suggestions based on lapses, mistakes, and recall, with one tap to review them or generate new questions targeting them
 - Study settings: daily new / review limits, FSRS desired retention, day start time
 - Daily review reminder (local notification, no network needed)
 
@@ -160,6 +171,7 @@ Ask for a rewrite in the card's AI explanation, or mark the question as "AI 出�
 - [x] PDF / Word parsing and AI generation
 - [x] FSRS review, quizzes, and mistake book
 - [x] Data backup and migration, dark mode, explanation history
+- [x] Generation quality control, study data, and weak-spot suggestions
 - [ ] Cloud sync (WebDAV)
 - [ ] Web version
 - [ ] iOS version

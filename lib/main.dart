@@ -86,7 +86,8 @@ class StudyApp extends StatelessWidget {
 class HomeShell extends StatefulWidget {
   final int initialTab;
   final bool restoreSession;
-  const HomeShell({super.key, this.initialTab = 0, this.restoreSession = true});
+  final DateTime? statsNow; // 截图用：固定统计页的「现在」
+  const HomeShell({super.key, this.initialTab = 0, this.restoreSession = true, this.statsNow});
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
@@ -124,7 +125,7 @@ class _HomeShellState extends State<HomeShell> {
         body: IndexedStack(index: tab, children: [
           HomePage(onTab: (i) => setState(() => tab = i)),
           const ReviewTab(),
-          const StatsPage(),
+          StatsPage(now: widget.statsNow),
           const MePage(),
         ]),
         bottomNavigationBar: SafeArea(

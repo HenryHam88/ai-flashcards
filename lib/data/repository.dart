@@ -183,4 +183,42 @@ class Repository {
     final m = RegExp(r'(?:闪卡问题|题)：(.+)').firstMatch(p);
     return (m?.group(1) ?? '').trim();
   }
+
+  // ---------- 反馈 ----------
+  Future<void> saveFeedback(FeedbackEntry f) => store.put('feedback', f.id, f.projectId, f.toJson());
+  Future<List<FeedbackEntry>> feedback({String? projectId}) async =>
+      (await store.list('feedback', projectId: projectId)).map(FeedbackEntry.fromJson).toList()
+        ..sort((a, b) => b.at.compareTo(a.at));
+
+  // ---------- 学习时长 ----------
+  Future<void> saveSession(StudySession x) => store.put('sessions', x.id, x.projectId, x.toJson());
+  Future<List<StudySession>> sessions({String? projectId}) async =>
+      (await store.list('sessions', projectId: projectId)).map(StudySession.fromJson).toList();
+
+  // ---------- 待审核（生成后先审核） ----------
+  Future<List<Flashcard>> inboxCards({String? projectId}) async =>
+      (await store.list('inbox_cards', projectId: projectId)).map(Flashcard.fromJson).toList();
+  Future<List<Question>> inboxQuestions({String? projectId}) async =>
+      (await store.list('inbox_questions', projectId: projectId)).map(Question.fromJson).toList();
+  Future<void> saveInbox(List<Flashcard> cs, List<Question> qs) async {
+    await store.putAll('inbox_cards', cs.map((e) => (e.id, e.projectId, e.toJson())).toList());
+    await store.putAll('inbox_questions', qs.map((e) => (e.id, e.projectId, e.toJson())).toList());
+  }
+
+  Future<void> deleteInbox(String id) async {
+    await store.delete('inbox_cards', id);
+    await store.delete('inbox_questions', id);
+  }
+
+  /// 收下：从待审核移到正式卡片 / 题目。
+  Future<void> acceptInbox(List<Flashcard> cs, List<Question> qs) async {
+    await saveCards(cs);
+    await saveQuestions(qs);
+    for (final c in cs) {
+      await store.delete('inbox_cards', c.id);
+    }
+    for (final q in qs) {
+      await store.delete('inbox_questions', q.id);
+    }
+  }
 }

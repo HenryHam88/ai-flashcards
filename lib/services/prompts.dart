@@ -16,6 +16,7 @@ class Prompts {
     'gen': '闪卡与题目生成',
     'explain': 'AI 解释',
     'grade': '主观题批改',
+    'fix': '质量修正 / AI 重写',
   };
 
   static const defaults = {
@@ -73,6 +74,21 @@ $formulaRule
 学生作答：{{user_answer}}
 
 只输出 json，格式示例：{"score":7,"comment":"思路正确，但第二步求导有误……"}''',
+    'fix': '''你是严谨的出题审核员。下面的闪卡 / 题目存在问题（见每条的「问题」），请逐条修正。
+
+修正要求：
+- 答案和解析必须能在给出的教材原文中找到依据；原文没有的内容不要编造。
+- 单选题恰好一个正确答案，多选题至少两个；选项互不相同，不要带 A. 前缀；answer 用字母。
+- 保持原来的类型（kind / type）和考查的知识点，只改有问题的地方；用户给了原因时按原因修改。
+- 实在无法修正的条目不要输出。
+
+$formulaRule
+
+只输出 json，格式示例：
+{"items":[{"id":0,"front":"……","back":"……","explanation":"……"},{"id":1,"stem":"……","options":["……","……","……","……"],"answer":"B","explanation":"……"}]}
+
+待修正：
+{{items}}''',
   };
 
   static String fill(String tpl, Map<String, String> vars) {

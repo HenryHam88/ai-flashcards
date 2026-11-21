@@ -6,6 +6,7 @@ import '../models.dart';
 import '../services/pipeline.dart';
 import '../theme/glass.dart';
 import 'explain_sheet.dart';
+import 'feedback_sheet.dart';
 
 /// 测验页。当前题号和每题作答都持久化，返回/重进不会回到第一题。
 class QuizPage extends StatefulWidget {
@@ -26,6 +27,7 @@ class _QuizPageState extends State<QuizPage> {
   Set<int> picked = {};
   final input = TextEditingController();
   bool grading = false;
+  late final SessionTimer timer; // 统计学习时长
 
   AppState get s => context.read<AppState>();
   String get key => widget.sessionKey ?? '${widget.projectId ?? 'mixed'}_${widget.chapter ?? 'all'}';
@@ -33,7 +35,14 @@ class _QuizPageState extends State<QuizPage> {
   @override
   void initState() {
     super.initState();
+    timer = s.startSession(widget.projectId, 'quiz');
     _init();
+  }
+
+  @override
+  void dispose() {
+    timer.end();
+    super.dispose();
   }
 
   Future<void> _init() async {
@@ -49,7 +58,7 @@ class _QuizPageState extends State<QuizPage> {
       ids = widget.questionIds!;
     } else {
       final all = await s.repo.questions(projectId: widget.projectId);
-      ids = all.where((q) => widget.chapter == null || q.chapter == widget.chapter).map((q) => q.id).toList();
+      ids = all.where((q) => !q.suspended && (widget.chapter == null || q.chapter == widget.chapter)).map((q) => q.id).toList();
     }
     for (final id in ids) {
       final q = await s.repo.question(id);
@@ -71,6 +80,7 @@ class _QuizPageState extends State<QuizPage> {
 
   Future<void> _submit(Question q, String userAnswer) async {
     if (answers.containsKey(q.id)) return;
+    timer.touch();
     if (QType.isObjective(q.type)) {
       final ok = gradeObjective(q, userAnswer);
       answers[q.id] = {'answer': userAnswer, 'correct': ok};
@@ -124,6 +134,9 @@ class _QuizPageState extends State<QuizPage> {
               final q = qs[index];
               if (v == 'src') {
                 showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter, section: q.section);
+              } else if (v == 'flag') {
+                final r = await showFeedbackSheet(context, question: q);
+                if (r is Question && mounted) setState(() => qs[index] = r);
               } else {
                 await s.mark(q: q, mark: v);
                 if (context.mounted) toast(context, '已标记为「$v」');
@@ -131,6 +144,7 @@ class _QuizPageState extends State<QuizPage> {
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'src', child: Text('查看原文')),
+              PopupMenuItem(value: 'flag', child: Text('这道题有问题')),
               PopupMenuItem(value: '不确定', child: Text('标记：不确定')),
               PopupMenuItem(value: 'AI出错了', child: Text('标记：AI出错了')),
             ],

@@ -123,7 +123,7 @@ void main() {
     final repo = Repository(MemoryDocStore());
     final settings = Settings(await SharedPreferences.getInstance(), MemorySecretStore());
     await repo.saveProject(Project(id: 'p', name: '概率论'));
-    await repo.savePages([PageText(docId: 'd', projectId: 'p', page: 12, text: '第一章 随机事件\n条件概率定义……')]);
+    await repo.savePages([PageText(docId: 'd', projectId: 'p', page: 12, text: '第一章 随机事件\n条件概率定义：\$P(A\\mid B)=P(AB)/P(B)\$。一般 \$P(A\\mid B)\$ 不等于 \$P(A)\$，仅当 A 与 B 独立时成立。')]);
     await repo.replaceChunks('p', 'd', chunkPages('p', 'd', await repo.pages('p')));
     final mock = MockClient((req) async {
       final prompt = (jsonDecode(req.body)['messages'] as List).last['content'] as String;

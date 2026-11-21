@@ -28,7 +28,7 @@
     <td align="center"><img src="docs/screenshots/14_explain_markdown.png" width="190"><br><sub>AI 解释</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/5_stats.png" width="190"><br><sub>学习统计</sub></td>
+    <td align="center"><img src="docs/screenshots/25_stats_overview.png" width="190"><br><sub>学习数据</sub></td>
     <td align="center"><img src="docs/screenshots/8_wrong_mixed.png" width="190"><br><sub>错题本</sub></td>
     <td align="center"><img src="docs/screenshots/16_word_doc_list.png" width="190"><br><sub>资料管理</sub></td>
     <td align="center"><img src="docs/screenshots/15_word_doc.png" width="190"><br><sub>解析设置</sub></td>
@@ -38,6 +38,12 @@
     <td align="center"><img src="docs/screenshots/23_explain_history.png" width="190"><br><sub>解释历史</sub></td>
     <td align="center"><img src="docs/screenshots/22_dark.png" width="190"><br><sub>深色模式</sub></td>
     <td align="center"><img src="docs/screenshots/21_onboarding.png" width="190"><br><sub>首次引导</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/24_quality_review.png" width="190"><br><sub>生成审核</sub></td>
+    <td align="center"><img src="docs/screenshots/26_mastery.png" width="190"><br><sub>掌握度与薄弱点</sub></td>
+    <td></td>
+    <td></td>
   </tr>
 </table>
 
@@ -50,12 +56,17 @@
 - 按整份、章节或页码范围生成；可设置数量、题型、难度和侧重点
 - 题型：单选、多选、判断、填空、简答、计算
 - 每张卡片和每道题都标注出处，一键查看原文
+- 生成后自动质检：核对出处、检查公式能否渲染、选择题是否合理、是否与已有内容重复；有问题的统一让 AI 修正一次，修不好就丢弃，并告诉你「生成 30 张，自动修正 2 张，去重 3 张」
+- 可开启「生成后先审核」：新内容先进待审核，逐张确认、编辑或让 AI 重写后再加入复习
+- 任意卡片 / 题目都能标记「这张有问题」（答案错误、太简单、重复、超纲、表述不清），之后出题会自动避开这些问题
 
 **复习与测验**
 - FSRS 间隔重复调度，滑动评分，支持上一张 / 下一张回看
 - 客观题自动判分，简答题和计算题由 AI 批改
 - AI 解释：结合原文讲解、举例，可以继续追问；所有解释自动保存到「解释历史」，可搜索、收藏、随时接着问
 - 错题本：自动收录，按项目筛选，针对薄弱知识点再出新题
+- 学习数据：每日概览（练习次数、正确率、学习时长、连续天数）、半年热力图、未来 7 / 30 天到期预测、各项目和章节的掌握度
+- 薄弱点推荐：根据遗忘次数、错题和记忆率找出最弱的章节，一键「复习这些」或「针对这些出新题」
 - 学习设置：每日新卡 / 复习上限、FSRS 目标记忆率、每日开始时间
 - 每日复习提醒（本地通知，无需联网）
 
@@ -157,6 +168,7 @@ SHA-256: f5:ec:04:9f:25:ef:21:59:36:28:23:59:4a:08:49:46:f5:66:6d:cc:54:35:19:b9
 - [x] PDF / Word 解析与 AI 生成
 - [x] FSRS 复习、测验与错题本
 - [x] 数据备份与迁移、深色模式、解释历史
+- [x] 出题质量控制、学习数据与薄弱点推荐
 - [ ] 云端同步（WebDAV）
 - [ ] 网页版
 - [ ] iOS 版

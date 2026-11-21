@@ -79,3 +79,61 @@ $$P(A\mid B)=\frac{P(AB)}{P(B)},\quad P(B)>0$$
     },
   ]));
 }
+
+/// 统计页截图用：以固定的 [now] 生成半年学习记录、复习进度、学习时长和错题。
+Future<void> seedStudyHistory(Repository repo, DateTime now) async {
+  // 覆盖示例数据里相对真实时间的 40 条记录，保证截图稳定
+  for (var i = 0; i < 40; i++) {
+    await repo.log(LogEntry(id: 'l$i', projectId: 'p1', kind: i.isEven ? 'card' : 'quiz', correct: i % 5 != 0,
+        at: now.subtract(Duration(days: i % 7, minutes: 30 + i))));
+  }
+  for (var d = 1; d < 182; d++) {
+    final h = (d * 2654435761) >> 9;
+    final active = d < 14 || h % 10 < (d > 120 ? 4 : 7);
+    if (!active) continue;
+    final n = 3 + (h ~/ 10) % 26;
+    for (var i = 0; i < n; i++) {
+      await repo.log(LogEntry(id: 'h${d}_$i', projectId: i.isEven ? 'p1' : 'p2', kind: i % 3 == 0 ? 'quiz' : 'card',
+          correct: (d + i) % 7 != 0, isNew: i % 4 == 0, at: now.subtract(Duration(days: d, minutes: 40 + i))));
+    }
+    await repo.saveSession(StudySession(id: 's$d', projectId: 'p1', kind: 'review',
+        start: now.subtract(Duration(days: d, hours: 1)), seconds: 300 + n * 40));
+  }
+  for (var i = 0; i < 14; i++) {
+    await repo.log(LogEntry(id: 't$i', projectId: 'p1', kind: 'card', correct: i % 6 != 0, isNew: i < 5,
+        at: now.subtract(Duration(minutes: 5 + i * 3))));
+  }
+  await repo.saveSession(StudySession(id: 'today1', projectId: 'p1', kind: 'review', start: now.subtract(const Duration(hours: 3)), seconds: 1260));
+  await repo.saveSession(StudySession(id: 'today2', projectId: 'p2', kind: 'quiz', start: now.subtract(const Duration(minutes: 40)), seconds: 1020));
+
+  final cards = await repo.cards();
+  for (final c in cards) {
+    final i = int.tryParse(c.id.substring(1)) ?? 0;
+    switch (c.projectId) {
+      case 'p1':
+        if (i >= 16) {
+          c.chapter = '第二章 随机变量及其分布';
+          c.section = '';
+        }
+        c.reps = 3 + i % 4;
+        c.stability = i >= 16 ? 1.5 + (i % 3) : 18.0 + i;
+        c.lapses = i >= 16 ? 1 + i % 3 : (i % 9 == 0 ? 1 : 0);
+        c.lastReview = now.subtract(Duration(days: i >= 16 ? 4 + i % 5 : 2 + i % 6));
+        c.due = now.add(Duration(days: i >= 16 ? -(i % 3) : (i % 23) - 1));
+      case 'p2':
+        c.reps = 2;
+        c.stability = 6 + i * 1.0;
+        c.lastReview = now.subtract(Duration(days: 3 + i % 3));
+        c.due = now.add(Duration(days: 1 + i * 2));
+      default:
+        if (i < 7) {
+          c.reps = 1;
+          c.stability = 3;
+          c.lastReview = now.subtract(Duration(days: 1 + i % 2));
+          c.due = now.add(Duration(days: 2 + i));
+        }
+    }
+  }
+  await repo.saveCards(cards);
+  await repo.saveWrong(WrongEntry(id: 'q1', projectId: 'p2', questionId: 'q1', mark: '答错'));
+}

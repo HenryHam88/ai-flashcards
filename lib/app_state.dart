@@ -13,6 +13,7 @@ import 'services/latex.dart';
 import 'services/llm.dart';
 import 'services/pipeline.dart';
 import 'services/prompts.dart';
+import 'services/quality.dart';
 import 'services/settings.dart';
 import 'theme/rich_text.dart' show stripMetaPreamble;
 
@@ -149,7 +150,72 @@ class AppState extends ChangeNotifier {
     _touchJobs();
     changed();
   }
-  Future<GenerationService> generator() async => GenerationService(repo, settings, await llm());
+  Future<GenerationService> generator({String? projectId}) async => GenerationService(repo, settings, await llm(),
+      avoid: projectId == null ? '' : await avoidList(projectId));
+
+  // ---------------------------------------------------------------- 质量反馈
+
+  /// 本项目最近的反馈（含错题本「AI出错了」）汇总成避免清单。
+  Future<String> avoidList(String projectId) async {
+    final since = DateTime.now().subtract(const Duration(days: 60));
+    final fb = (await repo.feedback(projectId: projectId)).where((f) => f.at.isAfter(since)).toList();
+    final wrong = (await repo.wrong(projectId: projectId)).where((w) => w.mark == 'AI出错了' && w.addedAt.isAfter(since)).toList();
+    final texts = <String, String>{};
+    for (final w in wrong) {
+      if (w.questionId.isNotEmpty) {
+        texts[w.questionId] = (await repo.question(w.questionId))?.stem ?? '';
+      } else if (w.cardId.isNotEmpty) {
+        texts[w.cardId] = (await repo.card(w.cardId))?.front ?? '';
+      }
+    }
+    // 同一题既有反馈又标了 AI出错了 时只算一次
+    final ids = fb.map((f) => f.itemId).toSet();
+    return buildAvoidList([...fb, ...feedbackFromWrong(wrong, texts).where((f) => !ids.contains(f.itemId))]);
+  }
+
+  /// 「这张有问题」：记录反馈，可选暂停。
+  Future<void> submitFeedback(
+      {Flashcard? card, Question? q, required String reason, String note = '', bool suspend = false}) async {
+    final id = card?.id ?? q!.id;
+    await repo.saveFeedback(FeedbackEntry(
+      id: newId(),
+      projectId: card?.projectId ?? q!.projectId,
+      itemId: id,
+      kind: card != null ? 'card' : 'question',
+      reason: reason,
+      note: note,
+      itemText: card?.front ?? q!.stem,
+    ));
+    if (card != null) {
+      card
+        ..flag = reason
+        ..suspended = suspend || card.suspended;
+      await repo.saveCards([card]);
+    } else {
+      q!
+        ..flag = reason
+        ..suspended = suspend || q.suspended;
+      await repo.saveQuestions([q]);
+    }
+    changed();
+  }
+
+  /// AI 按原因修正 / 重写一条（不保存，由调用方确认后保存）。
+  Future<Object?> aiRewrite({Flashcard? card, Question? q, required String reason}) async {
+    final src = await sourceText(card?.docId ?? q!.docId, card?.page ?? q!.page);
+    final svc = QualityService(await llm(), fixPrompt: settings.prompt('fix'));
+    final r = await svc.rewriteOne(card: card, q: q, reason: reason, source: src);
+    if (r == null) throw LlmException('AI 没能给出修改，请稍后再试或手动编辑');
+    return r;
+  }
+
+  // ---------------------------------------------------------------- 学习时长
+
+  /// 开始一次学习会话。每次评分 / 作答时调用 touch()，离开页面时调用 end()。
+  /// 两次操作间隔超过 2 分钟的部分不计（视为走神或挂机）。
+  SessionTimer startSession(String? projectId, String kind) =>
+      SessionTimer((secs, start) => repo.saveSession(
+          StudySession(id: newId(), projectId: projectId ?? '', kind: kind, start: start, seconds: secs)));
 
   // ---------- 复习 ----------
   /// FSRS 调度器：目标记忆率来自学习设置（默认 0.9，与旧版相同）。
@@ -165,7 +231,7 @@ class AppState extends ChangeNotifier {
 
   Future<List<Flashcard>> dueCards({String? projectId}) async {
     final now = DateTime.now();
-    final l = (await repo.cards(projectId: projectId)).where((c) => !c.due.isAfter(now)).toList()
+    final l = (await repo.cards(projectId: projectId)).where((c) => !c.suspended && !c.due.isAfter(now)).toList()
       ..sort((a, b) => a.due.compareTo(b.due));
     final newLimit = settings.dailyNewLimit, reviewLimit = settings.dailyReviewLimit;
     if (newLimit == 0 && reviewLimit == 0) return l; // 默认不限：与旧版完全一致
@@ -258,7 +324,7 @@ class AppState extends ChangeNotifier {
     final kps = await repo.kps(projectId);
     final kp = kps.where((k) => k.id == kpId).firstOrNull;
     if (kp == null) throw LlmException('找不到对应的知识点');
-    final qs = await (await generator()).generateForKp(projectId, kp, hint: hint);
+    final qs = await (await generator(projectId: projectId)).generateForKp(projectId, kp, hint: hint);
     changed();
     return qs;
   }
@@ -337,5 +403,30 @@ class AppState extends ChangeNotifier {
     final prompt = Prompts.fill(settings.prompt('grade'), {'stem': q.stem, 'answer': q.answer, 'user_answer': userAnswer});
     final j = await (await llm()).chatJson(prompt);
     return (asInt(j['score']).clamp(0, 10), LatexUtil.autoFix('${j['comment'] ?? ''}'));
+  }
+}
+
+
+class SessionTimer {
+  final void Function(int seconds, DateTime start) onEnd;
+  final DateTime start = DateTime.now();
+  late DateTime _last = start;
+  int _active = 0;
+  bool _done = false;
+  SessionTimer(this.onEnd);
+
+  int get seconds => _active;
+
+  void touch([DateTime? now]) {
+    final n = now ?? DateTime.now();
+    _active += n.difference(_last).inSeconds.clamp(0, 120);
+    _last = n;
+  }
+
+  void end() {
+    if (_done) return;
+    _done = true;
+    touch();
+    if (_active >= 5) onEnd(_active, start);
   }
 }

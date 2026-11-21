@@ -9,6 +9,7 @@ import 'package:ai_flashcards/services/settings.dart';
 import 'package:ai_flashcards/theme/glass.dart';
 import 'package:ai_flashcards/ui/chapter_editor_page.dart';
 import 'package:ai_flashcards/ui/explain_history_page.dart';
+import 'package:ai_flashcards/ui/inbox_page.dart';
 import 'package:ai_flashcards/ui/onboarding_page.dart';
 import 'package:ai_flashcards/ui/settings_pages.dart';
 import 'package:ai_flashcards/ui/me_page.dart';
@@ -395,5 +396,41 @@ void main() {
           {'role': 'assistant', 'content': r'这是一阶线性齐次方程，分离变量得 $\frac{dy}{y}=-dx$，积分得 $y=Ce^{-x}$。'},
         ]));
     await shoot(t, const ExplainHistoryPage(), '23_explain_history');
+  });
+
+  testWidgets('质量控制：审核这批', (t) async {
+    final cards = [
+      Flashcard(id: 'n1', projectId: 'p1', chapter: '第一章 随机事件与概率', front: '条件概率的乘法公式', back: r'$P(AB)=P(B)\,P(A\mid B)$，其中 $P(B)>0$', explanation: r'由条件概率定义两边同乘 $P(B)$ 得到。', page: 12),
+      Flashcard(id: 'n2', projectId: 'p1', chapter: '第一章 随机事件与概率', front: r'事件 $A,B$ 独立时，$P(A\mid B)$ 等于什么？', back: r'$P(A\mid B)=P(A)$', explanation: r'独立意味着 $B$ 是否发生不影响 $A$。', page: 13),
+      Flashcard(id: 'n3', projectId: 'p1', chapter: '第一章 随机事件与概率', front: '全概率公式中的完备事件组要满足什么？', back: r'两两互斥，且 $\bigcup_i B_i=\Omega$，$P(B_i)>0$', page: 14),
+    ];
+    final qs = [
+      Question(id: 'nq1', projectId: 'p1', chapter: '第一章 随机事件与概率', type: QType.single, stem: r'已知 $P(B)=0.5$，$P(AB)=0.2$，则 $P(A\mid B)=$', options: ['0.1', '0.25', '0.4', '0.7'], answer: 'C', explanation: r'$P(A\mid B)=0.2/0.5=0.4$', page: 12),
+    ];
+    await state.repo.saveCards(cards);
+    await state.repo.saveQuestions(qs);
+    await shoot(t, InboxPage(projectId: 'p1', cardIds: [for (final c in cards) c.id], questionIds: ['nq1'],
+        summary: '生成 30 张（闪卡 20，题目 10），自动修正 2 张，去重 3 张'), '24_quality_review');
+  });
+
+  final statsNow = DateTime(2026, 11, 20, 20, 30);
+
+  testWidgets('学习数据：概览', (t) async {
+    await seedStudyHistory(state.repo, statsNow);
+    await shoot(t, HomeShell(initialTab: 2, restoreSession: false, statsNow: statsNow), '25_stats_overview');
+  });
+
+  testWidgets('学习数据：掌握度和薄弱点', (t) async {
+    await seedStudyHistory(state.repo, statsNow);
+    await shoot(t, HomeShell(initialTab: 2, restoreSession: false, statsNow: statsNow), '26_mastery', after: () async {
+      await t.dragFrom(const Offset(200, 500), const Offset(0, -700));
+      await t.pump(const Duration(milliseconds: 100));
+      await t.tap(find.text('概率论 第3章').hitTestable().first);
+      await t.pump(const Duration(milliseconds: 200));
+      await t.dragFrom(const Offset(200, 500), const Offset(0, -80));
+      for (var i = 0; i < 6; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+    });
   });
 }

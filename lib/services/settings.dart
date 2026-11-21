@@ -139,6 +139,11 @@ class Settings {
   DateTime? get lastAutoBackup => DateTime.tryParse(prefs.getString('last_auto_backup') ?? '');
   set lastAutoBackup(DateTime? v) => prefs.setString('last_auto_backup', v?.toIso8601String() ?? '');
 
+  // ---------- 质量控制 ----------
+  /// 生成后先放进「待审核」，确认后才加入复习。默认关闭（与旧版一致：直接加入）。
+  bool get reviewBeforeAdd => prefs.getBool('review_before_add') ?? false;
+  set reviewBeforeAdd(bool v) => prefs.setBool('review_before_add', v);
+
   // ---------- 首次启动 ----------
   bool get onboarded => prefs.getBool('onboarded') ?? false;
   set onboarded(bool v) => prefs.setBool('onboarded', v);
@@ -147,7 +152,7 @@ class Settings {
   static const backupKeys = [
     'llm_base', 'llm_model', 'ocr_provider', 'ocr_modes', 'ocr_base', 'ocr_batch', 'kimi_base', 'gen_templates',
     'daily_new_limit', 'daily_review_limit', 'desired_retention', 'day_start_hour', 'theme_mode', 'text_scale',
-    'math_scale', 'reduce_motion', 'haptics', 'reminder_on', 'reminder_minutes', 'auto_backup',
+    'math_scale', 'reduce_motion', 'haptics', 'reminder_on', 'reminder_minutes', 'auto_backup', 'review_before_add',
   ];
   static const secretKeys = ['llm_key', 'ocr_key', 'kimi_key'];
 

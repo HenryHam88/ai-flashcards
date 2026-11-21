@@ -15,7 +15,9 @@ import '../theme/glass.dart';
 import 'chapter_editor_page.dart';
 import 'settings_pages.dart' show showExportSheet;
 import 'explain_sheet.dart';
+import 'feedback_sheet.dart';
 import 'gen_sheet.dart';
+import 'inbox_page.dart';
 import 'home_page.dart';
 import 'quiz_page.dart';
 import 'review_page.dart';
@@ -27,13 +29,16 @@ class ProjectData {
   final List<Flashcard> cards;
   final List<Question> questions;
   final List<String> chapters;
-  ProjectData(this.project, this.docs, this.cards, this.questions, this.chapters);
+  final int inbox; // 待审核数量
+  ProjectData(this.project, this.docs, this.cards, this.questions, this.chapters, {this.inbox = 0});
 }
 
 class ProjectPage extends StatefulWidget {
   final String projectId;
   final bool autoUpload;
-  const ProjectPage({super.key, required this.projectId, this.autoUpload = false});
+  /// 打开后立即弹出生成面板并预填这些选项（统计页「针对这些出新题」）。
+  final GenOptions? genPreset;
+  const ProjectPage({super.key, required this.projectId, this.autoUpload = false, this.genPreset});
   @override
   State<ProjectPage> createState() => _ProjectPageState();
 }
@@ -49,6 +54,12 @@ class _ProjectPageState extends State<ProjectPage> {
   void initState() {
     super.initState();
     if (widget.autoUpload) WidgetsBinding.instance.addPostFrameCallback((_) => _upload());
+    if (widget.genPreset != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final d = await _load();
+        if (d != null && mounted) await _generate(d, preset: widget.genPreset);
+      });
+    }
   }
 
   Future<ProjectData?> _load() async {
@@ -60,7 +71,8 @@ class _ProjectPageState extends State<ProjectPage> {
       if (!chapters.contains(c.chapter)) chapters.add(c.chapter);
     }
     return ProjectData(pr, await s.repo.docs(pr.id), await s.repo.cards(projectId: pr.id),
-        await s.repo.questions(projectId: pr.id), chapters);
+        await s.repo.questions(projectId: pr.id), chapters,
+        inbox: (await s.repo.inboxCards(projectId: pr.id)).length + (await s.repo.inboxQuestions(projectId: pr.id)).length);
   }
 
   void _progress(String m, double f) {
@@ -122,12 +134,30 @@ class _ProjectPageState extends State<ProjectPage> {
     }
   }
 
-  Future<void> _generate(ProjectData d) async {
-    final o = await showGenOptionsSheet(context, d.project, d.chapters);
+  Future<void> _generate(ProjectData d, {GenOptions? preset}) async {
+    final o = await showGenOptionsSheet(context, d.project, d.chapters, preset: preset);
     if (o == null) return;
     await _run(() async {
-      final r = await (await s.generator()).generate(d.project.id, o, _progress);
-      if (mounted) toast(context, '生成完成：${r.cards} 张闪卡，${r.questions} 道题（${r.kps} 个知识点）');
+      final r = await (await s.generator(projectId: d.project.id)).generate(d.project.id, o, _progress);
+      if (!mounted) return;
+      // 生成后横幅：可以马上审核这一批（开启「生成后先审核」时内容在待审核里）
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 8),
+        backgroundColor: M.text.withValues(alpha: 0.92),
+        content: Text(r.pending ? '${r.summary}，已放入待审核' : r.summary),
+        action: r.cards + r.questions == 0
+            ? null
+            : SnackBarAction(
+                label: '审核这批',
+                textColor: M.sage,
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => r.pending
+                        ? InboxPage(projectId: d.project.id, summary: r.summary)
+                        : InboxPage(
+                            projectId: d.project.id, cardIds: r.cardIds, questionIds: r.questionIds, summary: r.summary))),
+              ),
+      ));
     });
   }
 
@@ -248,6 +278,24 @@ class _ProjectPageState extends State<ProjectPage> {
   }
 
   Widget _docsTab(ProjectData d) => ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
+        if (d.inbox > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Glass(
+              tint: M.oat.withValues(alpha: 0.9),
+              onTap: () => Navigator.of(context)
+                  .push(MaterialPageRoute(builder: (_) => InboxPage(projectId: d.project.id)))
+                  .then((_) => s.changed()),
+              child: Row(children: [
+                const Icon(Icons.inbox_rounded, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: Text('待审核 ${d.inbox} 条：确认后才会加入复习和测验',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+                const Icon(Icons.chevron_right_rounded, color: Colors.white),
+              ]),
+            ),
+          ),
         Glass(
           onTap: busy ? null : _upload,
           child: Row(children: [
@@ -402,9 +450,51 @@ class _ProjectPageState extends State<ProjectPage> {
     ]);
   }
 
+  /// 长按卡片 / 题目：编辑、反馈、暂停或恢复。
+  Future<void> _itemMenu(Object item) async {
+    final c = item is Flashcard ? item : null, q = item is Question ? item : null;
+    final suspended = c?.suspended ?? q!.suspended;
+    final v = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: M.sheet,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('编辑'), onTap: () => Navigator.pop(ctx, 'edit')),
+          ListTile(
+              leading: const Icon(Icons.flag_outlined),
+              title: Text(c != null ? '这张有问题' : '这道题有问题'),
+              onTap: () => Navigator.pop(ctx, 'flag')),
+          ListTile(
+              leading: Icon(suspended ? Icons.play_circle_outline_rounded : Icons.pause_circle_outline_rounded),
+              title: Text(suspended ? '恢复（重新加入复习 / 测验）' : '暂停'),
+              onTap: () => Navigator.pop(ctx, 'suspend')),
+        ]),
+      ),
+    );
+    if (!mounted || v == null) return;
+    if (v == 'edit') {
+      await showItemEditor(context, card: c, question: q, save: (it) async {
+        if (it is Flashcard) await s.repo.saveCards([it]);
+        if (it is Question) await s.repo.saveQuestions([it]);
+      });
+    } else if (v == 'flag') {
+      await showFeedbackSheet(context, card: c, question: q);
+    } else {
+      if (c != null) await s.repo.saveCards([c..suspended = !suspended]);
+      if (q != null) await s.repo.saveQuestions([q..suspended = !suspended]);
+    }
+    s.changed();
+  }
+
   Widget _cardTile(Flashcard c) => ListTile(
-        title: MathText(c.front, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-        subtitle: MathText(c.back, style: TextStyle(fontSize: 13, color: M.sub)),
+        onLongPress: () => _itemMenu(c),
+        enabled: true,
+        title: Opacity(
+          opacity: c.suspended ? 0.45 : 1,
+          child: MathText(c.suspended ? '（已暂停）${c.front}' : c.front,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        ),
+        subtitle: Opacity(opacity: c.suspended ? 0.45 : 1, child: MathText(c.back, style: TextStyle(fontSize: 13, color: M.sub))),
         trailing: c.page > 0
             ? TextButton(
                 onPressed: () => showSourceSheet(context, docId: c.docId, page: c.page, chapter: c.chapter, section: c.section),
@@ -413,8 +503,11 @@ class _ProjectPageState extends State<ProjectPage> {
       );
 
   Widget _questionTile(Question q) => ListTile(
+        onLongPress: () => _itemMenu(q),
         leading: Text(q.type, style: TextStyle(color: M.sageDark, fontSize: 12)),
-        title: MathText(q.stem, style: const TextStyle(fontSize: 14)),
+        title: Opacity(
+            opacity: q.suspended ? 0.45 : 1,
+            child: MathText(q.suspended ? '（已暂停）${q.stem}' : q.stem, style: const TextStyle(fontSize: 14))),
         trailing: q.page > 0
             ? TextButton(
                 onPressed: () => showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter, section: q.section),

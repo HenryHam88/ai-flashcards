@@ -13,6 +13,7 @@ import 'llm.dart';
 import 'ocr.dart';
 import 'pdf_tools.dart';
 import 'prompts.dart';
+import 'quality.dart';
 import 'settings.dart';
 
 typedef Progress = void Function(String message, double fraction);
@@ -389,14 +390,54 @@ extension on ParseService {
 
 class GenerationResult {
   final int cards, questions, kps;
-  GenerationResult(this.cards, this.questions, this.kps);
+  final List<String> cardIds, questionIds;
+  final QualityReport quality;
+  final bool pending; // true：放进了「待审核」，还没加入复习
+  GenerationResult(this.cards, this.questions, this.kps,
+      {this.cardIds = const [], this.questionIds = const [], QualityReport? quality, this.pending = false})
+      : quality = quality ?? QualityReport();
+
+  /// 如「生成 30 张，自动修正 2 张，去重 3 张」。
+  String get summary {
+    final d = quality.detail;
+    return '生成 ${cards + questions} 张（闪卡 $cards，题目 $questions）${d.isEmpty ? '' : '，$d'}';
+  }
 }
 
 class GenerationService {
   final Repository repo;
   final Settings settings;
   final LlmClient llm;
-  GenerationService(this.repo, this.settings, this.llm);
+  /// 根据用户反馈汇总的「避免清单」，拼进每次出题的自定义要求里。
+  final String avoid;
+  /// 生成后自动质检（出处、公式、选择题、去重）；测试可关闭。
+  final bool qualityCheck;
+  GenerationService(this.repo, this.settings, this.llm, {this.avoid = '', this.qualityCheck = true});
+
+  late final QualityService _quality = QualityService(llm, fixPrompt: settings.prompt('fix'));
+
+  /// 质检用的原文：知识点所在的分块原文 + 知识点内容（分块按 id 前缀匹配，找不到再取当页）。
+  final _chunkText = <String, String>{};
+  final _kpText = <String, String>{};
+  Future<String> _sourceOf(String docId, int page, String kpId) async {
+    final k = _kpText[kpId] ?? '';
+    for (final e in _chunkText.entries) {
+      if (kpId.startsWith('${e.key}_k')) return '${e.value}\n$k';
+    }
+    final p = docId.isEmpty || page <= 0 ? null : await repo.page(docId, page);
+    return '${p?.text ?? ''}\n$k';
+  }
+
+  Future<(DupIndex, DupIndex)> _dupIndex(String projectId) async {
+    final cd = DupIndex(), qd = DupIndex();
+    for (final c in [...await repo.cards(projectId: projectId), ...await repo.inboxCards(projectId: projectId)]) {
+      cd.add(dupKeyCard(c));
+    }
+    for (final q in [...await repo.questions(projectId: projectId), ...await repo.inboxQuestions(projectId: projectId)]) {
+      qd.add(dupKeyQuestion(q));
+    }
+    return (cd, qd);
+  }
 
   List<Chunk> _scope(List<Chunk> all, GenOptions o) {
     switch (o.scope) {
@@ -461,6 +502,16 @@ class GenerationService {
     p('准备中…', 0.05);
     var kps = await extractKps(projectId, chunks, p);
     if (kps.isEmpty) throw LlmException('没有提取到知识点');
+    for (final c in chunks) {
+      _chunkText[c.id] = c.text;
+    }
+    for (final k in kps) {
+      _kpText[k.id] = '${k.title} ${k.content}';
+    }
+    final (cardDups, qDups) = await _dupIndex(projectId);
+    final report = QualityReport();
+    final reviewFirst = settings.reviewBeforeAdd;
+    final cardIds = <String>[], qIds = <String>[];
     kps.sort((a, b) => b.priority.compareTo(a.priority));
     const perBatch = 8;
     final batches = <List<KnowledgePoint>>[];
@@ -475,28 +526,50 @@ class GenerationService {
       final nc = (cardsLeft / remainingBatches).ceil();
       final nq = (qLeft / remainingBatches).ceil();
       p('生成闪卡和题目（${bi + 1}/${batches.length}）', 0.5 + 0.5 * bi / batches.length);
-      final (cards, qs) = await _generateBatch(projectId, batches[bi], nc, nq, o);
-      await repo.saveCards(cards);
-      await repo.saveQuestions(qs);
+      var (cards, qs, rejects) = await _generateBatch(projectId, batches[bi], nc, nq, o);
+      if (qualityCheck) {
+        p('检查质量（${bi + 1}/${batches.length}）', 0.5 + 0.5 * (bi + 0.8) / batches.length);
+        final (c2, q2, r) = await _quality.process(
+            cards: cards, questions: qs, rejects: rejects, sourceOf: _sourceOf, cardDups: cardDups, questionDups: qDups);
+        cards = c2;
+        qs = q2;
+        report.add(r);
+      }
+      if (reviewFirst) {
+        await repo.saveInbox(cards, qs);
+      } else {
+        await repo.saveCards(cards);
+        await repo.saveQuestions(qs);
+      }
+      cardIds.addAll(cards.map((e) => e.id));
+      qIds.addAll(qs.map((e) => e.id));
       cardsLeft -= cards.length;
       qLeft -= qs.length;
       totalCards += cards.length;
       totalQ += qs.length;
     }
     p('完成', 1);
-    return GenerationResult(totalCards, totalQ, kps.length);
+    return GenerationResult(totalCards, totalQ, kps.length,
+        cardIds: cardIds, questionIds: qIds, quality: report, pending: reviewFirst);
   }
 
   /// 针对单个知识点（错题 / AI 解释面板）换个角度再出几道题。
   Future<List<Question>> generateForKp(String projectId, KnowledgePoint kp, {int count = 3, String hint = ''}) async {
     final o = GenOptions(cardCount: 0, questionCount: count, types: [QType.single, QType.judge, QType.fill, QType.calc],
         difficulty: '混合', focus: ['易错点', '计算应用'], custom: '换一个角度考查，避免与已有题目重复。$hint');
-    final (_, qs) = await _generateBatch(projectId, [kp], 0, count, o);
+    var (_, qs, rejects) = await _generateBatch(projectId, [kp], 0, count, o);
+    if (qualityCheck) {
+      _kpText[kp.id] = '${kp.title} ${kp.content}';
+      final (_, qDups) = await _dupIndex(projectId);
+      final (_, q2, _) = await _quality.process(
+          cards: const [], questions: qs, rejects: rejects, sourceOf: _sourceOf, cardDups: DupIndex(), questionDups: qDups);
+      qs = q2;
+    }
     await repo.saveQuestions(qs);
     return qs;
   }
 
-  Future<(List<Flashcard>, List<Question>)> _generateBatch(
+  Future<(List<Flashcard>, List<Question>, List<RawReject>)> _generateBatch(
       String projectId, List<KnowledgePoint> kps, int nc, int nq, GenOptions o,
       {String extra = ''}) async {
     final kpText = [
@@ -509,25 +582,28 @@ class GenerationService {
       'types': optionsText(o.types),
       'difficulty': o.difficulty,
       'focus': optionsText(o.focus),
-      'custom': o.custom.trim().isEmpty ? '无' : o.custom.trim(),
+      'custom': [o.custom.trim(), avoid.trim()].where((e) => e.isNotEmpty).join('\n').ifEmpty('无'),
       'kps': kpText,
     });
     for (var attempt = 0; attempt < 3; attempt++) {
       final j = await llm.chatJson(prompt + extra);
-      final (cards, qs, problems) = parseGenerated(projectId, kps, j, allowedTypes: o.types);
-      if (problems.isEmpty || attempt == 2) {
-        return (cards, qs);
+      final rejects = <RawReject>[];
+      final (cards, qs, problems) = parseGenerated(projectId, kps, j, allowedTypes: o.types, rejects: rejects);
+      // 个别条目的公式问题交给质检单独修正（便宜）；整批都不能用时才重新生成
+      final usable = qualityCheck ? cards.isNotEmpty || qs.isNotEmpty || rejects.isNotEmpty : problems.isEmpty;
+      if (usable || attempt == 2) {
+        return (cards, qs, qualityCheck ? rejects : <RawReject>[]);
       }
       extra = '\n\n上一次输出存在公式格式问题，请修正后重新输出：\n${problems.take(5).join('\n')}';
     }
-    return (<Flashcard>[], <Question>[]);
+    return (<Flashcard>[], <Question>[], <RawReject>[]);
   }
 }
 
 /// 把模型 JSON 转成闪卡/题目，并校验 LaTeX。返回 (合格闪卡, 合格题目, 问题列表)。
 (List<Flashcard>, List<Question>, List<String>) parseGenerated(
     String projectId, List<KnowledgePoint> kps, Map<String, dynamic> j,
-    {List<String> allowedTypes = const []}) {
+    {List<String> allowedTypes = const [], List<RawReject>? rejects}) {
   final problems = <String>[];
   KnowledgePoint? kpOf(dynamic idx) {
     final i = asInt(idx, -1);
@@ -544,7 +620,30 @@ class GenerationService {
   final cards = <Flashcard>[];
   for (final m in listOfMaps(j['flashcards'])) {
     final kp = kpOf(m['kp_index']);
+    final before = problems.length;
     final front = fix('${m['front'] ?? ''}'), back = fix('${m['back'] ?? ''}');
+    final expl = fix('${m['explanation'] ?? ''}');
+    if (problems.length > before && rejects != null) {
+      // 公式有问题：保留原文交给质检修正
+      String raw(Object? v) => LatexUtil.autoFix('${v ?? ''}'.trim());
+      if (raw(m['front']).isNotEmpty && raw(m['back']).isNotEmpty) {
+        rejects.add(RawReject(
+            issue: '公式无法渲染：${problems.sublist(before).take(2).join('；')}',
+            card: Flashcard(
+              id: newId(),
+              projectId: projectId,
+              kpId: kp?.id ?? '',
+              docId: kp?.docId ?? '',
+              chapter: kp?.chapter ?? '',
+              section: kp?.section ?? '',
+              front: raw(m['front']),
+              back: raw(m['back']),
+              explanation: raw(m['explanation']),
+              page: asInt(m['page'], kp?.page ?? 0),
+            )));
+      }
+      continue;
+    }
     if (front.isEmpty || back.isEmpty) continue;
     cards.add(Flashcard(
       id: newId(),
@@ -555,7 +654,7 @@ class GenerationService {
       section: kp?.section ?? '',
       front: front,
       back: back,
-      explanation: fix('${m['explanation'] ?? ''}'),
+      explanation: expl,
       page: asInt(m['page'], kp?.page ?? 0),
     ));
   }
@@ -565,11 +664,12 @@ class GenerationService {
     var type = '${m['type'] ?? QType.single}'.replaceAll('题', '');
     if (!QType.all.contains(type)) type = QType.single;
     if (allowedTypes.isNotEmpty && !allowedTypes.contains(type)) continue;
+    final before = problems.length;
     final stem = fix('${m['stem'] ?? ''}');
     final options = ((m['options'] as List?) ?? [])
         .map((e) => fix('$e'.replaceFirst(RegExp(r'^\s*[A-Fa-f][\.．、:：]\s*'), '')))
         .toList();
-    if (stem.isEmpty || options.any((e) => e.isEmpty)) continue;
+    if ((stem.isEmpty || options.any((e) => e.isEmpty)) && problems.length == before) continue;
     var answer = '${m['answer'] ?? ''}'.trim();
     if (type == QType.single || type == QType.multi) {
       answer = answer.toUpperCase().replaceAll(RegExp(r'[^A-F]'), '');
@@ -578,7 +678,39 @@ class GenerationService {
       answer = RegExp(r'^(对|正确|true|√|T)', caseSensitive: false).hasMatch(answer) ? '对' : '错';
     } else {
       answer = fix(answer);
-      if (answer.isEmpty) continue;
+      if (answer.isEmpty && problems.length == before) continue;
+    }
+    final expl = fix('${m['explanation'] ?? ''}');
+    if (problems.length > before) {
+      if (rejects != null) {
+        String raw(Object? v) => LatexUtil.autoFix('${v ?? ''}'.trim());
+        final rawOpts = ((m['options'] as List?) ?? [])
+            .map((e) => raw('$e'.replaceFirst(RegExp(r'^\s*[A-Fa-f][\.．、:：]\s*'), '')))
+            .toList();
+        var rawAns = '${m['answer'] ?? ''}'.trim();
+        if (type == QType.single || type == QType.multi) rawAns = rawAns.toUpperCase().replaceAll(RegExp(r'[^A-F]'), '');
+        if (type == QType.judge) rawAns = answer;
+        if (raw(m['stem']).isNotEmpty) {
+          rejects.add(RawReject(
+              issue: '公式无法渲染：${problems.sublist(before).take(2).join('；')}',
+              q: Question(
+                id: newId(),
+                projectId: projectId,
+                kpId: kp?.id ?? '',
+                docId: kp?.docId ?? '',
+                chapter: kp?.chapter ?? '',
+                section: kp?.section ?? '',
+                type: type,
+                stem: raw(m['stem']),
+                options: (type == QType.single || type == QType.multi) ? rawOpts : const [],
+                answer: type == QType.judge || type == QType.single || type == QType.multi ? rawAns : raw(m['answer']),
+                explanation: raw(m['explanation']),
+                difficulty: '${m['difficulty'] ?? '中等'}',
+                page: asInt(m['page'], kp?.page ?? 0),
+              )));
+        }
+      }
+      continue;
     }
     qs.add(Question(
       id: newId(),
@@ -591,7 +723,7 @@ class GenerationService {
       stem: stem,
       options: (type == QType.single || type == QType.multi) ? options : const [],
       answer: answer,
-      explanation: fix('${m['explanation'] ?? ''}'),
+      explanation: expl,
       difficulty: '${m['difficulty'] ?? '中等'}',
       page: asInt(m['page'], kp?.page ?? 0),
     ));
@@ -625,4 +757,8 @@ bool gradeObjective(Question q, String userAnswer) {
     default:
       return false;
   }
+}
+
+extension on String {
+  String ifEmpty(String other) => isEmpty ? other : this;
 }

@@ -8,12 +8,15 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme/glass.dart';
 import 'explain_sheet.dart';
+import 'feedback_sheet.dart';
 
 /// 闪卡复习。进度（如 12/32）每一步都写入本地，切出 App、被系统杀掉后都能恢复。
 class ReviewPage extends StatefulWidget {
   final String? projectId;
   final bool resume;
-  const ReviewPage({super.key, this.projectId, this.resume = false});
+  /// 指定要复习的卡片（如统计页「复习这些」薄弱章节）；这种临时复习不会覆盖正在进行的复习进度。
+  final List<String>? cardIds;
+  const ReviewPage({super.key, this.projectId, this.resume = false, this.cardIds});
   @override
   State<ReviewPage> createState() => _ReviewPageState();
 }
@@ -29,6 +32,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
   List<Map<String, dynamic>> undoStack = []; // 本轮每次评分的撤销记录（可多步返回）
   List<Map<String, dynamic>> redoStack = []; // 退回后可「下一张」原样恢复的评分
   bool hintSeen = true;
+  late final SessionTimer timer; // 统计学习时长
 
   AppState get s => context.read<AppState>();
 
@@ -36,11 +40,13 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    timer = s.startSession(widget.projectId, 'review');
     _init();
   }
 
   @override
   void dispose() {
+    timer.end();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -52,7 +58,13 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
 
   Future<void> _init() async {
     final saved = s.settings.reviewSession;
-    if (saved != null && (widget.resume || saved['projectId'] == widget.projectId)) {
+    if (widget.cardIds != null) {
+      for (final id in widget.cardIds!) {
+        final c = await s.repo.card(id);
+        if (c != null && !c.suspended) cards.add(c);
+      }
+      index = 0;
+    } else if (saved != null && (widget.resume || saved['projectId'] == widget.projectId)) {
       final ids = (saved['ids'] as List).cast<String>();
       final loaded = <Flashcard>[];
       for (final id in ids) {
@@ -79,6 +91,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
   }
 
   void _persist() {
+    if (widget.cardIds != null) return; // 临时复习不保存会话
     // 一轮完成后清除会话（完成页仍可在内存里「上一张」，撤销后会重新保存）
     if (cards.isEmpty || index >= cards.length) {
       s.settings.reviewSession = null;
@@ -116,6 +129,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       : const SizedBox();
 
   Future<void> _rate(bool remembered) async {
+    timer.touch();
     if (M.haptics) HapticFeedback.lightImpact();
     if (index >= cards.length) return;
     final undo = await s.reviewCard(cards[index], remembered);
@@ -173,6 +187,15 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       ),
       leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => Navigator.pop(context)),
       actions: [
+        if (card != null)
+          IconButton(
+            tooltip: '这张有问题',
+            icon: Icon(card.flag.isEmpty ? Icons.flag_outlined : Icons.flag_rounded),
+            onPressed: () async {
+              final r = await showFeedbackSheet(context, card: card);
+              if (r is Flashcard && mounted) setState(() => cards[index] = r);
+            },
+          ),
         if (card != null)
           IconButton(
             tooltip: '查看原文',

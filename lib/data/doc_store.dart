@@ -22,7 +22,8 @@ abstract class DocStore {
 
   /// 所有集合名。
   static const allCollections = [
-    'projects', 'docs', 'pages', 'chunks', 'kps', 'cards', 'questions', 'wrong', 'logs', 'explain', 'chapters'
+    'projects', 'docs', 'pages', 'chunks', 'kps', 'cards', 'questions', 'wrong', 'logs', 'explain', 'chapters',
+    'feedback', 'sessions', 'inbox_cards', 'inbox_questions'
   ];
 }
 
@@ -93,7 +94,7 @@ class MemoryDocStore implements DocStore {
 
 class SqliteDocStore implements DocStore {
   /// 数据库结构版本；备份文件里也写这个数，用来判断能否导入。
-  static const schemaVersion = 4;
+  static const schemaVersion = 5; // v5：反馈、学习时长、待审核
   static const collections = DocStore.allCollections;
   final Database db;
   SqliteDocStore._(this.db);
@@ -119,6 +120,7 @@ class SqliteDocStore implements DocStore {
         await db.execute('CREATE TABLE IF NOT EXISTS $c (id TEXT PRIMARY KEY, project_id TEXT, data TEXT NOT NULL)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_${c}_p ON $c(project_id)');
       }
+      // v5：新增 feedback / sessions / inbox_* 集合，由上面的循环自动建表
       // v4：解释缓存变成「解释历史」，补上时间字段
       if (from < 4) {
         final now = DateTime.now().toIso8601String();

@@ -200,6 +200,8 @@ class Flashcard {
   int lapses;
   DateTime due;
   DateTime? lastReview;
+  bool suspended; // 用户反馈「这张有问题」时可暂停，不再出现在复习里
+  String flag; // 最近一次反馈的原因（空 = 没问题）
   Flashcard({
     required this.id,
     required this.projectId,
@@ -217,6 +219,8 @@ class Flashcard {
     this.lapses = 0,
     DateTime? due,
     this.lastReview,
+    this.suspended = false,
+    this.flag = '',
   }) : due = due ?? DateTime.now();
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -235,6 +239,8 @@ class Flashcard {
         'lapses': lapses,
         'due': due.toIso8601String(),
         'lastReview': lastReview?.toIso8601String(),
+        if (suspended) 'suspended': true,
+        if (flag.isNotEmpty) 'flag': flag,
       };
   factory Flashcard.fromJson(Map<String, dynamic> j) => Flashcard(
         id: j['id'],
@@ -253,6 +259,8 @@ class Flashcard {
         lapses: j['lapses'] ?? 0,
         due: DateTime.tryParse(j['due'] ?? ''),
         lastReview: j['lastReview'] == null ? null : DateTime.tryParse(j['lastReview']),
+        suspended: j['suspended'] == true,
+        flag: j['flag'] ?? '',
       );
 }
 
@@ -281,6 +289,8 @@ class Question {
   String explanation;
   String difficulty;
   int page;
+  bool suspended;
+  String flag;
   Question({
     required this.id,
     required this.projectId,
@@ -295,6 +305,8 @@ class Question {
     this.explanation = '',
     this.difficulty = '中等',
     this.page = 0,
+    this.suspended = false,
+    this.flag = '',
   });
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -310,6 +322,8 @@ class Question {
         'explanation': explanation,
         'difficulty': difficulty,
         'page': page,
+        if (suspended) 'suspended': true,
+        if (flag.isNotEmpty) 'flag': flag,
       };
   factory Question.fromJson(Map<String, dynamic> j) => Question(
         id: j['id'],
@@ -325,6 +339,8 @@ class Question {
         explanation: j['explanation'] ?? '',
         difficulty: j['difficulty'] ?? '中等',
         page: j['page'] ?? 0,
+        suspended: j['suspended'] == true,
+        flag: j['flag'] ?? '',
       );
 }
 
@@ -542,4 +558,66 @@ class ChapterPlan {
         source: j['source'] ?? 'manual',
         chapters: ((j['chapters'] as List?) ?? []).map((e) => ChapterRange.fromJson((e as Map).cast<String, dynamic>())).toList(),
       );
+}
+
+
+/// 用户对一张卡 / 一道题的反馈（「这张有问题」）。
+class FeedbackEntry {
+  String id;
+  String projectId;
+  String itemId;
+  String kind; // card / question
+  String reason; // 答案错误 / 太简单 / 重复 / 超纲 / 表述不清 / 其他 / AI出错了
+  String note;
+  String itemText; // 反馈时的题面，便于生成「避免清单」
+  DateTime at;
+  FeedbackEntry({
+    required this.id,
+    required this.projectId,
+    required this.itemId,
+    required this.kind,
+    required this.reason,
+    this.note = '',
+    this.itemText = '',
+    DateTime? at,
+  }) : at = at ?? DateTime.now();
+  static const reasons = ['答案错误', '太简单', '重复', '超纲', '表述不清', '其他'];
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'itemId': itemId,
+        'kind': kind,
+        'reason': reason,
+        'note': note,
+        'itemText': itemText,
+        'at': at.toIso8601String(),
+      };
+  factory FeedbackEntry.fromJson(Map<String, dynamic> j) => FeedbackEntry(
+        id: j['id'],
+        projectId: j['projectId'] ?? '',
+        itemId: j['itemId'] ?? '',
+        kind: j['kind'] ?? 'card',
+        reason: j['reason'] ?? '其他',
+        note: j['note'] ?? '',
+        itemText: j['itemText'] ?? '',
+        at: DateTime.tryParse(j['at'] ?? ''),
+      );
+}
+
+/// 一次学习会话的时长（用于统计「学习时长」）。
+class StudySession {
+  String id;
+  String projectId;
+  String kind; // review / quiz
+  DateTime start;
+  int seconds;
+  StudySession({required this.id, required this.projectId, required this.kind, required this.start, this.seconds = 0});
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'projectId': projectId, 'kind': kind, 'start': start.toIso8601String(), 'seconds': seconds};
+  factory StudySession.fromJson(Map<String, dynamic> j) => StudySession(
+      id: j['id'],
+      projectId: j['projectId'] ?? '',
+      kind: j['kind'] ?? 'review',
+      start: DateTime.tryParse(j['start'] ?? '') ?? DateTime.now(),
+      seconds: (j['seconds'] as num?)?.toInt() ?? 0);
 }
