@@ -269,4 +269,38 @@ void main() {
     expect((state.settings.reviewSession!['redo'] as List), isEmpty);
     expect((await state.repo.card('c1'))!.lapses, 0);
   });
+
+  testWidgets('AI 解释：Markdown 标题 + 公式', (t) async {
+    await state.repo.saveExplain(ExplainCache(id: 'c11', projectId: 'p1', messages: [
+      {'role': 'user', 'content': '...'},
+      {
+        'role': 'assistant',
+        'content': '下面完整重写，公式均使用 LaTeX。\n'
+            '### 1. 通俗解释\n'
+            r'条件概率就是**已知 $B$ 发生后** $A$ 发生的可能性，相当于把样本空间缩小到 $B$：' '\n'
+            r'$$P(A\mid B)=\frac{P(AB)}{P(B)},\quad P(B)>0$$' '\n'
+            '### 2. 例子\n'
+            r'- 掷骰子，$B=\{2,4,6\}$，$A$ 为点数大于 3' '\n'
+            r'- $P(A\mid B)=\dfrac{2/6}{3/6}=\dfrac{2}{3}$' '\n'
+            '### 3. 常见误区\n'
+            r'> $P(A\mid B)$ 与 $P(B\mid A)$ 一般**不相等**。'
+      },
+    ]));
+    state.settings.reviewSession = {
+      'projectId': 'p1',
+      'ids': [for (var i = 0; i < 32; i++) 'c$i'],
+      'index': 11,
+      'flipped': false,
+    };
+    await shoot(t, const ReviewPage(projectId: 'p1', resume: true), '14_explain_markdown', after: () async {
+      await t.tap(find.text('AI 解释'));
+      for (var i = 0; i < 12; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+      await t.drag(find.text('AI 解释').last, const Offset(0, -400));
+      for (var i = 0; i < 8; i++) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+    });
+  });
 }

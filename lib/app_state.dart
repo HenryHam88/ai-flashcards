@@ -9,6 +9,7 @@ import 'services/llm.dart';
 import 'services/pipeline.dart';
 import 'services/prompts.dart';
 import 'services/settings.dart';
+import 'theme/rich_text.dart' show stripMetaPreamble;
 
 /// 全局状态：持有仓库与设置，提供业务操作。UI 通过 Provider 读取。
 /// 单个 PDF 的解析任务状态（用于多文件队列的逐个进度显示）。
@@ -230,7 +231,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<ExplainCache> followUp(ExplainCache c, String question) async {
-    final msgs = [...c.messages, {'role': 'user', 'content': '$question\n（公式请用 \$...\$ 或 \$\$...\$\$ 书写）'}];
+    final msgs = [...c.messages, {'role': 'user', 'content': '$question\n（${Prompts.answerStyle}）'}];
     final client = await llm();
     var answer = await client.chat(msgs);
     answer = await _ensureLatex(client, msgs, answer);
@@ -241,15 +242,19 @@ class AppState extends ChangeNotifier {
 
   /// LaTeX 校验失败时让模型修正一次，仍失败则做本地修复。
   Future<String> _ensureLatex(LlmClient client, List<Map<String, String>> msgs, String answer) async {
-    final fixed = LatexUtil.autoFix(answer);
+    final fixed = stripMetaPreamble(LatexUtil.autoFix(answer));
     final problems = LatexUtil.validate(fixed);
     if (problems.isEmpty) return fixed;
     final again = await client.chat([
       ...msgs,
       {'role': 'assistant', 'content': answer},
-      {'role': 'user', 'content': '你的回答中有公式格式错误：${problems.take(3).join('；')}。请完整重写，所有公式用 \$...\$ 或 \$\$...\$\$。'}
+      {
+        'role': 'user',
+        'content': '上面回答中有公式格式错误：${problems.take(3).join('；')}。请直接输出修正后的完整回答正文（Markdown，'
+            '公式用 \$...\$ 或 \$\$...\$\$），第一句就进入讲解内容，不要说明你在重写或修正，不要任何开场白。'
+      }
     ]);
-    return LatexUtil.autoFix(again);
+    return stripMetaPreamble(LatexUtil.autoFix(again));
   }
 
   /// 主观题 AI 批改，返回 (得分 0-10, 点评)。

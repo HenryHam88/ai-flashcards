@@ -116,7 +116,7 @@ class _ExplainBodyState extends State<_ExplainBody> {
                           radius: 16,
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           child: Text(m['content']!, style: const TextStyle(color: Colors.white))))
-                  : MathText(m['content']!, style: const TextStyle(fontSize: 15, height: 1.6)),
+                  : MathText(stripMetaPreamble(m['content']!), style: const TextStyle(fontSize: 15, height: 1.6)),
             ),
           if (busy) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(color: M.sage))),
           const SizedBox(height: 8),

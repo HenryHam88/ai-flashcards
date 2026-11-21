@@ -1,8 +1,9 @@
 
-import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../services/latex.dart';
+
+export 'rich_text.dart';
+
 
 /// 莫兰迪配色
 class M {
@@ -185,7 +186,7 @@ Future<T?> showGlassSheet<T>(BuildContext context, Widget Function(BuildContext,
         child: RepaintBoundary(
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFF4F1EC).withValues(alpha: 0.95),
+              color: const Color(0xFFF4F1EC), // 不透明：避免底层文字透出
               border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.9))),
             ),
             child: Column(children: [
@@ -198,73 +199,6 @@ Future<T?> showGlassSheet<T>(BuildContext context, Widget Function(BuildContext,
       ),
     ),
   );
-}
-
-/// 公式混排文本：$...$ 行内公式、$$...$$ 独立公式，均用真正的 TeX 排版引擎渲染。
-class MathText extends StatelessWidget {
-  final String text;
-  final TextStyle? style;
-  final TextAlign textAlign;
-  const MathText(this.text, {super.key, this.style, this.textAlign = TextAlign.start});
-
-  @override
-  Widget build(BuildContext context) {
-    final st = DefaultTextStyle.of(context).style.merge(style);
-    final segs = LatexUtil.split(text);
-    final blocks = <Widget>[];
-    var spans = <InlineSpan>[];
-    void flush() {
-      if (spans.isEmpty) return;
-      blocks.add(Text.rich(TextSpan(children: spans), style: st, textAlign: textAlign));
-      spans = [];
-    }
-
-    Widget fallback(String tex) => Text(tex, style: st.copyWith(fontFamily: 'monospace', color: M.roseDark));
-    for (final s in segs) {
-      if (!s.isMath) {
-        // 简单支持 **加粗**（AI 解释常用）
-        final parts = s.text.split('**');
-        for (var k = 0; k < parts.length; k++) {
-          if (parts[k].isEmpty) continue;
-          spans.add(TextSpan(
-              text: parts[k], style: k.isOdd && parts.length > 2 ? const TextStyle(fontWeight: FontWeight.w700) : null));
-        }
-      } else if (!s.display) {
-        spans.add(WidgetSpan(
-          alignment: PlaceholderAlignment.middle,
-          child: Math.tex(s.text,
-              mathStyle: MathStyle.text,
-              textStyle: TextStyle(fontSize: (st.fontSize ?? 15) * 1.05, color: st.color),
-              onErrorFallback: (e) => fallback(s.text)),
-        ));
-      } else {
-        flush();
-        blocks.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Center(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Math.tex(s.text,
-                  mathStyle: MathStyle.display,
-                  textStyle: TextStyle(fontSize: (st.fontSize ?? 15) * 1.1, color: st.color),
-                  onErrorFallback: (e) => fallback(s.text)),
-            ),
-          ),
-        ));
-      }
-    }
-    flush();
-    if (segs.every((e) => !e.isMath)) {
-      return blocks.isEmpty ? const SizedBox() : blocks.first;
-    }
-    // 公式排版较重：单独成层，滚动时不重绘
-    if (blocks.length == 1) return RepaintBoundary(child: blocks.first);
-    return RepaintBoundary(child: Column(
-      crossAxisAlignment: textAlign == TextAlign.center ? CrossAxisAlignment.center : CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: blocks,
-    ));
-  }
 }
 
 void toast(BuildContext context, String msg) {
