@@ -9,11 +9,11 @@ import 'explain_sheet.dart';
 
 /// 测验页。当前题号和每题作答都持久化，返回/重进不会回到第一题。
 class QuizPage extends StatefulWidget {
-  final String projectId;
+  final String? projectId; // null：跨项目（如全部错题），此时需传 questionIds
   final List<String>? questionIds;
   final String? sessionKey;
   final String? chapter;
-  const QuizPage({super.key, required this.projectId, this.questionIds, this.sessionKey, this.chapter});
+  const QuizPage({super.key, this.projectId, this.questionIds, this.sessionKey, this.chapter});
   @override
   State<QuizPage> createState() => _QuizPageState();
 }
@@ -28,7 +28,7 @@ class _QuizPageState extends State<QuizPage> {
   bool grading = false;
 
   AppState get s => context.read<AppState>();
-  String get key => widget.sessionKey ?? '${widget.projectId}_${widget.chapter ?? 'all'}';
+  String get key => widget.sessionKey ?? '${widget.projectId ?? 'mixed'}_${widget.chapter ?? 'all'}';
 
   @override
   void initState() {

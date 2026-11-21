@@ -11,6 +11,16 @@ import 'services/prompts.dart';
 import 'services/settings.dart';
 
 /// 全局状态：持有仓库与设置，提供业务操作。UI 通过 Provider 读取。
+/// 单个 PDF 的解析任务状态（用于多文件队列的逐个进度显示）。
+class ParseJob {
+  final PdfDoc doc;
+  String state; // 排队中 / 解析中 / 完成 / 部分失败 / 失败
+  String message;
+  double frac;
+  ParseJob(this.doc, {this.state = '排队中', this.message = '等待中', this.frac = 0});
+  bool get active => state == '排队中' || state == '解析中';
+}
+
 class AppState extends ChangeNotifier {
   final Repository repo;
   final Settings settings;
@@ -31,6 +41,78 @@ class AppState extends ChangeNotifier {
   }
 
   ParseService get parser => ParseService(repo, settings);
+
+  // ---------- 多文件解析队列 ----------
+  /// docId → 任务。放在全局状态里，离开项目页后进度也不会丢。
+  final jobs = ValueNotifier<Map<String, ParseJob>>({});
+  static const parseConcurrency = 2; // 同时解析的文件数（远低于 DeepSeek 的 15 并发上限）
+  ParseService Function()? parserFactory; // 测试可注入
+  bool _pumping = false;
+
+  void _touchJobs() => jobs.value = Map.of(jobs.value);
+
+  /// 把多个 PDF 加入队列（已在队列中的忽略），按顺序、最多 2 个并行解析。
+  void enqueueParse(List<PdfDoc> docs) {
+    for (final d in docs) {
+      final j = jobs.value[d.id];
+      if (j != null && j.active) continue;
+      jobs.value[d.id] = ParseJob(d);
+    }
+    _touchJobs();
+    _pump();
+  }
+
+  void dismissJob(String docId) {
+    jobs.value.remove(docId);
+    _touchJobs();
+  }
+
+  Future<void> _pump() async {
+    if (_pumping) return;
+    _pumping = true;
+    try {
+      final running = <Future<void>>[];
+      while (true) {
+        // 全部占满时等一个完成；中途新加入的任务也会在这里被取到
+        while (running.length >= parseConcurrency) {
+          await Future.any(running);
+        }
+        final next = jobs.value.values.where((j) => j.state == '排队中').firstOrNull;
+        if (next == null) {
+          if (running.isEmpty) break;
+          await Future.any(running);
+          continue;
+        }
+        next.state = '解析中';
+        _touchJobs();
+        late Future<void> f;
+        f = _runJob(next).whenComplete(() => running.remove(f));
+        running.add(f);
+      }
+      await Future.wait(running);
+    } finally {
+      _pumping = false;
+    }
+  }
+
+  Future<void> _runJob(ParseJob j) async {
+    try {
+      final failed = await (parserFactory?.call() ?? parser).parseDoc(j.doc, (m, f) {
+        j.message = m;
+        j.frac = f;
+        _touchJobs();
+      });
+      j.state = failed == 0 ? '完成' : '部分失败';
+      j.frac = 1;
+    } catch (e) {
+      j.state = '失败';
+      j.message = '$e';
+      j.doc.status = '部分失败';
+      await repo.saveDoc(j.doc);
+    }
+    _touchJobs();
+    changed();
+  }
   Future<GenerationService> generator() async => GenerationService(repo, settings, await llm());
 
   // ---------- 复习 ----------

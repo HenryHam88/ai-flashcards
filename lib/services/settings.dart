@@ -53,8 +53,23 @@ class Settings {
   OcrProvider get ocrProvider =>
       OcrProvider.values.firstWhere((e) => e.name == prefs.getString('ocr_provider'), orElse: () => OcrProvider.deepseek);
   set ocrProvider(OcrProvider v) => prefs.setString('ocr_provider', v.name);
-  String get ocrMode => prefs.getString('ocr_mode') ?? 'text_recognition';
-  set ocrMode(String v) => prefs.setString('ocr_mode', v);
+  static const ocrText = 'text_recognition';
+  static const ocrRich = 'rich_layout_recognition';
+
+  /// DeepSeek OCR 模式，可同时选两个（混合模式）。兼容旧版单值设置 ocr_mode。
+  List<String> get ocrModes {
+    final l = prefs.getStringList('ocr_modes');
+    if (l != null && l.isNotEmpty) return l;
+    return [prefs.getString('ocr_mode') ?? ocrText];
+  }
+
+  set ocrModes(List<String> v) {
+    final clean = [ocrText, ocrRich].where(v.contains).toList();
+    prefs.setStringList('ocr_modes', clean.isEmpty ? [ocrText] : clean);
+    prefs.remove('ocr_mode');
+  }
+
+  bool get ocrMixed => ocrModes.length > 1;
   String get ocrBaseUrl => prefs.getString('ocr_base') ?? 'https://api.deepseek.com';
   set ocrBaseUrl(String v) => prefs.setString('ocr_base', v.trim());
   int get ocrBatchPages => prefs.getInt('ocr_batch') ?? 30;

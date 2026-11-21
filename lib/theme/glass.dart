@@ -41,7 +41,7 @@ ThemeData buildTheme({String? fontFamily}) {
       selectedColor: M.sage.withValues(alpha: 0.35),
       side: BorderSide(color: Colors.white.withValues(alpha: 0.8)),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      labelStyle: const TextStyle(color: M.text),
+      labelStyle: TextStyle(color: M.text, fontFamily: fontFamily),
     ),
     dividerColor: Colors.white.withValues(alpha: 0.6),
   );
@@ -297,4 +297,38 @@ class GlassScaffold extends StatelessWidget {
           body: body,
         ),
       );
+}
+
+/// 项目筛选：「全部」+ 每个项目一个玻璃小标签，横向滚动。value 为 null 表示全部。
+class ProjectFilterChips extends StatelessWidget {
+  final List<(String id, String name)> projects;
+  final String? value;
+  final ValueChanged<String?> onChanged;
+  const ProjectFilterChips({super.key, required this.projects, required this.value, required this.onChanged});
+  @override
+  Widget build(BuildContext context) {
+    Widget chip(String? id, String label) {
+      final sel = value == id;
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: Glass(
+          radius: 18,
+          tint: sel ? M.sage : null,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          onTap: () => onChanged(id),
+          child: Text(label,
+              style: TextStyle(color: sel ? Colors.white : M.text, fontSize: 13, fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 46,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+        children: [chip(null, '全部'), for (final p in projects) chip(p.$1, p.$2)],
+      ),
+    );
+  }
 }

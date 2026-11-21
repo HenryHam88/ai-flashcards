@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import '../data/repository.dart';
 import '../models.dart';
@@ -107,17 +108,52 @@ List<KnowledgePoint> dedupeKps(List<KnowledgePoint> input, {double threshold = 0
 
 // ================= PDF 解析 =================
 
+final _figureRe = RegExp(r'(^|\n)\s*(图|Figure|Fig\.)\s*\d+([\.\-．]\d+)*', caseSensitive: false);
+
+/// 混合模式的逐页判断：本地文字层很少（扫描页、整页插图/图表），或出现「图 1.2」「Figure 3」这类图注 → 版面模式；
+/// 否则用纯文字模式。
+String pageOcrPurpose(String localText) {
+  final chars = localText.replaceAll(RegExp(r'\s'), '').length;
+  if (chars < 80) return Settings.ocrRich;
+  if (_figureRe.hasMatch(localText)) return Settings.ocrRich;
+  return Settings.ocrText;
+}
+
+/// 解析计划中的一批：[from, to] 页（1 起始、闭区间）及使用的 OCR 模式。
+class OcrBatch {
+  final int from, to;
+  final String purpose;
+  const OcrBatch(this.from, this.to, this.purpose);
+  @override
+  String toString() => '$from-$to:$purpose';
+}
+
+/// 把相邻同模式的页合并成连续批次，每批不超过 [batch] 页。每页只发送一次。
+List<OcrBatch> planOcrBatches(List<String> purposes, int batch) {
+  final out = <OcrBatch>[];
+  var i = 0;
+  while (i < purposes.length) {
+    var j = i;
+    while (j + 1 < purposes.length && purposes[j + 1] == purposes[i] && j + 1 - i < batch) {
+      j++;
+    }
+    out.add(OcrBatch(i + 1, j + 1, purposes[i]));
+    i = j + 1;
+  }
+  return out;
+}
+
 class ParseService {
   final Repository repo;
   final Settings settings;
   final PdfParser? parserOverride; // 测试用
   ParseService(this.repo, this.settings, {this.parserOverride});
 
-  Future<PdfParser?> _parser() async {
+  Future<PdfParser?> _parser(String purpose) async {
     if (parserOverride != null) return parserOverride;
     switch (settings.ocrProvider) {
       case OcrProvider.deepseek:
-        return DeepSeekOcr(baseUrl: settings.ocrBaseUrl, apiKey: await settings.ocrKey(), purpose: settings.ocrMode);
+        return DeepSeekOcr(baseUrl: settings.ocrBaseUrl, apiKey: await settings.ocrKey(), purpose: purpose);
       case OcrProvider.kimi:
         return KimiFileExtract(baseUrl: settings.kimiBaseUrl, apiKey: await settings.kimiKey());
       case OcrProvider.local:
@@ -125,57 +161,87 @@ class ParseService {
     }
   }
 
-  /// 解析一份 PDF：分批（默认每批 30 页）上传，失败自动重试 3 次；已解析的页直接跳过。
-  Future<void> parseDoc(PdfDoc doc, Progress onProgress) async {
+  /// 生成解析计划。DeepSeek 两种模式都选时，先在本地读文字层逐页判断模式。
+  Future<List<OcrBatch>> plan(Uint8List bytes, int pageCount) async {
+    final batch = settings.ocrBatchPages.clamp(1, 1000);
+    if (settings.ocrProvider == OcrProvider.deepseek && settings.ocrMixed) {
+      List<String> local;
+      try {
+        local = await PdfTools.extractText(bytes, 1, pageCount);
+      } catch (_) {
+        local = List.filled(pageCount, '');
+      }
+      while (local.length < pageCount) {
+        local.add('');
+      }
+      return planOcrBatches(local.map(pageOcrPurpose).toList(), batch);
+    }
+    final purpose = settings.ocrModes.first;
+    return [for (final (f, t) in pageBatches(pageCount, batch)) OcrBatch(f, t, purpose)];
+  }
+
+  /// 解析一份 PDF：按计划分批上传，失败自动重试 3 次；已解析的页直接跳过。
+  /// 返回失败的批次数（0 表示全部成功）。
+  Future<int> parseDoc(PdfDoc doc, Progress onProgress) async {
     final bytes = await File(doc.path).readAsBytes();
     if (doc.pageCount == 0) doc.pageCount = await PdfTools.pageCount(bytes);
     final cached = {for (final p in await repo.pages(doc.projectId, docId: doc.id)) p.page};
-    final parser = await _parser();
-    final batches = pageBatches(doc.pageCount, settings.ocrBatchPages.clamp(1, 1000));
+    final todo = List.generate(doc.pageCount, (i) => i + 1).where((p) => !cached.contains(p)).toList();
     doc.status = '解析中';
     await repo.saveDoc(doc);
     var failed = 0;
-    for (var bi = 0; bi < batches.length; bi++) {
-      final (from, to) = batches[bi];
-      final frac = bi / batches.length;
-      if ([for (var p = from; p <= to; p++) p].every(cached.contains)) continue;
-      onProgress('正在解析第 $from–$to 页（${bi + 1}/${batches.length} 批）', frac);
-      List<String>? texts;
-      Object? err;
-      for (var attempt = 0; attempt < 3 && texts == null; attempt++) {
-        try {
-          if (parser == null) {
-            texts = await PdfTools.extractText(bytes, from, to);
-          } else {
-            final part = await PdfTools.slice(bytes, from, to);
-            final r = await parser.parse(part, '${doc.name}_p$from-$to.pdf', to - from + 1);
-            texts = List.generate(to - from + 1, (i) => i < r.pages.length ? r.pages[i].text : '');
+    if (todo.isNotEmpty) {
+      onProgress('正在分析页面…', 0.02);
+      final batches = (await plan(bytes, doc.pageCount))
+          .where((b) => [for (var p = b.from; p <= b.to; p++) p].any((p) => !cached.contains(p)))
+          .toList();
+      final parsers = <String, PdfParser?>{};
+      for (var bi = 0; bi < batches.length; bi++) {
+        final b = batches[bi];
+        final frac = bi / batches.length;
+        final modeName = settings.ocrProvider == OcrProvider.deepseek
+            ? (b.purpose == Settings.ocrRich ? '版面' : '文字')
+            : '';
+        onProgress('第 ${b.from}–${b.to} 页${modeName.isEmpty ? '' : '（$modeName模式）'} · ${bi + 1}/${batches.length} 批', frac);
+        final parser = parsers.containsKey(b.purpose) ? parsers[b.purpose] : (parsers[b.purpose] = await _parser(b.purpose));
+        List<String>? texts;
+        Object? err;
+        for (var attempt = 0; attempt < 3 && texts == null; attempt++) {
+          try {
+            if (parser == null) {
+              texts = await PdfTools.extractText(bytes, b.from, b.to);
+            } else {
+              final part = await PdfTools.slice(bytes, b.from, b.to);
+              final r = await parser.parse(part, '${doc.name}_p${b.from}-${b.to}.pdf', b.to - b.from + 1);
+              texts = List.generate(b.to - b.from + 1, (i) => i < r.pages.length ? r.pages[i].text : '');
+            }
+          } catch (e) {
+            err = e;
+            if (e is OcrException && e.message.contains('401')) break;
+            onProgress('第 ${b.from}–${b.to} 页失败，重试中（${attempt + 1}/3）', frac);
+            await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
           }
-        } catch (e) {
-          err = e;
-          if (e is OcrException && e.message.contains('401')) break;
-          onProgress('第 $from–$to 页失败，正在重试（${attempt + 1}/3）：$e', frac);
-          await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
         }
+        if (texts == null) {
+          failed++;
+          if (err is OcrException && err.message.contains('401')) throw err;
+          continue;
+        }
+        await repo.savePages([
+          for (var i = 0; i < texts.length; i++)
+            PageText(docId: doc.id, projectId: doc.projectId, page: b.from + i, text: LatexUtil.normalize(texts[i]))
+        ]);
+        doc.parsedPages = (await repo.pages(doc.projectId, docId: doc.id)).length;
+        await repo.saveDoc(doc);
       }
-      if (texts == null) {
-        failed++;
-        if (err is OcrException && err.message.contains('401')) throw err;
-        continue;
-      }
-      await repo.savePages([
-        for (var i = 0; i < texts.length; i++)
-          PageText(docId: doc.id, projectId: doc.projectId, page: from + i, text: LatexUtil.normalize(texts[i]))
-      ]);
-      doc.parsedPages = (await repo.pages(doc.projectId, docId: doc.id)).length;
-      await repo.saveDoc(doc);
     }
     final pages = await repo.pages(doc.projectId, docId: doc.id);
     await repo.replaceChunks(doc.projectId, doc.id, chunkPages(doc.projectId, doc.id, pages));
     doc.parsedPages = pages.length;
     doc.status = failed == 0 ? '已解析' : '部分失败';
     await repo.saveDoc(doc);
-    onProgress(failed == 0 ? '解析完成' : '$failed 批失败，可再次点击解析继续', 1);
+    onProgress(failed == 0 ? '解析完成' : '$failed 批失败，可点重试继续', 1);
+    return failed;
   }
 }
 

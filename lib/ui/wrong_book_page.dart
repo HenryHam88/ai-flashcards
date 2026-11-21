@@ -13,30 +13,44 @@ class WrongBookPage extends StatelessWidget {
   Widget build(BuildContext context) => GlassScaffold(title: '错题本', body: WrongList(projectId: projectId));
 }
 
-class WrongList extends StatelessWidget {
-  final String? projectId;
+/// 每组题目生成唯一的会话键，避免和其他测验会话冲突。
+String wrongRedoKey(String? projectId, List<String> ids) =>
+    'wrongredo_${projectId ?? 'all'}_${ids.length}_${Object.hashAll(ids).toUnsigned(32).toRadixString(36)}';
+
+class WrongList extends StatefulWidget {
+  final String? projectId; // null：全部项目（顶部显示项目筛选）
   const WrongList({super.key, this.projectId});
+  @override
+  State<WrongList> createState() => _WrongListState();
+}
+
+class _WrongListState extends State<WrongList> {
+  String? filter;
 
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    Future<List<(WrongEntry, Question?, Flashcard?)>> load() async {
+    final mixed = widget.projectId == null;
+    final projectId = widget.projectId ?? filter;
+    Future<(List<(WrongEntry, Question?, Flashcard?)>, List<(String, String)>)> load() async {
       final out = <(WrongEntry, Question?, Flashcard?)>[];
+      final projects = mixed ? [for (final p in await s.repo.projects()) (p.id, p.name)] : <(String, String)>[];
       for (final w in await s.repo.wrong(projectId: projectId)) {
         out.add((w, w.questionId.isEmpty ? null : await s.repo.question(w.questionId), w.cardId.isEmpty ? null : await s.repo.card(w.cardId)));
       }
-      return out;
+      return (out, projects);
     }
 
     return FutureBuilder(
       key: ValueKey(s.version),
       future: load(),
       builder: (context, snap) {
-        final items = snap.data ?? [];
+        final items = snap.data?.$1 ?? [];
+        final projects = snap.data?.$2 ?? [];
         final qIds = items.where((e) => e.$2 != null).map((e) => e.$2!.id).toList();
-        return ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 40), children: [
+        final list = ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 40), children: [
           if (items.isEmpty) const Glass(child: Text('错题本是空的。答错的题会自动收进来，连续答对 3 次后自动移出。', style: TextStyle(color: M.sub))),
-          if (qIds.isNotEmpty && projectId != null)
+          if (qIds.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: GlassButton(
@@ -45,7 +59,7 @@ class WrongList extends StatelessWidget {
                 tint: M.sage,
                 expand: true,
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => QuizPage(projectId: projectId!, questionIds: qIds, sessionKey: 'wrong_${projectId}_${qIds.length}'))),
+                    builder: (_) => QuizPage(projectId: projectId, questionIds: qIds, sessionKey: wrongRedoKey(projectId, qIds)))),
               ),
             ),
           for (final (w, q, c) in items)
@@ -101,6 +115,11 @@ class WrongList extends StatelessWidget {
                   ]),
                 ),
               ),
+        ]);
+        if (!mixed) return list;
+        return Column(children: [
+          if (projects.length > 1) ProjectFilterChips(projects: projects, value: filter, onChanged: (v) => setState(() => filter = v)),
+          Expanded(child: list),
         ]);
       },
     );

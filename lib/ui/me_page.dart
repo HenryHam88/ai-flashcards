@@ -185,12 +185,30 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
                   style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
               const SizedBox(height: 10),
               Wrap(spacing: 8, children: [
-                for (final m in [('text_recognition', '纯文字教材'), ('rich_layout_recognition', '带图表/版面')])
-                  ChoiceChip(
-                      label: Text(m.$2),
-                      selected: st.ocrMode == m.$1,
-                      onSelected: (_) => setState(() => st.ocrMode = m.$1)),
+                for (final m in [(Settings.ocrText, '纯文字教材'), (Settings.ocrRich, '带图表/版面')])
+                  FilterChip(
+                    label: Text(m.$2),
+                    selected: st.ocrModes.contains(m.$1),
+                    onSelected: (on) {
+                      final l = [...st.ocrModes];
+                      on ? l.add(m.$1) : l.remove(m.$1);
+                      if (l.isEmpty) {
+                        toast(context, '至少保留一种模式');
+                        return;
+                      }
+                      setState(() => st.ocrModes = l);
+                    },
+                  ),
               ]),
+              const SizedBox(height: 8),
+              Text(
+                st.ocrMixed
+                    ? '已开启混合模式：解析前先在手机上逐页检查，文字很少的页（扫描页、整页插图）或带「图 1.2」这类图注的页用版面模式，其余页用文字模式；每页只上传一次，结果按原页码合并。'
+                    : (st.ocrModes.first == Settings.ocrRich
+                        ? '全部页面用版面模式，保留图表和插图位置。'
+                        : '全部页面用文字模式，适合纯文字教材。两个都选可开启混合模式。'),
+                style: const TextStyle(color: M.sageDark, fontSize: 12, height: 1.5),
+              ),
               const SizedBox(height: 12),
               _textField('接口地址', st.ocrBaseUrl, (v) => st.ocrBaseUrl = v),
               _KeyField(label: 'OCR 密钥（留空则使用出题模型的密钥）', load: st.ocrKeyRaw, save: st.setOcrKey),

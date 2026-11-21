@@ -101,20 +101,14 @@ class _ProjectPageState extends State<ProjectPage> {
         builder: (ctx) => AlertDialog(
           backgroundColor: const Color(0xFFF4F1EC),
           title: const Text('现在解析？'),
-          content: Text('已添加 ${added.length} 份 PDF。解析会按设置里选的方式进行（默认 DeepSeek OCR），每批 ${s.settings.ocrBatchPages} 页。'),
+          content: Text('已添加 ${added.length} 份 PDF。会排队依次解析（最多同时 ${AppState.parseConcurrency} 份），每批 ${s.settings.ocrBatchPages} 页，每份单独显示进度，失败可单独重试。'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('稍后')),
             TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('开始解析')),
           ],
         ),
       );
-      if (go == true) {
-        await _run(() async {
-          for (final d in added) {
-            await s.parser.parseDoc(d, _progress);
-          }
-        });
-      }
+      if (go == true) s.enqueueParse(added);
     }
   }
 
@@ -249,12 +243,29 @@ class _ProjectPageState extends State<ProjectPage> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('上传 PDF', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                Text('支持 PDF 文件自动解析与生成卡片', style: TextStyle(color: M.sub, fontSize: 12)),
+                Text('可一次选择多个 PDF（在文件选择器里长按可多选）', style: TextStyle(color: M.sub, fontSize: 12)),
               ]),
             ),
           ]),
         ),
         const SizedBox(height: 10),
+        ValueListenableBuilder<Map<String, ParseJob>>(
+          valueListenable: s.jobs,
+          builder: (context, jobs, _) {
+            final mine = jobs.values.where((j) => j.doc.projectId == d.project.id).toList();
+            if (mine.isEmpty) return const SizedBox();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Glass(
+                padding: const EdgeInsets.fromLTRB(14, 12, 6, 8),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('解析队列（${mine.where((j) => j.active).length} 份进行中）', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  for (final j in mine) _jobRow(j),
+                ]),
+              ),
+            );
+          },
+        ),
         for (final doc in d.docs)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -272,14 +283,14 @@ class _ProjectPageState extends State<ProjectPage> {
                 PopupMenuButton<String>(
                   onSelected: (v) async {
                     if (v == 'parse') {
-                      await _run(() => s.parser.parseDoc(doc, _progress));
+                      s.enqueueParse([doc]);
                     } else if (v == 'delete') {
                       await s.repo.deleteDoc(doc);
                       s.changed();
                     }
                   },
                   itemBuilder: (_) => [
-                    PopupMenuItem(value: 'parse', enabled: !busy, child: Text(doc.parsedPages >= doc.pageCount && doc.pageCount > 0 ? '重新切分章节' : '解析（继续未完成的页）')),
+                    PopupMenuItem(value: 'parse', child: Text(doc.parsedPages >= doc.pageCount && doc.pageCount > 0 ? '重新切分章节' : '解析（继续未完成的页）')),
                     const PopupMenuItem(value: 'delete', child: Text('删除')),
                   ],
                 ),
@@ -291,6 +302,32 @@ class _ProjectPageState extends State<ProjectPage> {
           Glass(child: Text(d.chapters.join('\n'), style: const TextStyle(height: 1.8))),
         ],
       ]);
+
+  Widget _jobRow(ParseJob j) {
+    final bad = j.state == '失败' || j.state == '部分失败';
+    final color = bad ? M.roseDark : (j.state == '完成' ? M.sageDark : M.sub);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text(j.doc.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+              Text(j.state, style: TextStyle(fontSize: 12, color: color)),
+            ]),
+            const SizedBox(height: 4),
+            LinearProgressIndicator(value: j.state == '排队中' ? 0 : j.frac, minHeight: 4, color: bad ? M.rose : M.sage, backgroundColor: Colors.white54),
+            const SizedBox(height: 2),
+            Text(j.message, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: color)),
+          ]),
+        ),
+        if (bad)
+          IconButton(tooltip: '重试', icon: const Icon(Icons.refresh_rounded, color: M.roseDark), onPressed: () => s.enqueueParse([j.doc])),
+        if (!j.active)
+          IconButton(tooltip: '移除', icon: const Icon(Icons.close_rounded, size: 18, color: M.sub), onPressed: () => s.dismissJob(j.doc.id)),
+      ]),
+    );
+  }
 
   Widget _byChapter<T>(List<T> items, String Function(T) chapter, String Function(T) section, Widget Function(T) tile,
       {Widget Function(String chapter)? quiz}) {
