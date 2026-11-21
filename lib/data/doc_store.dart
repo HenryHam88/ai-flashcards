@@ -58,10 +58,19 @@ class SqliteDocStore implements DocStore {
 
   static Future<SqliteDocStore> open() async {
     final dir = await getDatabasesPath();
-    final db = await openDatabase(p.join(dir, 'ai_flashcards.db'), version: 1, onCreate: (db, v) async {
+    final db = await openDatabase(p.join(dir, 'ai_flashcards.db'), version: 2, onCreate: (db, v) async {
       for (final c in collections) {
         await db.execute('CREATE TABLE $c (id TEXT PRIMARY KEY, project_id TEXT, data TEXT NOT NULL)');
         await db.execute('CREATE INDEX idx_${c}_p ON $c(project_id)');
+      }
+    }, onUpgrade: (db, from, to) async {
+      // v2：资料加 type 字段（pdf / docx），旧资料全部标记为 PDF
+      if (from < 2) {
+        for (final row in await db.query('docs')) {
+          final j = jsonDecode(row['data'] as String) as Map<String, dynamic>;
+          j['type'] ??= 'pdf';
+          await db.update('docs', {'data': jsonEncode(j)}, where: 'id = ?', whereArgs: [row['id']]);
+        }
       }
     });
     return SqliteDocStore._(db);

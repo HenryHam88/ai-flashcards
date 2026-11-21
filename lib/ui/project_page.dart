@@ -9,6 +9,8 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../services/pdf_tools.dart';
+import '../services/pipeline.dart';
+import '../services/settings.dart';
 import '../theme/glass.dart';
 import 'explain_sheet.dart';
 import 'gen_sheet.dart';
@@ -76,21 +78,30 @@ class _ProjectPageState extends State<ProjectPage> {
   }
 
   Future<void> _upload() async {
-    final picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
+    final picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['pdf', 'docx', 'doc']);
     if (picked.isEmpty) return;
+    final legacy = picked.where((f) => f.name.toLowerCase().endsWith('.doc')).toList();
+    if (legacy.isNotEmpty && mounted) {
+      toast(context, '暂不支持旧版 .doc 格式（${legacy.map((f) => f.name).join('、')}）。请在 Word / WPS 里「另存为」.docx 或 PDF 后再上传。');
+    }
     final dir = Directory(p.join((await getApplicationDocumentsDirectory()).path, 'pdfs'));
     await dir.create(recursive: true);
     final added = <PdfDoc>[];
     for (final f in picked) {
       if (f.path == null) continue;
+      final lower = f.name.toLowerCase();
+      if (!lower.endsWith('.pdf') && !lower.endsWith('.docx')) continue;
+      final type = PdfDoc.typeOf(f.name);
       final id = newId();
-      final dest = p.join(dir.path, '$id.pdf');
+      final dest = p.join(dir.path, '$id.$type');
       await File(f.path!).copy(dest);
       var pages = 0;
-      try {
-        pages = await PdfTools.pageCount(await File(dest).readAsBytes());
-      } catch (_) {}
-      final d = PdfDoc(id: id, projectId: widget.projectId, name: p.basenameWithoutExtension(f.name), path: dest, pageCount: pages);
+      if (type == 'pdf') {
+        try {
+          pages = await PdfTools.pageCount(await File(dest).readAsBytes());
+        } catch (_) {}
+      }
+      final d = PdfDoc(id: id, projectId: widget.projectId, name: p.basenameWithoutExtension(f.name), path: dest, pageCount: pages, type: type);
       await s.repo.saveDoc(d);
       added.add(d);
     }
@@ -101,7 +112,8 @@ class _ProjectPageState extends State<ProjectPage> {
         builder: (ctx) => AlertDialog(
           backgroundColor: const Color(0xFFF4F1EC),
           title: const Text('现在解析？'),
-          content: Text('已添加 ${added.length} 份 PDF。会排队依次解析（最多同时 ${AppState.parseConcurrency} 份），每批 ${s.settings.ocrBatchPages} 页，每份单独显示进度，失败可单独重试。'),
+          content: Text('已添加 ${added.length} 份资料。会排队依次解析（最多同时 ${AppState.parseConcurrency} 份），PDF 每批 ${s.settings.ocrBatchPages} 页，Word 整份交给解析模型；每份单独显示进度，失败可单独重试。'
+              '${added.any((d) => d.isWord) && !Settings.supportsWord(s.settings.ocrProvider) ? '\n\n注意：${ParseService.wordUnsupported}。' : ''}'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('稍后')),
             TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('开始解析')),
@@ -242,8 +254,8 @@ class _ProjectPageState extends State<ProjectPage> {
             SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('上传 PDF', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                Text('可一次选择多个 PDF（在文件选择器里长按可多选）', style: TextStyle(color: M.sub, fontSize: 12)),
+                Text('上传 PDF / Word', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                Text('支持 PDF 和 Word（.docx），可一次选择多个（在文件选择器里长按可多选）', style: TextStyle(color: M.sub, fontSize: 12)),
               ]),
             ),
           ]),
@@ -272,12 +284,23 @@ class _ProjectPageState extends State<ProjectPage> {
             child: Glass(
               padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
               child: Row(children: [
-                const Icon(Icons.picture_as_pdf_outlined, color: M.roseDark),
+                doc.isWord
+                    ? const Icon(Icons.description_outlined, color: Color(0xFF6F8296)) // Word：灰蓝
+                    : const Icon(Icons.picture_as_pdf_outlined, color: M.roseDark),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(doc.name, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    Text('${doc.status} · 已解析 ${doc.parsedPages}/${doc.pageCount} 页', style: const TextStyle(color: M.sub, fontSize: 12)),
+                    Text(
+                        doc.isWord
+                            ? 'Word · ${doc.status}${doc.pageCount > 0 ? ' · ${doc.pageCount} 个小节' : ''}'
+                            : '${doc.status} · 已解析 ${doc.parsedPages}/${doc.pageCount} 页',
+                        style: const TextStyle(color: M.sub, fontSize: 12)),
+                    if (doc.note.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(doc.note, style: const TextStyle(color: M.roseDark, fontSize: 12, height: 1.4)),
+                      ),
                   ]),
                 ),
                 PopupMenuButton<String>(
@@ -290,7 +313,11 @@ class _ProjectPageState extends State<ProjectPage> {
                     }
                   },
                   itemBuilder: (_) => [
-                    PopupMenuItem(value: 'parse', child: Text(doc.parsedPages >= doc.pageCount && doc.pageCount > 0 ? '重新切分章节' : '解析（继续未完成的页）')),
+                    PopupMenuItem(
+                        value: 'parse',
+                        child: Text(doc.isWord
+                            ? (doc.status == '已解析' ? '重新解析' : '解析')
+                            : (doc.parsedPages >= doc.pageCount && doc.pageCount > 0 ? '重新切分章节' : '解析（继续未完成的页）'))),
                     const PopupMenuItem(value: 'delete', child: Text('删除')),
                   ],
                 ),
@@ -333,7 +360,7 @@ class _ProjectPageState extends State<ProjectPage> {
       {Widget Function(String chapter)? quiz}) {
     if (items.isEmpty) {
       return const Padding(
-          padding: EdgeInsets.all(24), child: Text('还没有内容。上传并解析 PDF 后点「生成」。', style: TextStyle(color: M.sub)));
+          padding: EdgeInsets.all(24), child: Text('还没有内容。上传并解析 PDF 或 Word 后点「生成」。', style: TextStyle(color: M.sub)));
     }
     final groups = <String, List<T>>{};
     for (final i in items) {
@@ -368,8 +395,8 @@ class _ProjectPageState extends State<ProjectPage> {
         subtitle: MathText(c.back, style: const TextStyle(fontSize: 13, color: M.sub)),
         trailing: c.page > 0
             ? TextButton(
-                onPressed: () => showSourceSheet(context, docId: c.docId, page: c.page, chapter: c.chapter),
-                child: Text('P${c.page}'))
+                onPressed: () => showSourceSheet(context, docId: c.docId, page: c.page, chapter: c.chapter, section: c.section),
+                child: Text(s.repo.isWordDoc(c.docId) ? '原文' : 'P${c.page}'))
             : null,
       );
 
@@ -378,8 +405,8 @@ class _ProjectPageState extends State<ProjectPage> {
         title: MathText(q.stem, style: const TextStyle(fontSize: 14)),
         trailing: q.page > 0
             ? TextButton(
-                onPressed: () => showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter),
-                child: Text('P${q.page}'))
+                onPressed: () => showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter, section: q.section),
+                child: Text(s.repo.isWordDoc(q.docId) ? '原文' : 'P${q.page}'))
             : null,
       );
 }

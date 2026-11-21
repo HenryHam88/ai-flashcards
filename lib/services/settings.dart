@@ -69,6 +69,14 @@ class Settings {
     prefs.remove('ocr_mode');
   }
 
+  /// 各解析方式支持的格式（依据 DeepSeek OCR 与 Kimi 文件接口的官方文档）。
+  static const providerFormats = {
+    OcrProvider.deepseek: 'PDF、Word（.docx）',
+    OcrProvider.kimi: 'PDF、Word（.docx）',
+    OcrProvider.local: '仅 PDF',
+  };
+  static bool supportsWord(OcrProvider p) => p != OcrProvider.local;
+
   bool get ocrMixed => ocrModes.length > 1;
   String get ocrBaseUrl => prefs.getString('ocr_base') ?? 'https://api.deepseek.com';
   set ocrBaseUrl(String v) => prefs.setString('ocr_base', v.trim());

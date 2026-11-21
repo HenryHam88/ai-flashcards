@@ -31,7 +31,9 @@ class PdfDoc {
   String path; // 本地文件路径
   int pageCount;
   int parsedPages;
-  String status; // 未解析 / 解析中 / 已解析 / 部分失败
+  String status; // 未解析 / 解析中 / 已解析 / 部分失败 / 不支持
+  String type; // pdf / docx（Word）
+  String note; // 给用户看的提示，例如当前解析模型不支持 Word
   PdfDoc({
     required this.id,
     required this.projectId,
@@ -40,7 +42,13 @@ class PdfDoc {
     this.pageCount = 0,
     this.parsedPages = 0,
     this.status = '未解析',
+    this.type = 'pdf',
+    this.note = '',
   });
+  bool get isWord => type == 'docx';
+
+  /// 资料类型：按扩展名判断。
+  static String typeOf(String fileName) => fileName.toLowerCase().endsWith('.docx') ? 'docx' : 'pdf';
   Map<String, dynamic> toJson() => {
         'id': id,
         'projectId': projectId,
@@ -49,6 +57,8 @@ class PdfDoc {
         'pageCount': pageCount,
         'parsedPages': parsedPages,
         'status': status,
+        'type': type,
+        'note': note,
       };
   factory PdfDoc.fromJson(Map<String, dynamic> j) => PdfDoc(
         id: j['id'],
@@ -58,6 +68,8 @@ class PdfDoc {
         pageCount: j['pageCount'] ?? 0,
         parsedPages: j['parsedPages'] ?? 0,
         status: j['status'] ?? '未解析',
+        type: j['type'] ?? 'pdf', // 旧数据没有 type，一律是 PDF
+        note: j['note'] ?? '',
       );
 }
 

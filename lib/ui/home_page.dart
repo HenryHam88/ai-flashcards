@@ -147,7 +147,7 @@ class HomePage extends StatelessWidget {
                   child: const Row(children: [
                     Icon(Icons.cloud_upload_outlined, color: M.text),
                     SizedBox(width: 10),
-                    Text('上传 PDF', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    Text('上传资料', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                   ]),
                 ),
               ),
@@ -155,7 +155,7 @@ class HomePage extends StatelessWidget {
             const SizedBox(height: 4),
             const Padding(
               padding: EdgeInsets.only(left: 4, top: 6),
-              child: Text('支持 PDF 自动解析与生成卡片', style: TextStyle(color: M.sub, fontSize: 12)),
+              child: Text('支持 PDF / Word 自动解析与生成卡片', style: TextStyle(color: M.sub, fontSize: 12)),
             ),
             SectionTitle('我的项目',
                 trailing: Text('共 ${d?.projects.length ?? 0} 个', style: const TextStyle(color: M.sub, fontSize: 13))),

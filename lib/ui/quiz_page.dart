@@ -123,7 +123,7 @@ class _QuizPageState extends State<QuizPage> {
             onSelected: (v) async {
               final q = qs[index];
               if (v == 'src') {
-                showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter);
+                showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter, section: q.section);
               } else {
                 await s.mark(q: q, mark: v);
                 if (context.mounted) toast(context, '已标记为「$v」');
@@ -271,8 +271,8 @@ class _QuizPageState extends State<QuizPage> {
                   ),
                   if (q.page > 0)
                     TextButton(
-                      onPressed: () => showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter),
-                      child: Text('出处：第 ${q.page} 页 · 查看原文', style: const TextStyle(color: M.sageDark)),
+                      onPressed: () => showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter, section: q.section),
+                      child: Text('出处：${s.sourceLabel(q.docId, q.page, q.chapter, q.section)} · 查看原文', style: const TextStyle(color: M.sageDark)),
                     ),
                 ],
               ),

@@ -175,7 +175,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
           IconButton(
             tooltip: '查看原文',
             icon: const Icon(Icons.menu_book_outlined),
-            onPressed: () => showSourceSheet(context, docId: card.docId, page: card.page, chapter: card.chapter),
+            onPressed: () => showSourceSheet(context, docId: card.docId, page: card.page, chapter: card.chapter, section: card.section),
           ),
       ],
       body: loading
@@ -360,7 +360,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                                   ],
                                   const SizedBox(height: 18),
                                   Text(
-                                    showBack ? (card.page > 0 ? '出处：第 ${card.page} 页' : '') : '•  点击翻面  •',
+                                    showBack ? (card.page > 0 ? '出处：${s.sourceLabel(card.docId, card.page, card.chapter, card.section)}' : '') : '•  点击翻面  •',
                                     style: const TextStyle(color: M.sub, fontSize: 13),
                                   ),
                                 ],

@@ -19,7 +19,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final store = await SqliteDocStore.open();
   final prefs = await SharedPreferences.getInstance();
-  final state = AppState(Repository(store), Settings(prefs, SecureSecretStore()));
+  final repo = Repository(store);
+  await repo.loadDocTypes();
+  final state = AppState(repo, Settings(prefs, SecureSecretStore()));
   runApp(StudyApp(state: state));
 }
 

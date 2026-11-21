@@ -36,7 +36,7 @@ class MePage extends StatelessWidget {
         const Text('我的', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
         const SizedBox(height: 14),
         item(Icons.smart_toy_outlined, '出题模型', '接口地址、API 密钥、模型名称', const LlmSettingsPage()),
-        item(Icons.document_scanner_outlined, 'PDF 解析', 'DeepSeek OCR / Kimi / 本地提取', const OcrSettingsPage()),
+        item(Icons.document_scanner_outlined, '文档解析（PDF / Word）', 'DeepSeek OCR / Kimi / 本地提取', const OcrSettingsPage()),
         item(Icons.bookmark_border_rounded, '错题本', '全部项目的错题', const WrongBookPage()),
         item(Icons.tune_rounded, '高级：提示词', '查看和修改出题、解释、批改用的提示词', const PromptSettingsPage()),
         const SizedBox(height: 8),
@@ -159,7 +159,7 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
   Widget build(BuildContext context) {
     final st = context.read<AppState>().settings;
     return GlassScaffold(
-      title: 'PDF 解析',
+      title: '文档解析（PDF / Word）',
       body: ListView(padding: const EdgeInsets.all(20), children: [
         Glass(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -173,6 +173,24 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
                   onSelected: (_) => setState(() => st.ocrProvider = p),
                 ),
             ]),
+            const SizedBox(height: 10),
+            const Text('支持的格式', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 4),
+            for (final p in OcrProvider.values)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(children: [
+                  Icon(Settings.supportsWord(p) ? Icons.check_circle_outline : Icons.remove_circle_outline,
+                      size: 15, color: Settings.supportsWord(p) ? M.sageDark : M.roseDark),
+                  const SizedBox(width: 6),
+                  Text('${ocrProviderNames[p]}：${Settings.providerFormats[p]}',
+                      style: TextStyle(fontSize: 12, color: st.ocrProvider == p ? M.text : M.sub,
+                          fontWeight: st.ocrProvider == p ? FontWeight.w600 : FontWeight.w400)),
+                ]),
+              ),
+            const SizedBox(height: 4),
+            const Text('Word 会整份交给所选模型解析，不在手机上本地解析；旧版 .doc 请先另存为 .docx 或 PDF。',
+                style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
           ]),
         ),
         const SizedBox(height: 12),
@@ -181,7 +199,7 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('DeepSeek OCR', style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              const Text('扫描版也能识别，公式会保留为 LaTeX。每批最多 1000 页、100 MiB，需在 180 秒内完成，所以会在本地分批上传。',
+              const Text('扫描版也能识别，公式会保留为 LaTeX，支持 PDF 和 Word。每批最多 1000 页、100 MiB，需在 180 秒内完成，所以 PDF 会在本地分批上传；Word 整份上传（文字模式下没有图片的 Word 直接抽取文字）。',
                   style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
               const SizedBox(height: 10),
               Wrap(spacing: 8, children: [
@@ -219,7 +237,7 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('Kimi 文件解析', style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              const Text('上传后由 Kimi 抽取文字（目前免费）。每批的文字会记在该批首页。', style: TextStyle(color: M.sub, fontSize: 12)),
+              const Text('上传后由 Kimi 抽取文字（目前免费），支持 PDF 和 Word。PDF 每批的文字会记在该批首页；Word 按标题切成小节。', style: TextStyle(color: M.sub, fontSize: 12)),
               const SizedBox(height: 12),
               _textField('接口地址', st.kimiBaseUrl, (v) => st.kimiBaseUrl = v),
               _KeyField(label: 'Kimi API 密钥', load: st.kimiKey, save: st.setKimiKey),
@@ -227,7 +245,7 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
           ),
         if (st.ocrProvider == OcrProvider.local)
           const Glass(
-              child: Text('直接读取 PDF 自带的文字层，不花钱、不联网；扫描版 PDF 没有文字层，读不出内容，公式也可能变成普通字符。',
+              child: Text('直接读取 PDF 自带的文字层，不花钱、不联网；扫描版 PDF 没有文字层，读不出内容，公式也可能变成普通字符。不支持 Word：上传的 Word 会提示切换到 DeepSeek OCR 或 Kimi。',
                   style: TextStyle(color: M.sub, height: 1.5))),
         const SizedBox(height: 12),
         Glass(

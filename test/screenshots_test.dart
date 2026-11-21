@@ -303,4 +303,17 @@ void main() {
       }
     });
   });
+
+  testWidgets('文档解析设置：各模式支持的格式', (t) async {
+    await shoot(t, const OcrSettingsPage(), '15_word_doc');
+  });
+
+  testWidgets('资料列表：Word 文档', (t) async {
+    await state.repo.saveDoc(PdfDoc(
+        id: 'w1', projectId: 'p1', name: '第三章 讲义（老师版）', path: '', type: 'docx', pageCount: 12, parsedPages: 12, status: '已解析'));
+    await state.repo.saveDoc(PdfDoc(
+        id: 'w2', projectId: 'p1', name: '习题课笔记', path: '', type: 'docx', status: '不支持',
+        note: '当前解析模型不支持 Word，请在「文档解析」设置里切换到支持 Word 的模型（DeepSeek OCR 或 Kimi），或把文档另存为 PDF'));
+    await shoot(t, const ProjectPage(projectId: 'p1'), '16_word_doc_list');
+  });
 }

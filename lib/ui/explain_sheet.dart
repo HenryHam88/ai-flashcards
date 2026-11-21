@@ -7,13 +7,14 @@ import '../theme/glass.dart';
 import 'quiz_page.dart';
 
 /// 查看教材原文（半屏面板）。
-Future<void> showSourceSheet(BuildContext context, {required String docId, required int page, String chapter = ''}) async {
+Future<void> showSourceSheet(BuildContext context, {required String docId, required int page, String chapter = '', String section = ''}) async {
   final s = context.read<AppState>();
   final text = await s.sourceText(docId, page);
   if (!context.mounted) return;
+  final word = s.repo.isWordDoc(docId);
   await showGlassSheet(context, (ctx, sc) => ListView(controller: sc, padding: const EdgeInsets.all(20), children: [
-        Text('原文出处 · 第 $page 页', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-        if (chapter.isNotEmpty) Text(chapter, style: const TextStyle(color: M.sub)),
+        Text('原文出处 · ${s.sourceLabel(docId, page, chapter, section)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        if (chapter.isNotEmpty && !word) Text(chapter, style: const TextStyle(color: M.sub)),
         const SizedBox(height: 12),
         MathText(text.isEmpty ? '没有找到这一页的解析结果。' : text, style: const TextStyle(fontSize: 15, height: 1.6)),
       ]));

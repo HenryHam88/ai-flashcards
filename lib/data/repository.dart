@@ -24,9 +24,31 @@ class Repository {
   }
 
   // ---------- PDF ----------
-  Future<List<PdfDoc>> docs(String projectId) async =>
-      (await store.list('docs', projectId: projectId)).map(PdfDoc.fromJson).toList();
-  Future<void> saveDoc(PdfDoc d) => store.put('docs', d.id, d.projectId, d.toJson());
+  /// docId → 类型（pdf / docx），用于出处显示「第 N 页」还是「标题名」。
+  final docTypes = <String, String>{};
+  Future<void> loadDocTypes() async {
+    for (final j in await store.list('docs')) {
+      docTypes[j['id']] = j['type'] ?? 'pdf';
+    }
+  }
+
+  bool isWordDoc(String docId) => docTypes[docId] == 'docx';
+
+  Future<List<PdfDoc>> docs(String projectId) async {
+    final l = (await store.list('docs', projectId: projectId)).map(PdfDoc.fromJson).toList();
+    for (final d in l) {
+      docTypes[d.id] = d.type;
+    }
+    return l;
+  }
+
+  Future<void> saveDoc(PdfDoc d) {
+    docTypes[d.id] = d.type;
+    return store.put('docs', d.id, d.projectId, d.toJson());
+  }
+
+  Future<void> deletePages(String projectId, String docId) =>
+      store.deleteWhere('pages', projectId: projectId, field: 'docId', equals: docId);
   Future<void> deleteDoc(PdfDoc d) async {
     for (final c in ['pages', 'chunks']) {
       await store.deleteWhere(c, projectId: d.projectId, field: 'docId', equals: d.id);

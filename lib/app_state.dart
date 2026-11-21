@@ -205,6 +205,15 @@ class AppState extends ChangeNotifier {
     return qs;
   }
 
+  /// 出处文字：PDF 显示「第 N 页」，Word 没有页码，显示章节/小节标题。
+  String sourceLabel(String docId, int page, String chapter, [String section = '']) {
+    if (repo.isWordDoc(docId)) {
+      final h = [chapter, section].where((e) => e.isNotEmpty && e != '未分章').join(' · ');
+      return h.isEmpty ? 'Word 第 $page 节' : h;
+    }
+    return '第 $page 页';
+  }
+
   // ---------- AI 解释 / 批改 ----------
   Future<String> sourceText(String docId, int page) async {
     if (docId.isEmpty || page <= 0) return '';

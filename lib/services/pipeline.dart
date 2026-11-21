@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:http/http.dart' as http;
+
 import '../data/repository.dart';
 import '../models.dart';
 import 'json_utils.dart';
@@ -19,8 +21,42 @@ typedef Progress = void Function(String message, double fraction);
 final _chapterRe = RegExp(r'^\s*(#{1,2}\s*)?(第\s*[一二三四五六七八九十百零〇0-9]+\s*章.*|Chapter\s+\d+.*|CHAPTER\s+\d+.*)$');
 final _sectionRe = RegExp(r'^\s*(#{2,3}\s*)?(第\s*[一二三四五六七八九十0-9]+\s*节.*|§\s*\d+(\.\d+)*.*|\d+\.\d+\s+\S.*)$');
 
+final _mdHeadingRe = RegExp(r'^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$');
+
+/// Word 文档没有页码：把解析出的整篇文字按标题（Markdown 标题或「第X章 / 1.2 节」）切成小节，
+/// 每个小节当作一「页」，过长的小节再按段落切开（每段不超过 [maxChars] 字）。
+List<String> splitWordSections(String text, {int maxChars = 3000}) {
+  final out = <String>[];
+  final buf = StringBuffer();
+  void flush() {
+    final t = buf.toString().trim();
+    if (t.isNotEmpty) out.add(t);
+    buf.clear();
+  }
+
+  for (final line in text.replaceAll('\r\n', '\n').split('\n')) {
+    final l = line.trimRight();
+    final isHeading = l.length < 60 && (_mdHeadingRe.hasMatch(l) || _chapterRe.hasMatch(l) || _sectionRe.hasMatch(l));
+    if (isHeading || (buf.length > maxChars && l.trim().isEmpty)) flush();
+    if (buf.length > maxChars * 1.5) flush(); // 没有空行的超长段落也要切
+    buf.writeln(l);
+  }
+  flush();
+  return out;
+}
+
 /// 按章节把页文字切成块，每块记录章节名与页码范围；单块过长时再按字数切。
-List<Chunk> chunkPages(String projectId, String docId, List<PageText> pages, {int maxChars = 5000}) {
+/// [mdHeadings]：Word 文档用 Markdown 标题判断章节——文中最高一级标题当作章，下一级当作节。
+List<Chunk> chunkPages(String projectId, String docId, List<PageText> pages, {int maxChars = 5000, bool mdHeadings = false}) {
+  var topLevel = 7;
+  if (mdHeadings) {
+    for (final p in pages) {
+      for (final l in p.text.split('\n')) {
+        final m = _mdHeadingRe.firstMatch(l);
+        if (m != null && m[1]!.length < topLevel) topLevel = m[1]!.length;
+      }
+    }
+  }
   final out = <Chunk>[];
   var chapter = '未分章';
   var section = '';
@@ -48,8 +84,9 @@ List<Chunk> chunkPages(String projectId, String docId, List<PageText> pages, {in
   for (final p in pages) {
     for (final rawLine in p.text.split('\n')) {
       final line = rawLine.trimRight();
-      final isCh = line.length < 40 && _chapterRe.hasMatch(line);
-      final isSec = !isCh && line.length < 40 && _sectionRe.hasMatch(line);
+      final md = mdHeadings && line.length < 60 ? _mdHeadingRe.firstMatch(line) : null;
+      final isCh = md != null ? md[1]!.length == topLevel : line.length < 40 && _chapterRe.hasMatch(line);
+      final isSec = !isCh && (md != null ? md[1]!.length == topLevel + 1 : line.length < 40 && _sectionRe.hasMatch(line));
       if (isCh || isSec) {
         flush();
         final title = line.replaceFirst(RegExp(r'^\s*#+\s*'), '').trim();
@@ -147,15 +184,18 @@ class ParseService {
   final Repository repo;
   final Settings settings;
   final PdfParser? parserOverride; // 测试用
-  ParseService(this.repo, this.settings, {this.parserOverride});
+  final http.Client? httpClient; // 测试用
+  ParseService(this.repo, this.settings, {this.parserOverride, this.httpClient});
+
+  static const wordUnsupported = '当前解析模型不支持 Word，请在「文档解析」设置里切换到支持 Word 的模型（DeepSeek OCR 或 Kimi），或把文档另存为 PDF';
 
   Future<PdfParser?> _parser(String purpose) async {
     if (parserOverride != null) return parserOverride;
     switch (settings.ocrProvider) {
       case OcrProvider.deepseek:
-        return DeepSeekOcr(baseUrl: settings.ocrBaseUrl, apiKey: await settings.ocrKey(), purpose: purpose);
+        return DeepSeekOcr(baseUrl: settings.ocrBaseUrl, apiKey: await settings.ocrKey(), purpose: purpose, client: httpClient);
       case OcrProvider.kimi:
-        return KimiFileExtract(baseUrl: settings.kimiBaseUrl, apiKey: await settings.kimiKey());
+        return KimiFileExtract(baseUrl: settings.kimiBaseUrl, apiKey: await settings.kimiKey(), client: httpClient);
       case OcrProvider.local:
         return null;
     }
@@ -183,6 +223,7 @@ class ParseService {
   /// 解析一份 PDF：按计划分批上传，失败自动重试 3 次；已解析的页直接跳过。
   /// 返回失败的批次数（0 表示全部成功）。
   Future<int> parseDoc(PdfDoc doc, Progress onProgress) async {
+    if (doc.isWord) return _parseWord(doc, onProgress);
     final bytes = await File(doc.path).readAsBytes();
     if (doc.pageCount == 0) doc.pageCount = await PdfTools.pageCount(bytes);
     final cached = {for (final p in await repo.pages(doc.projectId, docId: doc.id)) p.page};
@@ -242,6 +283,66 @@ class ParseService {
     await repo.saveDoc(doc);
     onProgress(failed == 0 ? '解析完成' : '$failed 批失败，可点重试继续', 1);
     return failed;
+  }
+}
+
+extension on ParseService {
+  /// Word：整份 .docx 直接交给设置里的解析模型（DeepSeek OCR / Kimi），不在手机上本地解析。
+  /// 解析模型不支持 Word 时不联网，直接在这份资料上显示提示。
+  Future<int> _parseWord(PdfDoc doc, Progress onProgress) async {
+    if (parserOverride == null && !Settings.supportsWord(settings.ocrProvider)) {
+      doc.status = '不支持';
+      doc.note = ParseService.wordUnsupported;
+      await repo.saveDoc(doc);
+      onProgress(ParseService.wordUnsupported, 1);
+      return 1;
+    }
+    final bytes = await File(doc.path).readAsBytes();
+    doc.status = '解析中';
+    doc.note = '';
+    await repo.saveDoc(doc);
+    // 文字模式下，没有图片的 Word 会被 DeepSeek 直接抽取文字（不做逐页识别）；混合模式也用文字模式。
+    final purpose = settings.ocrMixed ? Settings.ocrText : settings.ocrModes.first;
+    onProgress('正在上传 Word 给解析模型…', 0.1);
+    final parser = await _parser(purpose);
+    if (parser == null) throw OcrException(ParseService.wordUnsupported);
+    OcrResult? r;
+    Object? err;
+    for (var attempt = 0; attempt < 3 && r == null; attempt++) {
+      try {
+        r = await parser.parse(bytes, '${doc.name}.docx', 1);
+      } catch (e) {
+        err = e;
+        if (e is OcrException && (e.message.contains('401') || e.message.contains('密钥'))) break;
+        onProgress('解析失败，重试中（${attempt + 1}/3）', 0.1);
+        await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
+      }
+    }
+    if (r == null) {
+      doc.status = '部分失败';
+      doc.note = '解析失败：$err';
+      await repo.saveDoc(doc);
+      if (err is OcrException && err.message.contains('401')) throw err;
+      onProgress('解析失败，可点重试', 1);
+      return 1;
+    }
+    onProgress('按标题切分小节…', 0.8);
+    final text = r.pages.map((p) => p.text).where((t) => t.trim().isNotEmpty).join('\n\n');
+    final sections = splitWordSections(LatexUtil.normalize(text));
+    await repo.deletePages(doc.projectId, doc.id); // 小节数可能变化，整份重写
+    await repo.savePages([
+      for (var i = 0; i < sections.length; i++)
+        PageText(docId: doc.id, projectId: doc.projectId, page: i + 1, text: sections[i])
+    ]);
+    final pages = await repo.pages(doc.projectId, docId: doc.id);
+    await repo.replaceChunks(doc.projectId, doc.id, chunkPages(doc.projectId, doc.id, pages, mdHeadings: true));
+    doc.pageCount = sections.length;
+    doc.parsedPages = sections.length;
+    doc.status = sections.isEmpty ? '部分失败' : '已解析';
+    doc.note = sections.isEmpty ? '解析模型没有返回文字' : '';
+    await repo.saveDoc(doc);
+    onProgress(sections.isEmpty ? '没有解析出文字' : '解析完成：${sections.length} 个小节', 1);
+    return sections.isEmpty ? 1 : 0;
   }
 }
 
