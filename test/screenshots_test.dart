@@ -1,6 +1,5 @@
 // 生成界面截图：flutter test test/screenshots_test.dart --update-goldens
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:ai_flashcards/app_state.dart';
 import 'package:ai_flashcards/data/doc_store.dart';
