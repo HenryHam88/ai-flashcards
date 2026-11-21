@@ -16,7 +16,7 @@
 
 </div>
 
-AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a PDF or Word textbook and AI extracts the key points, generates flashcards and practice questions, and schedules your reviews with the FSRS algorithm. Formulas are typeset like a textbook, and all your study data stays on your phone.
+AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a PDF, Word, or TXT textbook and AI extracts the key points, generates flashcards and practice questions, and schedules your reviews with the FSRS algorithm. Formulas are typeset like a textbook, and all your study data stays on your phone.
 
 > [!NOTE]
 > The app interface is currently available in Simplified Chinese only.
@@ -53,13 +53,15 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
     <td align="center"><img src="docs/screenshots/30_help_article.png" width="190"><br><sub>Help article</sub></td>
     <td align="center"><img src="docs/screenshots/31_table_render.png" width="190"><br><sub>Tables</sub></td>
     <td align="center"><img src="docs/screenshots/32_latex_text.png" width="190"><br><sub>LaTeX text formatting</sub></td>
+    <td align="center"><img src="docs/screenshots/34_txt_doc.png" width="190"><br><sub>TXT files</sub></td>
   </tr>
 </table>
 
 ## Features
 
 **Documents and generation**
-- PDF and Word (.docx / .doc), batch import with per-file progress
+- PDF, Word (.docx / .doc), and TXT, batch import with per-file progress
+- TXT files are read on the phone (offline, free) with automatic UTF-8 / UTF-16 / GBK detection, split into sections at paragraph breaks, then chaptered as usual
 - Scanned PDFs are supported; formulas are kept as LaTeX
 - Automatic chapter detection (bookmarks, table of contents, heading formats, with AI as a fallback), plus a manual chapter editor
 - Chapter content viewer: read the parsed text of each chapter page by page with textbook-style formulas, switch chapters, search with highlighting, copy, see which parser produced it, and generate from that chapter in one tap
@@ -134,6 +136,8 @@ Choose in **我的 → 文档解析（PDF / Word）** (Me → Document parsing):
 | DeepSeek OCR (default) | ✓ | ✓ | ✓ | Per page |
 | Kimi file extraction | ✓ | ✓ | — | Currently free |
 | Local text layer | ✓ | — | — | Free, offline |
+
+TXT files ignore this setting and are always read on the phone, free and offline.
 
 ## Privacy
 

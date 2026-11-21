@@ -16,7 +16,7 @@
 
 </div>
 
-闪卡刷题是一款开源的 Android 学习应用。导入 PDF 或 Word 教材后，AI 会提炼知识点，生成闪卡和多种题型的练习题，并用 FSRS 算法安排复习。公式按教材排版显示，所有学习数据只保存在你的手机上。
+闪卡刷题是一款开源的 Android 学习应用。导入 PDF、Word 或 TXT 教材后，AI 会提炼知识点，生成闪卡和多种题型的练习题，并用 FSRS 算法安排复习。公式按教材排版显示，所有学习数据只保存在你的手机上。
 
 ## 截图
 
@@ -50,13 +50,15 @@
     <td align="center"><img src="docs/screenshots/30_help_article.png" width="190"><br><sub>帮助文章</sub></td>
     <td align="center"><img src="docs/screenshots/31_table_render.png" width="190"><br><sub>表格显示</sub></td>
     <td align="center"><img src="docs/screenshots/32_latex_text.png" width="190"><br><sub>LaTeX 文本格式</sub></td>
+    <td align="center"><img src="docs/screenshots/34_txt_doc.png" width="190"><br><sub>TXT 资料</sub></td>
   </tr>
 </table>
 
 ## 功能
 
 **资料与生成**
-- 支持 PDF 和 Word（.docx / .doc），可批量导入，每份资料单独显示进度
+- 支持 PDF、Word（.docx / .doc）和 TXT，可批量导入，每份资料单独显示进度
+- TXT 在手机上直接读取（不联网、不花钱），自动识别 UTF-8 / UTF-16 / GBK 编码，按段落切成小节后照常分章
 - 扫描版 PDF 也能识别，公式保留为 LaTeX
 - 自动识别章节（书签、目录页、标题格式，识别不到时由 AI 分章），也可手动编辑
 - 章节内容：按页查看每章解析出的原文（公式按教材样式排版），可切换章节、搜索高亮、复制，显示解析来源，一键「用这章出题」
@@ -132,11 +134,13 @@ SHA-256: f5:ec:04:9f:25:ef:21:59:36:28:23:59:4a:08:49:46:f5:66:6d:cc:54:35:19:b9
 | Kimi 文件解析 | ✓ | ✓ | — | 目前免费 |
 | 本地提取文字层 | ✓ | — | — | 免费，离线 |
 
+TXT 不受这里的设置影响，总是在手机上直接读取，免费、离线。
+
 ## 隐私
 
 - 资料、卡片、错题和学习记录只保存在本机，项目没有任何服务器。
 - API Key 存放在系统安全存储（Android Keystore）中。
-- 文档内容只会发送给你配置的服务商；选择「本地提取」时完全不联网。
+- 文档内容只会发送给你配置的服务商；选择「本地提取」时完全不联网；TXT 只在手机上读取，不会上传。
 - 导出的备份默认不含 API Key；只有手动勾选「包含 API 密钥」时才会写入（备份文件不加密，请勿外传）。
 
 ## 常见问题

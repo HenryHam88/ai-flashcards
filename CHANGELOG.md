@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-11-21
+
+### 新增
+
+- 支持上传 TXT：在项目页点「上传 PDF / Word / TXT」，可以和 PDF、Word 一起多选。
+  - 在手机上直接读取，不联网、不调用任何接口、不花钱，也不受「文档解析」设置影响。
+  - 自动识别编码：UTF-8（含 BOM）、UTF-16（LE / BE）和 Windows 记事本常用的 GBK；统一换行，去掉 NUL 等控制字符。
+  - 按段落切成约 2000 字一个「小节」（与 Word 一样按小节计数），「第一章」「# 标题」这类章标题从新的一节开始；没有换行的超长段落按句子断开。
+  - 之后照常自动识别章节（标题 / AI 分章 / 按小节数切分），章节编辑、章节内容、出题和出处（「第 N 节」）都可用；解析来源显示为「本地（TXT）」。
+  - 超过 10 MB 的 TXT 上传时会提醒读取和出题较慢。
+- 使用帮助的「上传教材和解析」和「常见问题」补充了 TXT 的说明。
+
+### 改进
+
+- 「常见问题」中公式无法排版的说明更新为当前的显示方式（灰色等宽小字）。
+
 ## [1.3.4] - 2026-11-21
 
 ### 修复
@@ -131,7 +147,8 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式显示。
 - 学习统计页面。
 
-[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.4...HEAD
+[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.5...HEAD
+[1.3.5]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.1...v1.3.2
