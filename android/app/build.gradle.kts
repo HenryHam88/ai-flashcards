@@ -59,7 +59,7 @@ android {
         }
     }
 
-    // 安装包里的 .so（Flutter 引擎和 Dart 代码，约 24 MiB）压缩存放，下载体积从约 25 MiB 降到约 14 MiB；
+    // 安装包里的 .so（Flutter 引擎和 Dart 代码，约 24 MiB）压缩存放，下载体积从约 25 MiB 降到约 12 MiB；
     // 安装时解压到手机上，功能不变。
     packaging {
         jniLibs {
