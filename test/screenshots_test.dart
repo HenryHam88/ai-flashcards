@@ -184,7 +184,7 @@ void main() {
           await t.pump(const Duration(milliseconds: 100));
         }
       }
-      expect(find.text('右滑 = 记得，左滑 = 忘了，点按翻面'), findsOneWidget);
+      expect(find.text('右滑 = 记得，左滑 = 忘了，点按翻面；上一张 / 下一张可回看'), findsOneWidget);
       await t.tap(find.text('记住了'));
       await settle();
       await t.tap(find.text('没记住'));
@@ -215,8 +215,58 @@ void main() {
       expect(find.text('回答错误，已加入错题本'), findsOneWidget);
       await t.tap(find.text('C'), warnIfMissed: false); // 已作答：点击无效
       await t.pump(const Duration(milliseconds: 300));
+      await t.tap(find.text('下一题 →')); // 回看后向前，回到当前题
+      await t.pump(const Duration(milliseconds: 300));
+      expect(find.text('测验  2/2'), findsOneWidget);
+      await t.tap(find.text('上一题'));
+      await t.pump(const Duration(milliseconds: 300));
     });
     expect((await state.repo.logs(projectId: 'p2')).length, 1);
     expect((await state.repo.wrong()).length, 1);
+  });
+
+  testWidgets('闪卡下一张：退回后原样前进，不重新评分', (t) async {
+    state.settings.reviewSession = {
+      'projectId': 'p1',
+      'ids': [for (var i = 0; i < 32; i++) 'c$i'],
+      'index': 0,
+      'flipped': false,
+    };
+    await shoot(t, const ReviewPage(projectId: 'p1', resume: true), '13_review_next', after: () async {
+      Future<void> settle() async {
+        for (var i = 0; i < 6; i++) {
+          await t.pump(const Duration(milliseconds: 100));
+        }
+      }
+      await t.tap(find.text('记住了'));
+      await settle();
+      await t.tap(find.text('没记住'));
+      await settle();
+      final rated = (await state.repo.card('c1'))!.toJson();
+      await t.tap(find.text('上一张'));
+      await settle();
+      await t.tap(find.text('上一张'));
+      await settle();
+      expect(find.text('1 / 32'), findsOneWidget);
+      expect((state.settings.reviewSession!['redo'] as List).length, 2);
+      await t.tap(find.text('下一张'));
+      await settle();
+      await t.tap(find.text('下一张'));
+      await settle();
+      expect(find.text('3 / 32'), findsOneWidget);
+      expect((await state.repo.card('c1'))!.toJson(), rated);
+      expect((await state.repo.logs(projectId: 'p1')).where((l) => l.id.startsWith('l')).length, 40);
+      await t.tap(find.text('上一张'));
+      await settle();
+      expect(find.text('2 / 32'), findsOneWidget);
+    });
+    // 退回后重新评分：替换原结果，重做栈清空
+    expect((state.settings.reviewSession!['redo'] as List).length, 1);
+    await t.tap(find.text('记住了'));
+    for (var i = 0; i < 6; i++) {
+      await t.pump(const Duration(milliseconds: 100));
+    }
+    expect((state.settings.reviewSession!['redo'] as List), isEmpty);
+    expect((await state.repo.card('c1'))!.lapses, 0);
   });
 }

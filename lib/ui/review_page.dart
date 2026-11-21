@@ -26,6 +26,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
   String? filter; // 混合复习时的项目筛选（null=全部）
   List<(String, String)> projects = [];
   List<Map<String, dynamic>> undoStack = []; // 本轮每次评分的撤销记录（可多步返回）
+  List<Map<String, dynamic>> redoStack = []; // 退回后可「下一张」原样恢复的评分
   bool hintSeen = true;
 
   AppState get s => context.read<AppState>();
@@ -62,6 +63,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       flipped = saved['flipped'] == true;
       filter = saved['filter'] as String?;
       undoStack = ((saved['undo'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      redoStack = ((saved['redo'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
     } else {
       cards = await s.dueCards(projectId: widget.projectId);
       index = 0;
@@ -87,6 +89,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
         'flipped': flipped,
         'filter': filter,
         'undo': undoStack,
+        'redo': redoStack,
       };
     }
   }
@@ -102,6 +105,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       flipped = false;
       dx = 0;
       undoStack = [];
+      redoStack = [];
     });
     _persist();
   }
@@ -119,6 +123,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
     }
     setState(() {
       undoStack.add(undo);
+      redoStack = []; // 重新评分：替换原来的结果，重做记录作废
       index++;
       flipped = false;
       dx = 0;
@@ -126,13 +131,29 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
     _persist();
   }
 
-  /// 上一张：撤销上一次评分，回到那张卡的正面。
+  /// 上一张：撤销上一次评分（恢复状态、删除记录），回到那张卡的正面；原评分进入重做栈。
   Future<void> _undo() async {
     if (undoStack.isEmpty || index == 0) return;
-    final restored = await s.undoReview(undoStack.removeLast());
+    final (restored, redo) = await s.undoReview(undoStack.removeLast());
     setState(() {
+      redoStack.add(redo);
       index--;
       cards[index] = restored;
+      flipped = false;
+      dx = 0;
+    });
+    _persist();
+  }
+
+  /// 下一张：不用重新评分，原样恢复刚才撤销的评分并前进。
+  Future<void> _redo() async {
+    if (redoStack.isEmpty || index >= cards.length) return;
+    final redo = redoStack.removeLast();
+    final undo = await s.redoReview(redo);
+    setState(() {
+      undoStack.add(undo);
+      cards[index] = Flashcard.fromJson((redo['post'] as Map).cast<String, dynamic>());
+      index++;
       flipped = false;
       dx = 0;
     });
@@ -196,7 +217,10 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                           if (!hintSeen)
                             const Padding(
                               padding: EdgeInsets.only(bottom: 8),
-                              child: Text('右滑 = 记得，左滑 = 忘了，点按翻面', style: TextStyle(color: M.sub, fontSize: 12)),
+                              child: Text(
+                                '右滑 = 记得，左滑 = 忘了，点按翻面；上一张 / 下一张可回看',
+                                style: TextStyle(color: M.sub, fontSize: 12),
+                              ),
                             ),
                           Row(
                             children: [
@@ -212,6 +236,12 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                                   icon: Icons.auto_awesome_rounded,
                                   onTap: () => showExplainSheet(context, card: card),
                                 ),
+                              ),
+                              const SizedBox(width: 12),
+                              GlassButton(
+                                label: '下一张',
+                                icon: Icons.redo_rounded,
+                                onTap: redoStack.isNotEmpty ? _redo : null,
                               ),
                             ],
                           ),

@@ -136,13 +136,27 @@ class AppState extends ChangeNotifier {
     return {'card': snapshot, 'log': logId};
   }
 
-  /// 撤销一次评分：恢复卡片的 FSRS 状态和到期时间，并删除那条复习记录。返回恢复后的卡片。
-  Future<Flashcard> undoReview(Map<String, dynamic> undo) async {
-    final c = Flashcard.fromJson((undo['card'] as Map).cast<String, dynamic>());
+  /// 撤销一次评分：恢复卡片的 FSRS 状态和到期时间，并删除那条复习记录。
+  /// 返回 (恢复后的卡片, 重做记录)。重做记录保存评分后的状态和原日志，供「下一张」原样恢复。
+  Future<(Flashcard, Map<String, dynamic>)> undoReview(Map<String, dynamic> undo) async {
+    final pre = (undo['card'] as Map).cast<String, dynamic>();
+    final c = Flashcard.fromJson(pre);
+    final post = await repo.card(c.id);
+    final log = await repo.logEntry(undo['log'] as String);
     await repo.saveCards([c]);
     await repo.deleteLog(undo['log'] as String);
     changed();
-    return c;
+    return (c, {'pre': pre, 'post': post?.toJson() ?? pre, 'log': log?.toJson()});
+  }
+
+  /// 重做（「下一张」）：原样恢复当时的评分结果和复习记录（同一 id、同一时间），返回撤销记录。
+  Future<Map<String, dynamic>> redoReview(Map<String, dynamic> redo) async {
+    final post = Flashcard.fromJson((redo['post'] as Map).cast<String, dynamic>());
+    await repo.saveCards([post]);
+    final logJson = (redo['log'] as Map?)?.cast<String, dynamic>();
+    if (logJson != null) await repo.log(LogEntry.fromJson(logJson));
+    changed();
+    return {'card': redo['pre'], 'log': logJson?['id'] ?? ''};
   }
 
   // ---------- 答题与错题本 ----------

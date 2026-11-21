@@ -115,6 +115,10 @@ class Repository {
   // ---------- 日志 / 解释缓存 ----------
   Future<void> log(LogEntry e) => store.put('logs', e.id, e.projectId, e.toJson());
   Future<void> deleteLog(String id) => store.delete('logs', id);
+  Future<LogEntry?> logEntry(String id) async {
+    final j = await store.get('logs', id);
+    return j == null ? null : LogEntry.fromJson(j);
+  }
   Future<List<LogEntry>> logs({String? projectId}) async =>
       (await store.list('logs', projectId: projectId)).map(LogEntry.fromJson).toList();
 

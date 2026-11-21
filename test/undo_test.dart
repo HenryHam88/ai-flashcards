@@ -23,8 +23,8 @@ void main() {
     expect((await s.repo.card('c1'))!.lapses, 1);
 
     // 退回两步
-    final r2 = await s.undoReview(undos.removeLast());
-    final r1 = await s.undoReview(undos.removeLast());
+    final (r2, _) = await s.undoReview(undos.removeLast());
+    final (r1, _) = await s.undoReview(undos.removeLast());
     expect(r2.toJson(), before['c2']);
     expect(r1.toJson(), before['c1']);
     expect((await s.repo.card('c1'))!.toJson(), before['c1']);
@@ -41,5 +41,37 @@ void main() {
     expect((await s.repo.card('c1'))!.reps, 1);
     expect((await s.repo.card('c1'))!.lapses, 0);
     expect((await s.repo.logs()).length, 2);
+  });
+
+  test('重做：原样恢复评分结果和同一条记录，多步可用；新评分会替换', () async {
+    SharedPreferences.setMockInitialValues({});
+    final s = AppState(Repository(MemoryDocStore()), Settings(await SharedPreferences.getInstance(), MemorySecretStore()));
+    final cards = [for (var i = 0; i < 2; i++) Flashcard(id: 'c$i', projectId: 'p', front: 'Q', back: 'A', due: DateTime(2026))];
+    await s.repo.saveCards(cards);
+    final u0 = await s.reviewCard(cards[0], true);
+    final u1 = await s.reviewCard(cards[1], false);
+    final post0 = (await s.repo.card('c0'))!.toJson();
+    final post1 = (await s.repo.card('c1'))!.toJson();
+    final logsBefore = {for (final l in await s.repo.logs()) l.id: l.toJson()};
+
+    final (_, redo1) = await s.undoReview(u1);
+    final (_, redo0) = await s.undoReview(u0);
+    expect(await s.repo.logs(), isEmpty);
+
+    final again0 = await s.redoReview(redo0);
+    final again1 = await s.redoReview(redo1);
+    expect((await s.repo.card('c0'))!.toJson(), post0);
+    expect((await s.repo.card('c1'))!.toJson(), post1);
+    expect({for (final l in await s.repo.logs()) l.id: l.toJson()}, logsBefore); // 同 id、同时间
+    expect(again0['log'], u0['log']);
+
+    // 可以再次撤销
+    final (back1, _) = await s.undoReview(again1);
+    expect(back1.reps, 0);
+    // 新评分替换原结果（页面层会清空重做栈）
+    await s.reviewCard(back1, true);
+    final c1 = (await s.repo.card('c1'))!;
+    expect(c1.lapses, 0);
+    expect((await s.repo.logs()).where((l) => l.id == u1['log']), isEmpty);
   });
 }
