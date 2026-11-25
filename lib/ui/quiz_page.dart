@@ -131,15 +131,22 @@ class _QuizPageState extends State<QuizPage> {
         if (!loading && !done)
           FavoriteButton(kind: 'question', targetId: qs[index].id, projectId: qs[index].projectId, title: qs[index].stem),
         if (!loading && !done)
+          IconButton(
+            tooltip: '这道题有问题',
+            icon: Icon(qs[index].flag.isEmpty ? Icons.flag_outlined : Icons.flag_rounded),
+            onPressed: () async {
+              final q = qs[index];
+              final r = await showFeedbackSheet(context, question: q);
+              if (r is Question && mounted) setState(() => qs[index] = r);
+            },
+          ),
+        if (!loading && !done)
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_horiz_rounded),
             onSelected: (v) async {
               final q = qs[index];
               if (v == 'src') {
                 showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter, section: q.section);
-              } else if (v == 'flag') {
-                final r = await showFeedbackSheet(context, question: q);
-                if (r is Question && mounted) setState(() => qs[index] = r);
               } else {
                 await s.mark(q: q, mark: v);
                 if (context.mounted) toast(context, '已标记为「$v」');
@@ -147,7 +154,6 @@ class _QuizPageState extends State<QuizPage> {
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'src', child: Text('查看原文')),
-              PopupMenuItem(value: 'flag', child: Text('这道题有问题')),
               PopupMenuItem(value: '不确定', child: Text('标记：不确定')),
               PopupMenuItem(value: 'AI出错了', child: Text('标记：AI出错了')),
             ],

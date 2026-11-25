@@ -100,6 +100,16 @@ void main() {
 
   testWidgets('答题', (t) async {
     await shoot(t, const QuizPage(projectId: 'p2'), '3_quiz', after: () async {
+      // 「这道题有问题」和闪卡一样放在顶栏，一眼可见
+      expect(find.byTooltip('这道题有问题'), findsOneWidget);
+      expect(find.byIcon(Icons.flag_outlined), findsOneWidget);
+      await t.tap(find.byIcon(Icons.more_horiz_rounded));
+      await t.pump(const Duration(milliseconds: 400));
+      expect(find.text('查看原文'), findsOneWidget);
+      expect(find.text('标记：不确定'), findsOneWidget);
+      expect(find.text('这道题有问题'), findsNothing, reason: '更多菜单里不再重复');
+      await t.tapAt(const Offset(10, 600));
+      await t.pump(const Duration(milliseconds: 400));
       await t.tap(find.text('B'));
       for (var i = 0; i < 10; i++) {
         await t.pump(const Duration(milliseconds: 100));
