@@ -46,7 +46,7 @@ class HelpIds {
   static const byName = {
     'quickStart': quickStart, 'keys': keys, 'upload': upload, 'chapters': chapters, 'generate': generate,
     'quality': quality, 'review': review, 'quiz': quiz, 'explain': explain, 'stats': stats, 'backup': backup,
-    'appearance': appearance, 'faq': faq, 'favorites': favorites, 'cloud': cloud, 'study': study,
+    'appearance': appearance, 'faq': faq, 'favorites': favorites, 'cloud': cloud, 'study': study, 'notes': notes,
   };
   static const quickStart = 'quick_start';
   static const keys = 'keys';
@@ -64,6 +64,7 @@ class HelpIds {
   static const favorites = 'favorites';
   static const cloud = 'cloud';
   static const study = 'study';
+  static const notes = 'notes';
 }
 
 const helpArticles = <HelpArticle>[
@@ -479,6 +480,33 @@ PDF 按章节分组，公式按应用里的样式排版成图片；文字用内�
 2. 点面板上方的资料范围可以重新选择：按章节多选，勾选后点「页码」只选其中几页。会显示大约多少字，内容太多时只发送前一部分，建议缩小范围。
 3. 直接提问，或点「通俗讲讲这部分的核心脉络」等快捷问题。AI 会以你选的教材原文为依据讲解。
 4. 往下拉或点右上角的箭头就能收起面板，对话会自动保存；点历史图标可以切换以前的对话，加号开始新对话。
+''',
+  ),
+  HelpArticle(
+    id: HelpIds.notes,
+    category: 'study',
+    title: '笔记：围绕知识点记照片、理解、题目和原文',
+    summary: '每条笔记挂在一个知识点下，可以拍照、写自己的理解、让 AI 讲解、挂题目、引用原文，并导出 PDF',
+    keywords: ['笔记', '拍照', '照片', '相册', '我的理解', 'AI 讲解', '引用', '原文', '相关题目', '导出', 'PDF'],
+    body: r'''
+### 新建笔记
+- 打开项目，点计数下面的「笔记」，再点「新建笔记」，选一个知识点。
+- 也可以在学习板块的导图节点上点「写笔记」，在 AI 伴学的回答下面点「存为笔记」，或在收藏的知识点里点「写笔记」。同一个知识点只有一条笔记，再次打开会接着写。
+
+### 一条笔记里能放什么
+1. **照片**：点「添加」→「拍照」或「从相册选择」。照片会压缩（长边 1600 像素）后保存，一张通常只有几百 KB。
+2. **我的理解**：用自己的话讲一遍，公式写成 `$...$`，下面会显示排版后的预览。
+3. **AI 讲解**：点「让 AI 讲解这个知识点」，AI 会结合知识点、你的理解和教材原文讲解；右边菜单可以「重新生成」或「清除」。
+4. **相关题目**：点「选择」，同一知识点的题目排在前面。
+5. **引用原文**：点「引用」，输入页码，再点选要引用的段落。引用会带上页码，点一下就能查看原文。
+
+改动会自动保存。
+
+### 导出 PDF
+在笔记页右上角点 PDF 图标导出这一条；在笔记列表右上角点 PDF 图标导出全部笔记（按章节分组，照片和公式都会排进去）。
+
+### 照片和空间
+照片存在应用里，会跟着备份一起导出。配置了云端存储后，可以在「释放空间」里把照片放到云端；之后点开照片时会自动下载回来。删除笔记会同时删除它的照片。
 ''',
   ),
   HelpArticle(

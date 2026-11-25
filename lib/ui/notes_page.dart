@@ -152,7 +152,7 @@ class NoteTile extends StatelessWidget {
         MathText(n.title.isEmpty ? '（无标题）' : n.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
         if (body.trim().isNotEmpty) ...[
           const SizedBox(height: 4),
-          Text(body.replaceAll(RegExp(r'\s+'), ' '), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: M.sub, fontSize: 13, height: 1.5)),
+          Text(body.replaceAll(RegExp(r'\$+|\*\*'), '').replaceAll(RegExp(r'\s+'), ' '), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: M.sub, fontSize: 13, height: 1.5)),
         ],
         if (n.photoIds.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -622,7 +622,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
               minLines: 4,
               maxLines: null,
               onChanged: (_) => setState(() => dirty = true),
-              decoration: const InputDecoration(hintText: r'用自己的话讲一遍，公式用 $...$', border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none),
+              decoration: const InputDecoration(
+                  hintText: r'用自己的话讲一遍，公式用 $...$', filled: false, border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none),
             ),
           ),
           if (own.text.contains(r'$')) ...[

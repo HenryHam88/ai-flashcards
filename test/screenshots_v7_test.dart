@@ -12,6 +12,7 @@ import 'package:ai_flashcards/ui/favorites_page.dart';
 import 'package:ai_flashcards/ui/wrong_book_page.dart';
 import 'package:ai_flashcards/ui/study_page.dart';
 import 'package:ai_flashcards/ui/mindmap_view.dart';
+import 'package:ai_flashcards/ui/notes_page.dart';
 import 'package:ai_flashcards/services/pdf_export.dart';
 import 'package:ai_flashcards/ui/project_page.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -187,5 +188,36 @@ $$P(A\mid B)=\frac{P(AB)}{P(B)}$$
       await t.tap(find.text('AI 伴学 · 为什么要求 P(B)>0'));
       await settle(t, 8);
     });
+  });
+
+  Future<StudyNote> seedNote() async {
+    await seedChapterPages(state.repo);
+    await state.repo.saveKps([
+      KnowledgePoint(id: 'kp1', projectId: 'p1', docId: 'd1', chapter: '第一章 随机事件与概率', title: '条件概率', content: r'设 $P(B)>0$，$P(A\mid B)=\dfrac{P(AB)}{P(B)}$', page: 12),
+    ]);
+    final n = StudyNote(
+      id: 'n1',
+      projectId: 'p1',
+      kpId: 'kp1',
+      chapter: '第一章 随机事件与概率',
+      title: '条件概率',
+      own: r'$B$ 已经发生，相当于把样本空间缩小到 $B$，再看 $A$ 占多少。',
+      ai: r'**关键**：分母 $P(B)$ 必须大于零，否则「在 $B$ 发生的条件下」没有意义。',
+      questionIds: ['q1'],
+      quotes: [NoteQuote(docId: 'd1', page: 12, text: r'为在事件 $B$ 发生的条件下事件 $A$ 发生的**条件概率**。')],
+    );
+    await state.repo.saveNote(n);
+    await state.repo.saveNote(StudyNote(id: 'n2', projectId: 'p1', chapter: '第一章 随机事件与概率', title: '概率的性质', own: '有限可加性要求两两互不相容。'));
+    return n;
+  }
+
+  testWidgets('笔记列表：按章节分组', (t) async {
+    await t.runAsync(seedNote);
+    await shoot(t, const NotesPage(projectId: 'p1'), '58_notes');
+  });
+
+  testWidgets('笔记编辑：知识点、我的理解、AI 讲解、题目、引用原文', (t) async {
+    final n = await t.runAsync(seedNote);
+    await shoot(t, NoteEditorPage(note: n!), '59_note_editor');
   });
 }
