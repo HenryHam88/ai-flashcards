@@ -19,6 +19,22 @@ import 'notes_page.dart' show openNoteFor, pickKnowledgePoint;
 import 'number_input.dart';
 import 'settings_pages.dart' show fmtSize;
 
+/// 上限这类整数字数：60000 → 「6 万字」，8000 → 「8000 字」。
+String limitLabel(int n) => n >= 10000 ? '${(n / 10000).toStringAsFixed(n % 10000 == 0 ? 0 : 1)} 万字' : '$n 字';
+/// 附件放不下时的提示：写明实际发送的字数。
+String attachNotice(ContextPlan p) {
+  final parts = <String>[];
+  if (p.historyDropped > 0) parts.add('较早的 ${p.historyDropped} 条对话这次不发给 AI');
+  if (p.attachCut) {
+    parts.add(p.attachSent == 0
+        ? '附件文字（共${charsLabel(p.attachChars)}）这次放不下，AI 看不到'
+        : '附件共${charsLabel(p.attachChars)}，这次只发送前 ${p.attachSent} 字，后面的内容 AI 看不到');
+  }
+  final ctx = p.context >= 1000000 ? '${p.context ~/ 1000000}M' : '${p.context ~/ 1000}K';
+  return '超出模型上下文（$ctx token，已扣除资料、对话和回答预留）：${parts.join('；')}。'
+      '${p.attachCut ? '可以删掉不需要的附件、缩小资料范围或新开对话。' : '可以新开对话。'}';
+}
+
 String charsLabel(int n) => n >= 10000 ? '约 ${(n / 10000).toStringAsFixed(1)} 万字' : '约 $n 字';
 
 /// 学习板块：用这个项目已经解析好的资料学懂概念。每章可以按需生成思维导图，底部是可收起的 AI 伴学。
@@ -363,8 +379,7 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
     final l = chat?.attachments ?? const <ChatAttachment>[];
     if (l.isEmpty && attachStatus == null) return const SizedBox();
     final s = context.read<AppState>();
-    final docs = [for (final a in l.where((a) => !a.isImage)) (name: a.name, text: a.text, truncated: a.truncated)];
-    final (_, cut) = AttachmentService.promptBlock(docs);
+    final plan = chat?.plan;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -411,11 +426,10 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
               Expanded(child: Text(attachStatus!, style: TextStyle(color: M.sub, fontSize: 12))),
             ]),
           )
-        else if (cut)
+        else if (plan != null && (plan.attachCut || plan.historyDropped > 0))
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text('附件文字较多，每次只发送前 ${AttachmentService.textBudget} 字，后面的内容 AI 看不到。可以删掉不需要的附件或拆开发。',
-                style: TextStyle(color: M.roseDark, fontSize: 12, height: 1.4)),
+            child: Text(attachNotice(plan), style: TextStyle(color: M.roseDark, fontSize: 12, height: 1.4)),
           ),
       ]),
     );
@@ -442,6 +456,11 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
     final m = await s.study.material(widget.projectId, scope);
     final label = await s.study.scopeLabel(widget.projectId, scope);
     if (mounted) setState(() => (material = m, scopeText = label));
+    final c = chat;
+    if (c != null && c.attachments.isNotEmpty) {
+      await s.refreshStudyPlan(c);
+      if (mounted) setState(() {});
+    }
   }
 
   void _notify() => widget.onChanged(chat, scope);
@@ -779,7 +798,7 @@ class _MaterialPickerSheetState extends State<MaterialPickerSheet> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
-                    est > StudyService.budget ? '已选${charsLabel(est)}，超过 2.4 万字时只发送前一部分，建议缩小范围' : '已选${charsLabel(est)}，可以直接发给 AI',
+                    est > StudyService.budget ? '已选${charsLabel(est)}，超过 ${limitLabel(StudyService.budget)}时只发送前一部分，建议缩小范围' : '已选${charsLabel(est)}，可以直接发给 AI',
                     style: TextStyle(color: est > StudyService.budget ? M.roseDark : M.sub, fontSize: 12)),
               ),
             GlassButton(

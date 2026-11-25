@@ -121,6 +121,14 @@ class LlmClient {
 
   static const webModels = {'deepseek-flash', 'deepseek-v4-flash'};
 
+  /// 模型的上下文长度（token）。DeepSeek 官方「模型与价格」页：deepseek-flash / deepseek-v4-pro 都是 1M。
+  /// 不认识的模型按 128K 保守估计。
+  static int contextTokens(String model) {
+    final m = model.trim();
+    if (m.startsWith('deepseek-flash') || m.startsWith('deepseek-v4')) return 1000000;
+    return 128000;
+  }
+
   /// 图片附件要模型能看图：DeepSeek 只有 deepseek-flash 支持图像理解（https://api-docs.deepseek.com/zh-cn/guides/vision）。
   static String? visionUnavailableReason(String baseUrl, String model) {
     final host = Uri.tryParse(baseUrl.trim())?.host ?? '';

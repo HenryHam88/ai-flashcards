@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 
+import '../models.dart';
 import 'latex.dart';
 import 'ocr.dart';
 import 'pdf_tools.dart';
@@ -23,8 +24,13 @@ class AttachmentService {
   static const maxFiles = 5; // 每个对话最多几个附件
   static const maxBytes = 20 * 1024 * 1024; // 单个文件上限
   static const maxImageBytes = 8 * 1024 * 1024; // 单张图片上限（拍照 / 相册会先压缩）
-  static const storeChars = 8000; // 每个附件保存的文字上限
-  static const textBudget = 8000; // 每次提问发给 AI 的附件文字合计上限
+  static const storeChars = 20000; // 随对话保存的预览字数；更长的全文另存为 `<附件id>_text.txt`
+  // 发给 AI 的附件字数不设固定上限，按模型上下文长度动态计算（见 [plan]）。
+  static const charsPerToken = 1.0; // 中文保守按 1 字 ≈ 1 token 估算
+  static const replyReserve = 32000; // 给回答（含思考过程）预留的 token
+  static const webReserve = 64000; // 联网时给搜索到的网页内容预留的 token
+  static const imageTokens = 2000; // 每张图片按这么多 token 估算
+  static const safety = 0.10; // 安全余量：上下文的 10%
   static const ocrPages = 20; // 扫描版 PDF 最多识别前几页
 
   static const docExts = ['pdf', 'docx', 'doc', 'txt'];
@@ -140,8 +146,33 @@ class AttachmentService {
     }
   }
 
+  /// 算出这次能发多少附件文字：上下文 ×(1-安全余量) − 回答预留 − 联网预留 − 图片 − 固定部分（系统提示+资料+提问）
+  /// − 对话历史。放不下时先丢最早的对话（成对丢），还放不下再截断附件。
+  static ContextPlan plan({
+    required int context,
+    required int fixedChars,
+    required List<int> history,
+    required int attachChars,
+    bool web = false,
+    int images = 0,
+  }) {
+    int tok(int chars) => (chars / charsPerToken).ceil();
+    final avail = (context * (1 - safety)).floor() - replyReserve - (web ? webReserve : 0) - images * imageTokens - tok(fixedChars);
+    var drop = 0;
+    var hist = history.fold<int>(0, (a, b) => a + tok(b));
+    while (drop < history.length && avail - hist < tok(attachChars)) {
+      final n = (drop + 2 <= history.length) ? 2 : 1;
+      for (var i = 0; i < n; i++) {
+        hist -= tok(history[drop + i]);
+      }
+      drop += n;
+    }
+    final room = ((avail - hist) * charsPerToken).floor();
+    return ContextPlan(context: context, attachChars: attachChars, attachSent: room <= 0 ? 0 : (room < attachChars ? room : attachChars), historyDropped: drop);
+  }
+
   /// 把附件文字拼进系统提示，合计不超过 [budget] 字。返回 (文字, 是否有截断)。
-  static (String, bool) promptBlock(List<({String name, String text, bool truncated})> docs, {int budget = textBudget}) {
+  static (String, bool) promptBlock(List<({String name, String text, bool truncated})> docs, {required int budget}) {
     if (docs.isEmpty) return ('', false);
     final b = StringBuffer();
     var left = budget;

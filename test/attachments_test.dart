@@ -10,6 +10,8 @@ import 'package:ai_flashcards/services/attachments.dart';
 import 'package:ai_flashcards/services/backup.dart';
 import 'package:ai_flashcards/services/llm.dart';
 import 'package:ai_flashcards/services/settings.dart';
+import 'package:ai_flashcards/services/study.dart';
+import 'package:ai_flashcards/ui/study_page.dart' show attachNotice, limitLabel;
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -57,33 +59,72 @@ void main() {
     expect(AttachmentService.docxText(Uint8List.fromList([1, 2, 3])), isNull);
   });
 
-  test('附件文字拼进伴学的系统提示，合计有上限；文件登记为 chat_file，删除对话时一起删掉', () async {
+  test('附件全文另存；按模型上下文（deepseek-flash 1M）整份发给 AI；删除对话时文件一起删掉', () async {
     final chat = StudyChat(id: 'c1', projectId: 'p1');
-    final big = '需求' * 6000; // 12000 字
+    final big = '需求' * 15000; // 30000 字
     final a = await s.addChatAttachment(chat, '需求文档.txt', Uint8List.fromList(utf8.encode(big)));
     expect(a.kind, 'txt');
-    expect(a.chars, 12000);
-    expect(a.text.length, AttachmentService.storeChars);
-    expect(a.truncated, isTrue);
+    expect(a.chars, 30000);
+    expect(a.text.length, AttachmentService.storeChars, reason: '数据库里只放预览');
+    final full = (await s.repo.mediaAsset('${a.id}_text'))!;
+    expect(full.kind, 'chat_file');
+    expect(File(full.localPath).readAsStringSync(), big);
     await s.addChatAttachment(chat, '接口说明.docx', docx(['登录接口 POST /login']));
     final m = (await s.repo.mediaAsset(a.id))!;
     expect(m.kind, 'chat_file');
     expect(m.ownerId, 'c1');
     expect(File(m.localPath).existsSync(), isTrue);
     expect((await s.repo.studyChats('p1')).single.attachments.length, 2, reason: '附件随对话保存');
+    expect(chat.plan!.context, 1000000);
+    expect(chat.plan!.attachCut, isFalse);
 
     await s.studyAsk(chat, '帮我总结需求');
     final sys = llm.chats.single.first['content']!;
-    expect(sys, contains('【附件：需求文档.txt】'));
-    expect(sys, contains('附件较长，只附上了前一部分'));
-    expect(sys, contains('【附件：接口说明.docx】'), reason: '超出合计上限的附件也会列出名字');
+    expect(sys, contains('【附件：需求文档.txt】\n$big'));
+    expect(sys, isNot(contains('只附上了前一部分')));
+    expect(sys, contains('登录接口 POST /login'));
     expect(sys, contains('学生上传了附件（需求文档.txt、接口说明.docx）'));
-    expect(sys.length, lessThan(AttachmentService.textBudget + 6000));
+    expect(chat.plan!.attachSent, 30000 + '登录接口 POST /login'.length);
 
     await s.deleteStudyChat(chat);
     expect(File(m.localPath).existsSync(), isFalse);
+    expect(File(full.localPath).existsSync(), isFalse);
     expect(await s.repo.mediaAsset(a.id), isNull);
+    expect(await s.repo.mediaAsset('${a.id}_text'), isNull);
     expect(await s.repo.studyChats('p1'), isEmpty);
+  });
+
+  test('上下文分配：先扣安全余量、回答 / 联网预留和固定部分，放不下先丢最早的对话，再截断附件', () {
+    // 128K：可用 = 115200 − 32000 − 1000 = 82200
+    var p = AttachmentService.plan(context: 128000, fixedChars: 1000, history: [10000, 10000, 5000, 5000], attachChars: 50000);
+    expect((p.historyDropped, p.attachSent, p.attachCut), (0, 50000, false));
+    p = AttachmentService.plan(context: 128000, fixedChars: 1000, history: [10000, 10000, 5000, 5000], attachChars: 60000);
+    expect((p.historyDropped, p.attachSent), (2, 60000), reason: '成对丢掉最早的一问一答');
+    p = AttachmentService.plan(context: 128000, fixedChars: 1000, history: [10000, 10000, 5000, 5000], attachChars: 100000);
+    expect((p.historyDropped, p.attachSent, p.attachCut), (4, 82200, true));
+    // 联网再预留 64000，两张图各 2000
+    p = AttachmentService.plan(context: 128000, fixedChars: 1000, history: const [], attachChars: 100000, web: true, images: 2);
+    expect(p.attachSent, 82200 - 64000 - 4000);
+    p = AttachmentService.plan(context: 128000, fixedChars: 200000, history: [100], attachChars: 10);
+    expect((p.historyDropped, p.attachSent), (1, 0));
+    expect(LlmClient.contextTokens('deepseek-flash'), 1000000);
+    expect(LlmClient.contextTokens('deepseek-v4-pro'), 1000000);
+    expect(LlmClient.contextTokens('qwen-plus'), 128000);
+  });
+
+  test('超出上下文时截断附件，提示写明实际发送的字数', () async {
+    s.settings.llmModel = 'other-model'; // 128K
+    final chat = StudyChat(id: 'c4', projectId: 'p1');
+    await s.addChatAttachment(chat, '大文件.txt', Uint8List.fromList(utf8.encode('字' * 200000)));
+    final p = chat.plan!;
+    expect(p.attachCut, isTrue);
+    expect(p.attachSent, greaterThan(0));
+    expect(attachNotice(p), contains('附件共约 20.0 万字，这次只发送前 ${p.attachSent} 字'));
+    expect(attachNotice(p), contains('128K token'));
+    await s.studyAsk(chat, '总结');
+    final sys = llm.chats.single.first['content']!;
+    expect(sys, contains('（附件较长，只附上了前一部分）'));
+    expect('字'.allMatches(sys).length, greaterThanOrEqualTo(chat.plan!.attachSent));
   });
 
   test('图片：deepseek-flash 才能发，随提问以 image_url 发给模型；其他模型给出原因', () async {
@@ -103,6 +144,13 @@ void main() {
     expect(((wire['content'] as List)[1] as Map)['type'], 'image_url');
     // 对话里只保存可见文字，不保存图片数据
     expect(chat.messages.first.containsKey('images'), isFalse);
+  });
+
+  test('上限文案跟着常量走', () {
+    expect(limitLabel(StudyService.budget), '6 万字');
+    expect(limitLabel(20000), '2 万字');
+    expect(limitLabel(25000), '2.5 万字');
+    expect(limitLabel(8000), '8000 字');
   });
 
   test('移除单个附件', () async {

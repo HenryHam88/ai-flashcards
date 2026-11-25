@@ -581,8 +581,8 @@ class AppState extends ChangeNotifier {
     return m;
   }
 
-  /// AI 伴学：每次都把选中资料的原文放进系统提示，对话本身只存可见内容。
-  Future<StudyChat> studyAsk(StudyChat chat, String question, {AiIo? io}) async {
+  /// 伴学这次要发的消息：选中资料原文进系统提示；附件按模型上下文长度动态分配，放不下时先丢最早的对话，再截断附件。
+  Future<(List<Map<String, String>>, WebMode)> _studyPrompt(StudyChat chat, String question) async {
     final st = study;
     final mat = await st.material(chat.projectId, chat.scope);
     final scope = chat.scope.isEmpty ? '（未选择资料）' : await st.scopeLabel(chat.projectId, chat.scope);
@@ -593,9 +593,10 @@ class AppState extends ChangeNotifier {
           ? (web == WebMode.off ? '（没有选择资料，请按一般教材知识回答，并提醒学生选择资料）' : '（没有选择资料，可以联网查资料回答，并提醒学生选择资料）')
           : mat.text,
     });
-    // 附件：文档文字拼进系统提示（合计有上限），图片随这次提问一起发给模型看
-    final docs = chat.attachments.where((a) => !a.isImage).toList();
-    final (block, _) = AttachmentService.promptBlock([for (final a in docs) (name: a.name, text: a.text, truncated: a.truncated)]);
+    // 附件：文档文字拼进系统提示，图片随这次提问一起发给模型看
+    final docs = [
+      for (final a in chat.attachments.where((a) => !a.isImage)) (name: a.name, text: await attachmentText(a), truncated: false),
+    ];
     final images = <String>[];
     for (final a in chat.attachments.where((a) => a.isImage)) {
       final f = await chatFile(a.id);
@@ -603,16 +604,35 @@ class AppState extends ChangeNotifier {
       images.add('data:${AttachmentService.mimeOf(a.name)};base64,${base64Encode(await f.readAsBytes())}');
     }
     final names = [for (final a in chat.attachments) a.name].join('、');
+    final head = '$system\n\n学生上传了附件（$names），回答时可以引用附件名。${images.isEmpty ? '' : '图片附在学生的提问里。'}\n';
+    final plan = AttachmentService.plan(
+      context: LlmClient.contextTokens(settings.llmModel),
+      fixedChars: head.length + question.length + docs.fold<int>(0, (a, d) => a + d.name.length + 24),
+      history: [for (final m in chat.messages) (m['content'] ?? '').length],
+      attachChars: docs.fold<int>(0, (a, d) => a + d.text.length),
+      web: web != WebMode.off,
+      images: images.length,
+    );
+    chat.plan = chat.attachments.isEmpty ? null : plan;
+    final (block, _) = AttachmentService.promptBlock(docs, budget: plan.attachSent);
     final msgs = [
-      {
-        'role': 'system',
-        'content': block.isEmpty && images.isEmpty
-            ? system
-            : '$system\n\n学生上传了附件（$names），回答时可以引用附件名。${images.isEmpty ? '' : '图片附在学生的提问里。'}\n$block'.trim()
-      },
-      ...chat.messages,
+      {'role': 'system', 'content': block.isEmpty && images.isEmpty ? system : '$head$block'.trim()},
+      ...chat.messages.skip(plan.historyDropped),
       {'role': 'user', 'content': question, if (images.isNotEmpty) 'images': jsonEncode(images)},
     ];
+    return (msgs, web);
+  }
+
+  /// 重新计算附件能发多少（添加 / 删除附件、换资料后刷新提示）。
+  Future<ContextPlan?> refreshStudyPlan(StudyChat chat) async {
+    if (chat.attachments.isEmpty) return chat.plan = null;
+    await _studyPrompt(chat, '');
+    return chat.plan;
+  }
+
+  /// AI 伴学：每次都把选中资料的原文放进系统提示，对话本身只存可见内容。
+  Future<StudyChat> studyAsk(StudyChat chat, String question, {AiIo? io}) async {
+    final (msgs, web) = await _studyPrompt(chat, question);
     final r = await _answer(await llm(), msgs, web: web, io: io);
     chat.messages = [...chat.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': r.content, ...r.extras()}];
     if (chat.title.isEmpty) chat.title = question.length > 24 ? '${question.substring(0, 24)}…' : question;
@@ -652,9 +672,17 @@ class AppState extends ChangeNotifier {
         text: text.length > AttachmentService.storeChars ? text.substring(0, AttachmentService.storeChars) : text,
         chars: text.length,
         pages: pages);
+    if (a.truncated) {
+      // 全文另存一份（也登记为附件文件：会进备份、可释放到云端），数据库里只放预览
+      final tf = File(pth.join(dir.path, '${id}_text.txt'));
+      await tf.writeAsString(text);
+      await repo.saveMedia(MediaAsset(
+          id: '${id}_text', projectId: chat.projectId, kind: 'chat_file', ownerId: chat.id, localPath: tf.path, fileName: '$name.txt', size: await tf.length()));
+    }
     chat.attachments = [...chat.attachments, a];
     chat.updatedAt = DateTime.now();
     await repo.saveStudyChat(chat);
+    await refreshStudyPlan(chat);
     return a;
   }
 
@@ -669,18 +697,36 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// 附件全文：短的就在对话里，长的从另存的全文文件读（读不到时用预览）。
+  Future<String> attachmentText(ChatAttachment a) async {
+    if (!a.truncated) return a.text;
+    final f = await chatFile('${a.id}_text');
+    if (f == null) return a.text;
+    try {
+      return await f.readAsString();
+    } catch (_) {
+      return a.text;
+    }
+  }
+
+  Future<void> _deleteAttachmentFiles(String id) async {
+    for (final mid in [id, '${id}_text']) {
+      final m = await repo.mediaAsset(mid);
+      if (m != null) await (await cloud()).deleteAsset(m);
+    }
+  }
+
   Future<void> removeChatAttachment(StudyChat chat, String id) async {
-    final m = await repo.mediaAsset(id);
-    if (m != null) await (await cloud()).deleteAsset(m);
+    await _deleteAttachmentFiles(id);
     chat.attachments = chat.attachments.where((a) => a.id != id).toList();
     await repo.saveStudyChat(chat);
+    await refreshStudyPlan(chat);
   }
 
   /// 删除对话，连同它的附件（本机和云端）。
   Future<void> deleteStudyChat(StudyChat chat) async {
     for (final a in chat.attachments) {
-      final m = await repo.mediaAsset(a.id);
-      if (m != null) await (await cloud()).deleteAsset(m);
+      await _deleteAttachmentFiles(a.id);
     }
     await repo.deleteStudyChat(chat.id);
   }

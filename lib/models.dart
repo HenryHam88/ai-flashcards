@@ -820,6 +820,8 @@ class StudyChat {
   bool? web;
   String? webMode; // 'deep' / 'normal'
   List<ChatAttachment> attachments;
+  /// 最近一次计算的上下文分配（不保存）：附件实际发送了多少字、丢掉了几条较早的对话。
+  ContextPlan? plan;
   DateTime createdAt;
   DateTime updatedAt;
   StudyChat(
@@ -1013,4 +1015,14 @@ class MediaAsset {
         createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
         lastAccess: DateTime.tryParse(j['lastAccess'] ?? ''),
       );
+}
+
+/// 一次提问的上下文分配：按模型上下文长度扣掉系统提示、资料、对话、回答预留和安全余量后，剩下的给附件。
+class ContextPlan {
+  final int context; // 模型上下文长度（token）
+  final int attachChars; // 附件文字总字数
+  final int attachSent; // 这次实际发送的附件字数
+  final int historyDropped; // 为了腾地方没有发送的较早消息条数
+  const ContextPlan({required this.context, required this.attachChars, required this.attachSent, this.historyDropped = 0});
+  bool get attachCut => attachSent < attachChars;
 }

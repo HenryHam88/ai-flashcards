@@ -38,7 +38,7 @@ class StudyService {
   StudyService(this.repo, this.settings);
 
   /// 发给 AI 的原文上限（字），超过时按页截断并提示用户缩小范围。
-  static const budget = 24000;
+  static const budget = 60000;
 
   static bool parsed(PdfDoc d) => d.parsedPages > 0 || d.status == '已解析' || d.status == '部分失败';
 
