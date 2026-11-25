@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'data/repository.dart';
 import 'models.dart';
+import 'services/attachments.dart';
 import 'services/backup.dart';
 import 'services/chapters.dart';
 import 'services/cloud_storage.dart';
@@ -591,10 +593,25 @@ class AppState extends ChangeNotifier {
           ? (web == WebMode.off ? '（没有选择资料，请按一般教材知识回答，并提醒学生选择资料）' : '（没有选择资料，可以联网查资料回答，并提醒学生选择资料）')
           : mat.text,
     });
+    // 附件：文档文字拼进系统提示（合计有上限），图片随这次提问一起发给模型看
+    final docs = chat.attachments.where((a) => !a.isImage).toList();
+    final (block, _) = AttachmentService.promptBlock([for (final a in docs) (name: a.name, text: a.text, truncated: a.truncated)]);
+    final images = <String>[];
+    for (final a in chat.attachments.where((a) => a.isImage)) {
+      final f = await chatFile(a.id);
+      if (f == null) continue;
+      images.add('data:${AttachmentService.mimeOf(a.name)};base64,${base64Encode(await f.readAsBytes())}');
+    }
+    final names = [for (final a in chat.attachments) a.name].join('、');
     final msgs = [
-      {'role': 'system', 'content': system},
+      {
+        'role': 'system',
+        'content': block.isEmpty && images.isEmpty
+            ? system
+            : '$system\n\n学生上传了附件（$names），回答时可以引用附件名。${images.isEmpty ? '' : '图片附在学生的提问里。'}\n$block'.trim()
+      },
       ...chat.messages,
-      {'role': 'user', 'content': question},
+      {'role': 'user', 'content': question, if (images.isNotEmpty) 'images': jsonEncode(images)},
     ];
     final r = await _answer(await llm(), msgs, web: web, io: io);
     chat.messages = [...chat.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': r.content, ...r.extras()}];
@@ -602,6 +619,70 @@ class AppState extends ChangeNotifier {
     chat.updatedAt = DateTime.now();
     await repo.saveStudyChat(chat);
     return chat;
+  }
+
+  // ---------- 伴学附件 ----------
+  AttachmentService get attachments => AttachmentService(settings, parser);
+
+  /// 添加附件：检查格式和大小，存进 media 目录（可释放到云端、会进备份），抽出文字随对话保存。
+  Future<ChatAttachment> addChatAttachment(StudyChat chat, String name, Uint8List bytes, {void Function(String)? onStatus}) async {
+    final err = AttachmentService.check(name, bytes.length, chat.attachments.length);
+    if (err != null) throw AttachmentException(err);
+    final kind = AttachmentService.kindOf(name)!;
+    if (kind == 'image') {
+      final why = LlmClient.visionUnavailableReason(settings.llmBaseUrl, settings.llmModel);
+      if (why != null) throw AttachmentException(why);
+    }
+    var text = '';
+    var pages = 0;
+    if (kind != 'image') {
+      (text, pages) = await attachments.extract(name, bytes, onStatus: onStatus);
+      if (text.trim().isEmpty) throw AttachmentException('没有从「$name」里读到文字');
+    }
+    final dir = Directory(pth.join((await appDir()).path, 'media'))..createSync(recursive: true);
+    final id = 'chatfile_${newId()}';
+    final f = File(pth.join(dir.path, '$id.${AttachmentService.ext(name)}'));
+    await f.writeAsBytes(bytes);
+    await repo.saveMedia(MediaAsset(id: id, projectId: chat.projectId, kind: 'chat_file', ownerId: chat.id, localPath: f.path, fileName: name, size: bytes.length));
+    final a = ChatAttachment(
+        id: id,
+        name: name,
+        kind: kind,
+        size: bytes.length,
+        text: text.length > AttachmentService.storeChars ? text.substring(0, AttachmentService.storeChars) : text,
+        chars: text.length,
+        pages: pages);
+    chat.attachments = [...chat.attachments, a];
+    chat.updatedAt = DateTime.now();
+    await repo.saveStudyChat(chat);
+    return a;
+  }
+
+  /// 附件文件：放到云端的会自动下载回来。
+  Future<File?> chatFile(String id) async {
+    final m = await repo.mediaAsset(id);
+    if (m == null) return null;
+    try {
+      return await (await cloud()).ensureLocal(m);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> removeChatAttachment(StudyChat chat, String id) async {
+    final m = await repo.mediaAsset(id);
+    if (m != null) await (await cloud()).deleteAsset(m);
+    chat.attachments = chat.attachments.where((a) => a.id != id).toList();
+    await repo.saveStudyChat(chat);
+  }
+
+  /// 删除对话，连同它的附件（本机和云端）。
+  Future<void> deleteStudyChat(StudyChat chat) async {
+    for (final a in chat.attachments) {
+      final m = await repo.mediaAsset(a.id);
+      if (m != null) await (await cloud()).deleteAsset(m);
+    }
+    await repo.deleteStudyChat(chat.id);
   }
 
   // ---------- 笔记 ----------

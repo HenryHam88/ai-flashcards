@@ -17,7 +17,7 @@ import 'settings.dart';
 /// settings.json          不含密钥的设置（仅整机备份）
 /// secrets.json           API 密钥（仅在用户勾选「包含 API 密钥」时）
 /// files/<docId>/<文件名>  原始 PDF / Word（可选）
-/// files/<photo_id>/<文件名> 笔记照片（可选，v7）
+/// files/<photo_id>/<文件名> 笔记照片、伴学附件（可选，v7）
 /// 云端存储的 AccessKey 永远不会写进备份。
 /// ```
 class BackupFormat {
@@ -85,7 +85,7 @@ class BackupService {
   Directory get filesDir => Directory(p.join(appDir.path, 'pdfs'));
   Directory get mediaDir => Directory(p.join(appDir.path, 'media'));
 
-  /// 备份里要带上的原始文件：资料文件 + 笔记照片（只算本机还在的）。key = 'id/文件名'。
+  /// 备份里要带上的原始文件：资料文件 + 笔记照片 + 伴学附件（只算本机还在的）。key = 'id/文件名'。
   Future<Map<String, File>> _originalFiles(String? projectId) async {
     final out = <String, File>{};
     for (final r in await store.rows('docs', projectId: projectId)) {
@@ -93,7 +93,7 @@ class BackupService {
       if (await f.exists()) out['${r.$1}/${p.basename(f.path)}'] = f;
     }
     for (final r in await store.rows('media', projectId: projectId)) {
-      if (r.$3['kind'] != 'photo') continue;
+      if (r.$3['kind'] != 'photo' && r.$3['kind'] != 'chat_file') continue;
       final f = File('${r.$3['localPath'] ?? ''}');
       if (await f.exists()) out['${r.$1}/${p.basename(f.path)}'] = f;
     }
@@ -293,7 +293,7 @@ class BackupService {
     final pathFor = <String, String>{};
     for (final e in info.files.entries) {
       final docId = e.key.split('/').first;
-      final dir = docId.startsWith('photo_') ? mediaDir : filesDir;
+      final dir = docId.startsWith('photo_') || docId.startsWith('chatfile_') ? mediaDir : filesDir;
       final dest = File(p.join(dir.path, '${docId}_${p.basename(e.key)}'));
       await dest.parent.create(recursive: true);
       await dest.writeAsBytes(e.value, flush: true);

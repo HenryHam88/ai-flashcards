@@ -174,7 +174,10 @@ void main() {
   testWidgets('AI 伴学面板：资料范围 + 对话', (t) async {
     await t.runAsync(() async {
       await seedChapterPages(state.repo);
-      await state.repo.saveStudyChat(StudyChat(id: 'sc1', projectId: 'p1', title: '为什么要求 P(B)>0', scope: [
+      await state.repo.saveStudyChat(StudyChat(id: 'sc1', projectId: 'p1', title: '为什么要求 P(B)>0', attachments: [
+        ChatAttachment(id: 'chatfile_a', name: '课程作业要求.docx', kind: 'word', size: 52000, text: '作业要求' * 800, chars: 3200),
+        ChatAttachment(id: 'chatfile_b', name: '板书.jpg', kind: 'image', size: 312000),
+      ], scope: [
         MaterialRef(docId: 'd1', chapter: '第一章 随机事件与概率', pageFrom: 11, pageTo: 13)
       ], messages: [
         {'role': 'user', 'content': r'为什么条件概率要求 $P(B)>0$？'},

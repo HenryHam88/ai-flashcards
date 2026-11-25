@@ -784,6 +784,31 @@ class MaterialRef {
       MaterialRef(docId: j['docId'] ?? '', chapter: j['chapter'] ?? '', pageFrom: j['pageFrom'] ?? 0, pageTo: j['pageTo'] ?? 0);
 }
 
+/// 伴学对话里用户上传的附件（文件本身登记为 MediaAsset，kind = chat_file）。
+/// 文档抽出的文字随对话保存，之后每轮不用重新解析；图片每轮直接发给模型看。
+class ChatAttachment {
+  String id; // MediaAsset id
+  String name;
+  String kind; // pdf / word / txt / image
+  int size;
+  String text; // 抽出的文字（已截到上限）
+  int chars; // 原文总字数
+  int pages; // PDF 页数（其他为 0）
+  ChatAttachment({required this.id, required this.name, required this.kind, this.size = 0, this.text = '', this.chars = 0, this.pages = 0});
+  bool get isImage => kind == 'image';
+  bool get truncated => !isImage && chars > text.length;
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'name': name, 'kind': kind, 'size': size, if (text.isNotEmpty) 'text': text, 'chars': chars, if (pages > 0) 'pages': pages};
+  factory ChatAttachment.fromJson(Map<String, dynamic> j) => ChatAttachment(
+      id: j['id'] ?? '',
+      name: j['name'] ?? '',
+      kind: j['kind'] ?? 'txt',
+      size: j['size'] ?? 0,
+      text: j['text'] ?? '',
+      chars: j['chars'] ?? 0,
+      pages: j['pages'] ?? 0);
+}
+
 /// 学习板块的 AI 对话（基于用户选定的资料范围）。
 class StudyChat {
   String id;
@@ -794,6 +819,7 @@ class StudyChat {
   /// 这个对话的联网设置：null = 跟随「我的 → 出题模型」里的全局设置。
   bool? web;
   String? webMode; // 'deep' / 'normal'
+  List<ChatAttachment> attachments;
   DateTime createdAt;
   DateTime updatedAt;
   StudyChat(
@@ -804,9 +830,11 @@ class StudyChat {
       List<Map<String, String>>? messages,
       this.web,
       this.webMode,
+      List<ChatAttachment>? attachments,
       DateTime? createdAt,
       DateTime? updatedAt})
       : scope = scope ?? [],
+        attachments = attachments ?? [],
         messages = messages ?? [],
         createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? createdAt ?? DateTime.now();
@@ -818,6 +846,7 @@ class StudyChat {
         'messages': messages,
         if (web != null) 'web': web,
         if (webMode != null) 'webMode': webMode,
+        if (attachments.isNotEmpty) 'attachments': [for (final a in attachments) a.toJson()],
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
       };
@@ -829,6 +858,7 @@ class StudyChat {
         messages: [for (final m in (j['messages'] as List?) ?? const []) (m as Map).map((k, v) => MapEntry('$k', '$v'))],
         web: j['web'] is bool ? j['web'] : null,
         webMode: j['webMode'] is String ? j['webMode'] : null,
+        attachments: [for (final a in (j['attachments'] as List?) ?? const []) ChatAttachment.fromJson((a as Map).cast<String, dynamic>())],
         createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
         updatedAt: DateTime.tryParse(j['updatedAt'] ?? ''),
       );
@@ -950,7 +980,7 @@ class MediaAsset {
 
   /// 状态文字：仅本机 / 本机 + 云端 / 仅云端。
   String get stateLabel => offloaded ? '仅云端' : (inCloud ? '本机 + 云端' : '仅本机');
-  static const kindNames = {'doc': '原始资料', 'photo': '笔记照片', 'export': '导出的 PDF', 'backup': '备份'};
+  static const kindNames = {'doc': '原始资料', 'photo': '笔记照片', 'chat_file': '伴学附件', 'export': '导出的 PDF', 'backup': '备份'};
   Map<String, dynamic> toJson() => {
         'id': id,
         'projectId': projectId,

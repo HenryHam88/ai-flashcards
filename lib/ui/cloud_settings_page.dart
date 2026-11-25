@@ -288,6 +288,7 @@ class _ReleaseSheetState extends State<ReleaseSheet> {
               icon: switch (m.kind) {
                 'doc' => Icons.picture_as_pdf_outlined,
                 'photo' => Icons.photo_outlined,
+                'chat_file' => Icons.attach_file_rounded,
                 'backup' => Icons.inventory_2_outlined,
                 _ => Icons.description_outlined,
               },

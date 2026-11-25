@@ -239,6 +239,9 @@ class ParseService {
 
   static const wordUnsupported = '当前解析模型不支持 Word，请在「文档解析」设置里切换到支持 Word 的模型（DeepSeek OCR 或 Kimi），或把文档另存为 PDF';
 
+  /// 当前「文档解析」设置对应的解析器；本地提取时为 null。伴学附件也用它。
+  Future<PdfParser?> parserFor(String purpose) => _parser(purpose);
+
   Future<PdfParser?> _parser(String purpose) async {
     if (parserOverride != null) return parserOverride;
     switch (settings.ocrProvider) {

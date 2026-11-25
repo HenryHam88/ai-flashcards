@@ -1,9 +1,14 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../services/attachments.dart';
 import '../services/llm.dart';
 import '../services/study.dart';
 import '../theme/glass.dart';
@@ -12,6 +17,7 @@ import 'chapter_reparse.dart' show showChapterKps;
 import 'mindmap_view.dart';
 import 'notes_page.dart' show openNoteFor, pickKnowledgePoint;
 import 'number_input.dart';
+import 'settings_pages.dart' show fmtSize;
 
 String charsLabel(int n) => n >= 10000 ? '约 ${(n / 10000).toStringAsFixed(1)} 万字' : '约 $n 字';
 
@@ -268,6 +274,152 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
   // 还没有对话时选的联网方式（建对话时带上）
   bool? webOn;
   String? webMode;
+  String? attachStatus; // 正在读取附件时的提示
+
+  StudyChat _ensureChat() {
+    final c = chat ?? StudyChat(id: newId(), projectId: widget.projectId, scope: scope, web: webOn, webMode: webMode);
+    if (chat == null) setState(() => chat = c);
+    return c;
+  }
+
+  Future<void> _addBytes(String name, Uint8List bytes) async {
+    final s = context.read<AppState>();
+    final c = _ensureChat();
+    setState(() => attachStatus = '正在读取「$name」…');
+    try {
+      await s.addChatAttachment(c, name, bytes, onStatus: (st) {
+        if (mounted) setState(() => attachStatus = st);
+      });
+      _notify();
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+    if (mounted) setState(() => attachStatus = null);
+  }
+
+  Future<void> _pickFiles() async {
+    final r = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: [...AttachmentService.docExts, ...AttachmentService.imageExts]);
+    if (r.isEmpty || !mounted) return;
+    for (final f in r) {
+      if (f.path == null) continue;
+      final file = File(f.path!);
+      final err = AttachmentService.check(f.name, await file.length(), (chat?.attachments.length ?? 0));
+      if (!mounted) return;
+      if (err != null) {
+        toast(context, err);
+        continue;
+      }
+      await _addBytes(f.name, await file.readAsBytes());
+      if (!mounted) return;
+    }
+  }
+
+  Future<void> _pickImage(ImageSource src) async {
+    try {
+      // 和笔记照片一样压缩：长边不超过 1600，JPEG 质量 80
+      final x = await ImagePicker().pickImage(source: src, maxWidth: 1600, maxHeight: 1600, imageQuality: 80);
+      if (x == null || !mounted) return;
+      final name = x.name.contains('.') ? x.name : '${x.name}.jpg';
+      await _addBytes(name, await x.readAsBytes());
+    } catch (e) {
+      if (mounted) toast(context, '添加图片失败：$e');
+    }
+  }
+
+  void _attachMenu() => showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: M.sheet,
+        builder: (ctx) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(height: 8),
+            ListTile(
+                leading: const Icon(Icons.description_outlined),
+                title: const Text('选择文件'),
+                subtitle: Text('PDF、Word、TXT 或图片，单个不超过 ${AttachmentService.maxBytes ~/ 1024 ~/ 1024} MB'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickFiles();
+                }),
+            ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('拍照'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.camera);
+                }),
+            ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('从相册选择'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.gallery);
+                }),
+            const SizedBox(height: 8),
+          ]),
+        ),
+      );
+
+  Widget _attachments() {
+    final l = chat?.attachments ?? const <ChatAttachment>[];
+    if (l.isEmpty && attachStatus == null) return const SizedBox();
+    final s = context.read<AppState>();
+    final docs = [for (final a in l.where((a) => !a.isImage)) (name: a.name, text: a.text, truncated: a.truncated)];
+    final (_, cut) = AttachmentService.promptBlock(docs);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          for (final a in l)
+            Glass(
+              radius: 12,
+              padding: const EdgeInsets.fromLTRB(10, 4, 2, 4),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(
+                    switch (a.kind) {
+                      'image' => Icons.image_outlined,
+                      'pdf' => Icons.picture_as_pdf_outlined,
+                      _ => Icons.description_outlined,
+                    },
+                    size: 14,
+                    color: M.sageDark),
+                const SizedBox(width: 4),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 150),
+                  child: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                ),
+                const SizedBox(width: 4),
+                Text(a.isImage ? fmtSize(a.size) : charsLabel(a.chars), style: TextStyle(color: M.sub, fontSize: 11)),
+                InkWell(
+                  onTap: busy
+                      ? null
+                      : () async {
+                          await s.removeChatAttachment(chat!, a.id);
+                          if (mounted) setState(() {});
+                          _notify();
+                        },
+                  child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.close_rounded, size: 14, color: M.sub)),
+                ),
+              ]),
+            ),
+        ]),
+        if (attachStatus != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(children: [
+              SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: M.sage)),
+              const SizedBox(width: 8),
+              Expanded(child: Text(attachStatus!, style: TextStyle(color: M.sub, fontSize: 12))),
+            ]),
+          )
+        else if (cut)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('附件文字较多，每次只发送前 ${AttachmentService.textBudget} 字，后面的内容 AI 看不到。可以删掉不需要的附件或拆开发。',
+                style: TextStyle(color: M.roseDark, fontSize: 12, height: 1.4)),
+          ),
+      ]),
+    );
+  }
 
   @override
   void dispose() {
@@ -298,9 +450,9 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
     q = q.trim();
     if (q.isEmpty || busy) return;
     final s = context.read<AppState>();
-    final c = chat ?? StudyChat(id: newId(), projectId: widget.projectId, scope: scope, web: webOn, webMode: webMode);
+    final c = _ensureChat();
     c.scope = scope;
-    setState(() => (busy = true, chat = c, pending = q));
+    setState(() => (busy = true, pending = q));
     input.clear();
     try {
       final r = await s.studyAsk(c, q, io: run.start());
@@ -353,7 +505,7 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
                   IconButton(
                     icon: Icon(Icons.delete_outline_rounded, color: M.sub, size: 20),
                     onPressed: () async {
-                      await s.repo.deleteStudyChat(c.id);
+                      await s.deleteStudyChat(c);
                       setSheet(() => chats.remove(c));
                       if (chat?.id == c.id) {
                         setState(() => chat = null);
@@ -441,6 +593,7 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
               '后面的内容它看不到，建议在上面缩小到具体章节或页码。',
               style: TextStyle(color: M.roseDark, fontSize: 12, height: 1.4)),
         ),
+      _attachments(),
       Expanded(
         child: ListView(controller: widget.controller, padding: const EdgeInsets.symmetric(horizontal: 20), children: [
           if (msgs.isEmpty && pending == null) ...[
@@ -517,8 +670,12 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
       SafeArea(
         top: false,
         child: Padding(
-          padding: EdgeInsets.fromLTRB(16, 4, 16, 10 + MediaQuery.of(context).viewInsets.bottom),
+          padding: EdgeInsets.fromLTRB(8, 4, 16, 10 + MediaQuery.of(context).viewInsets.bottom),
           child: Row(children: [
+            IconButton(
+                tooltip: '添加附件',
+                onPressed: busy || attachStatus != null ? null : _attachMenu,
+                icon: Icon(Icons.attach_file_rounded, color: M.sub)),
             Expanded(
                 child: TextField(
                     controller: input,
@@ -526,7 +683,7 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
                     decoration: const InputDecoration(hintText: '问问这部分内容，比如「为什么要这样定义」'))),
             const SizedBox(width: 8),
             IconButton.filled(
-                style: IconButton.styleFrom(backgroundColor: M.sage), onPressed: busy ? null : () => _send(input.text), icon: const Icon(Icons.send_rounded)),
+                style: IconButton.styleFrom(backgroundColor: M.sage), onPressed: busy || attachStatus != null ? null : () => _send(input.text), icon: const Icon(Icons.send_rounded)),
           ]),
         ),
       ),

@@ -121,12 +121,29 @@ class LlmClient {
 
   static const webModels = {'deepseek-flash', 'deepseek-v4-flash'};
 
+  /// 图片附件要模型能看图：DeepSeek 只有 deepseek-flash 支持图像理解（https://api-docs.deepseek.com/zh-cn/guides/vision）。
+  static String? visionUnavailableReason(String baseUrl, String model) {
+    final host = Uri.tryParse(baseUrl.trim())?.host ?? '';
+    if (host == 'api.deepseek.com' && {...webModels, 'deepseek-v4-flash-vision-exp'}.contains(model.trim())) return null;
+    return '发图片需要模型能看图：请把出题模型设为 DeepSeek 的 deepseek-flash（当前：${model.trim().isEmpty ? '未填写' : model.trim()}）。PDF、Word、TXT 不受影响。';
+  }
+
   /// 发给接口的消息：去掉应用自己存的附加字段；联网时把上一轮的联网记录和思考原样回传。
   static List<Map<String, Object?>> wireMessages(List<Map<String, String>> messages, {bool web = false}) => [
         for (final m in messages)
           {
             'role': m['role'],
-            'content': m['content'] ?? '',
+            // 带图片的消息：content 是块数组（文字 + image_url，图片用 base64 data URL）
+            'content': (m['images'] ?? '').isEmpty
+                ? m['content'] ?? ''
+                : [
+                    {'type': 'text', 'text': m['content'] ?? ''},
+                    for (final u in (_tryJson(m['images']!) as List? ?? const []))
+                      {
+                        'type': 'image_url',
+                        'image_url': {'url': '$u'}
+                      },
+                  ],
             if (web && m['role'] == 'assistant') ...{
               if ((m['tools'] ?? '').isNotEmpty) 'server_tool_calls': _tryJson(m['tools']!),
               'reasoning_content': m['reasoning'] ?? '',
