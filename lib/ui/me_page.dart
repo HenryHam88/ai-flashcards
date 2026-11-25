@@ -165,6 +165,57 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
     super.dispose();
   }
 
+
+  Widget _slotGroup(Settings st, {required String title, required String intro}) {
+    final isExplain = title == 'AI 解释模型';
+    return ValueListenableBuilder(
+      valueListenable: tick,
+      builder: (context, _, _) {
+        return Glass(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(intro, style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
+            const SizedBox(height: 12),
+            settingsTextField('接口地址', isExplain ? st.explainBaseUrl : st.studyBaseUrl, (v) {
+              if (isExplain) {
+                st.explainBaseUrl = v;
+              } else {
+                st.studyBaseUrl = v;
+              }
+              tick.value++;
+            }, hint: st.llmBaseUrl),
+            KeyField(
+                label: 'API 密钥',
+                load: isExplain ? st.explainKeyRaw : st.studyKeyRaw,
+                save: isExplain ? st.setExplainKey : st.setStudyKey,
+                hint: '留空则用出题模型的密钥'),
+            settingsTextField('模型名称', isExplain ? st.explainModel : st.studyModel, (v) {
+              if (isExplain) {
+                st.explainModel = v;
+              } else {
+                st.studyModel = v;
+              }
+              tick.value++;
+            }, hint: st.llmModel),
+            settingsTextField(
+                '上下文长度（千 token）',
+                (isExplain ? st.explainContextK : st.studyContextK) == 0 ? '' : '${isExplain ? st.explainContextK : st.studyContextK}',
+                (v) {
+              final n = int.tryParse(v.trim()) ?? 0;
+              if (isExplain) {
+                st.explainContextK = n;
+              } else {
+                st.studyContextK = n;
+              }
+              tick.value++;
+            }, hint: st.llmContextK > 0 ? '${st.llmContextK}' : '留空 = 沿用出题模型（DeepSeek 1000，其他 128）'),
+          ]),
+        );
+      },
+    );
+  }
+
   Widget _webGroup(Settings st) => ValueListenableBuilder(
         valueListenable: tick,
         builder: (context, _, _) {
@@ -225,11 +276,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
                 Text('联网模型', style: const TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
                 Text(
-                    st.webNative
-                        ? '出题模型是 ${st.llmModel}，可以直接联网。换成其他模型时，会先用下面的联网模型通过 DeepSeek 搜索整理，再交给出题模型回答。'
-                        : st.webRelay
-                            ? '出题模型「${st.llmModel}」不能直接联网：会先用联网模型通过 DeepSeek 搜索整理，再把结果交给它回答（多一次调用，按联网模型的 Token 计费）。'
-                            : '联网只支持 DeepSeek 的 deepseek-flash，请把联网模型改为 deepseek-flash。',
+                    '每个功能用的模型如果本身是 deepseek-flash，就直接联网；否则会先用下面的联网模型通过 DeepSeek 搜索整理，再交给它回答（多一次调用，按联网模型的 Token 计费）。联网只支持 DeepSeek 的 deepseek-flash。',
                     style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
                 const SizedBox(height: 12),
                 settingsTextField('联网模型名称', st.webModel, (v) {
@@ -281,9 +328,17 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
             const SizedBox(height: 12),
             settingsTextField('上下文长度（千 token）', st.llmContextK == 0 ? '' : '${st.llmContextK}', (v) => st.llmContextK = int.tryParse(v.trim()) ?? 0,
                 hint: '留空 = 自动（DeepSeek 1000，其他 128）'),
-            Text('AI 伴学按这个长度决定附件能发多少字。用其他服务时可按它的说明填写。', style: TextStyle(color: M.sub, fontSize: 12)),
+            Text('没单独设置时，AI 解释和 AI 伴学也用这个长度。用其他服务时可按它的说明填写。', style: TextStyle(color: M.sub, fontSize: 12)),
           ]),
         ),
+        const SizedBox(height: 14),
+        _slotGroup(st,
+            title: 'AI 解释模型',
+            intro: '用于闪卡和测验里的「AI 解释」和追问。下面每一项留空都沿用出题模型。'),
+        const SizedBox(height: 14),
+        _slotGroup(st,
+            title: 'AI 伴学模型',
+            intro: '用于「AI 伴学」、思维导图和笔记里的「让 AI 讲解」。下面每一项留空都沿用出题模型。伴学附件能发多少字按这个模型的上下文长度计算。'),
         _webGroup(st),
         const SizedBox(height: 14),
         GlassButton(

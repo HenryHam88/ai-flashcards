@@ -79,15 +79,60 @@ class Settings {
     return '';
   }
 
+  // AI 解释 / AI 伴学模型：各项留空则沿用出题模型。
+  String get explainBaseUrl => prefs.getString('explain_base') ?? '';
+  set explainBaseUrl(String v) => prefs.setString('explain_base', v.trim());
+  String get explainModel => prefs.getString('explain_model') ?? '';
+  set explainModel(String v) => prefs.setString('explain_model', v.trim());
+  int get explainContextK => prefs.getInt('explain_context_k') ?? 0;
+  set explainContextK(int v) => prefs.setInt('explain_context_k', v < 0 ? 0 : v);
+  Future<String> explainKeyRaw() async => await secrets.read('explain_key') ?? '';
+  Future<void> setExplainKey(String v) => secrets.write('explain_key', v.trim());
+
+  String get studyBaseUrl => prefs.getString('study_base') ?? '';
+  set studyBaseUrl(String v) => prefs.setString('study_base', v.trim());
+  String get studyModel => prefs.getString('study_model') ?? '';
+  set studyModel(String v) => prefs.setString('study_model', v.trim());
+  int get studyContextK => prefs.getInt('study_context_k') ?? 0;
+  set studyContextK(int v) => prefs.setInt('study_context_k', v < 0 ? 0 : v);
+  Future<String> studyKeyRaw() async => await secrets.read('study_key') ?? '';
+  Future<void> setStudyKey(String v) => secrets.write('study_key', v.trim());
+
+  /// 解析后的实际接口：没填的项用出题模型的值。
+  LlmEndpoint get generate => LlmEndpoint(baseUrl: llmBaseUrl, model: llmModel, contextTokens: contextTokens);
+  LlmEndpoint get explain => _endpoint(explainBaseUrl, explainModel, explainContextK);
+  LlmEndpoint get study => _endpoint(studyBaseUrl, studyModel, studyContextK);
+
+  LlmEndpoint _endpoint(String base, String model, int contextK) {
+    final custom = base.isNotEmpty || model.isNotEmpty || contextK > 0;
+    final b = base.isNotEmpty ? base : llmBaseUrl;
+    final m = model.isNotEmpty ? model : llmModel;
+    final ctx = contextK > 0 ? contextK * 1000 : (model.isNotEmpty ? LlmClient.contextTokens(m) : contextTokens);
+    return LlmEndpoint(baseUrl: b, model: m, contextTokens: ctx, custom: custom);
+  }
+
+  Future<String> explainKey() async {
+    final k = await explainKeyRaw();
+    return k.isNotEmpty ? k : llmKey();
+  }
+
+  Future<String> studyKey() async {
+    final k = await studyKeyRaw();
+    return k.isNotEmpty ? k : llmKey();
+  }
+
+  bool webNativeOf(LlmEndpoint e) => LlmClient.webUnavailableReason(e.baseUrl, e.model) == null;
+  bool webRelayOf(LlmEndpoint e) => !webNativeOf(e) && LlmClient.webModels.contains(webModel.trim());
+
   /// 出题模型自己就能联网（DeepSeek 接口 + deepseek-flash）。
-  bool get webNative => LlmClient.webUnavailableReason(llmBaseUrl, llmModel) == null;
+  bool get webNative => webNativeOf(generate);
 
   /// 要借联网模型检索（出题模型不能直接联网，但联网模型可用）。
-  bool get webRelay => !webNative && LlmClient.webModels.contains(webModel.trim());
+  bool get webRelay => webRelayOf(generate);
 
-  /// 不能联网的原因；null = 可以联网（直接联网或借联网模型）。
+  /// 不能联网的原因；null = 可以联网（某个功能的模型可直接联网，或可借联网模型）。
   String? get webUnavailable {
-    if (webNative || webRelay) return null;
+    if (webNativeOf(generate) || webNativeOf(explain) || webNativeOf(study) || LlmClient.webModels.contains(webModel.trim())) return null;
     return '联网模型「${webModel.trim().isEmpty ? '未填写' : webModel.trim()}」不支持 DeepSeek 联网工具，请把联网模型改为 deepseek-flash';
   }
 
@@ -250,14 +295,14 @@ class Settings {
 
   /// 不含任何密钥的设置项，用于备份。
   static const backupKeys = [
-    'llm_base', 'llm_model', 'llm_context_k', 'web_search', 'web_mode', 'web_model', 'ocr_provider', 'ocr_modes', 'ocr_base', 'ocr_batch', 'kimi_base', 'gen_templates',
+    'llm_base', 'llm_model', 'llm_context_k', 'explain_base', 'explain_model', 'explain_context_k', 'study_base', 'study_model', 'study_context_k', 'web_search', 'web_mode', 'web_model', 'ocr_provider', 'ocr_modes', 'ocr_base', 'ocr_batch', 'kimi_base', 'gen_templates',
     'daily_new_limit', 'daily_review_limit', 'desired_retention', 'day_start_hour', 'theme_mode', 'text_scale',
     'math_scale', 'reduce_motion', 'haptics', 'reminder_on', 'reminder_minutes', 'auto_backup', 'review_before_add',
     'auto_cap', 'concurrency',
   ];
   /// 可以随备份导出的密钥（用户勾选「包含 API 密钥」时）。
   /// 云端存储的 AccessKey（cloud_ak / cloud_sk）故意不在这里：备份文件本身可能被上传到云端，绝不能带着钥匙。
-  static const secretKeys = ['llm_key', 'ocr_key', 'kimi_key', 'web_key'];
+  static const secretKeys = ['llm_key', 'ocr_key', 'kimi_key', 'web_key', 'explain_key', 'study_key'];
 
   Map<String, dynamic> exportPrefs() {
     final out = <String, dynamic>{};
@@ -347,4 +392,13 @@ class Settings {
 
   void setQuizSession(String key, Map<String, dynamic>? v) =>
       v == null ? prefs.remove('quiz_$key') : prefs.setString('quiz_$key', jsonEncode(v));
+}
+
+/// 实际调用时用的模型接口。
+class LlmEndpoint {
+  final String baseUrl;
+  final String model;
+  final int contextTokens;
+  final bool custom; // 这项有单独填写的接口、模型或上下文
+  const LlmEndpoint({required this.baseUrl, required this.model, required this.contextTokens, this.custom = true});
 }
