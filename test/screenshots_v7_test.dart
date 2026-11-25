@@ -10,6 +10,8 @@ import 'package:ai_flashcards/services/settings.dart';
 import 'package:ai_flashcards/ui/cloud_settings_page.dart';
 import 'package:ai_flashcards/ui/favorites_page.dart';
 import 'package:ai_flashcards/ui/wrong_book_page.dart';
+import 'package:ai_flashcards/ui/study_page.dart';
+import 'package:ai_flashcards/ui/mindmap_view.dart';
 import 'package:ai_flashcards/services/pdf_export.dart';
 import 'package:ai_flashcards/ui/project_page.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -130,5 +132,60 @@ void main() {
     final m = media!.singleWhere((e) => e.kind == 'export');
     expect(m.fileName, startsWith('常微分方程-错题集-'));
     expect(File(m.localPath).readAsBytesSync().take(4), '%PDF'.codeUnits);
+  });
+
+  ChapterMindMap sampleMap() => ChapterMindMap(
+        projectId: 'p1',
+        docId: 'd1',
+        chapter: '第一章 随机事件与概率',
+        root: MindNode(text: '第一章 随机事件与概率', children: [
+          MindNode(text: '随机事件', children: [MindNode(text: r'样本空间 $\Omega$'), MindNode(text: '事件的运算')]),
+          MindNode(text: '概率的性质', page: 11, children: [
+            MindNode(text: r'$P(\varnothing)=0$'),
+            MindNode(text: '有限可加性'),
+            MindNode(text: r'$P(\bar A)=1-P(A)$'),
+          ]),
+          MindNode(text: r'条件概率 $P(A\mid B)$', note: r'$P(B)>0$ 时，$P(A\mid B)=\dfrac{P(AB)}{P(B)}$', page: 12, children: [
+            MindNode(text: '乘法公式'),
+            MindNode(text: '全概率公式', children: [MindNode(text: '完备事件组')]),
+            MindNode(text: '贝叶斯公式'),
+          ]),
+        ]),
+      );
+
+  testWidgets('学习板块：章节列表、按需生成导图、AI 伴学收起栏', (t) async {
+    await t.runAsync(() async {
+      await seedChapterPages(state.repo);
+      await state.repo.saveMindMap(sampleMap());
+      await state.repo.saveKps([
+        KnowledgePoint(id: 'kp1', projectId: 'p1', docId: 'd1', chapter: '第一章 随机事件与概率', title: '条件概率', page: 12),
+      ]);
+    });
+    await shoot(t, const StudyPage(projectId: 'p1'), '55_study_page');
+  });
+
+  testWidgets('思维导图：横向树、公式节点、展开收起', (t) async {
+    await shoot(t, MindMapPage(map: sampleMap(), onAsk: (_) {}), '56_mindmap');
+  });
+
+  testWidgets('AI 伴学面板：资料范围 + 对话', (t) async {
+    await t.runAsync(() async {
+      await seedChapterPages(state.repo);
+      await state.repo.saveStudyChat(StudyChat(id: 'sc1', projectId: 'p1', title: '为什么要求 P(B)>0', scope: [
+        MaterialRef(docId: 'd1', chapter: '第一章 随机事件与概率', pageFrom: 11, pageTo: 13)
+      ], messages: [
+        {'role': 'user', 'content': r'为什么条件概率要求 $P(B)>0$？'},
+        {'role': 'assistant', 'content': r'''### 直观理解
+条件概率是在「$B$ 已经发生」这个前提下重新衡量 $A$ 的可能性，相当于把样本空间缩小到 $B$。
+
+$$P(A\mid B)=\frac{P(AB)}{P(B)}$$
+
+如果 $P(B)=0$，分母为零，「在 $B$ 发生的条件下」本身就没有意义（教材第 12 页）。'''},
+      ]));
+    });
+    await shoot(t, const StudyPage(projectId: 'p1'), '57_study_chat', after: () async {
+      await t.tap(find.text('AI 伴学 · 为什么要求 P(B)>0'));
+      await settle(t, 8);
+    });
   });
 }

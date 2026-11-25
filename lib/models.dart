@@ -695,12 +695,16 @@ class FavoriteItem {
 /// 思维导图节点（树）。text 支持 $...$ 公式。
 class MindNode {
   String id;
-  String text;
+  String text; // 短标题，可含 $...$ 公式
+  String note; // 详细说明（点节点时显示）
+  int page; // 教材页码（0 = 未知）
+  String kpId; // 对应的知识点
   List<MindNode> children;
-  MindNode({String? id, required this.text, List<MindNode>? children})
+  MindNode({String? id, required this.text, this.note = '', this.page = 0, this.kpId = '', List<MindNode>? children})
       : id = id ?? newId(),
         children = children ?? [];
   int get count => 1 + children.fold(0, (a, c) => a + c.count);
+  int get depth => 1 + children.fold(0, (a, c) => a > c.depth ? a : c.depth);
   MindNode? find(String nodeId) {
     if (id == nodeId) return this;
     for (final c in children) {
@@ -719,11 +723,21 @@ class MindNode {
     return null;
   }
 
-  Map<String, dynamic> toJson() => {'id': id, 'text': text, if (children.isNotEmpty) 'children': [for (final c in children) c.toJson()]};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'text': text,
+        if (note.isNotEmpty) 'note': note,
+        if (page > 0) 'page': page,
+        if (kpId.isNotEmpty) 'kpId': kpId,
+        if (children.isNotEmpty) 'children': [for (final c in children) c.toJson()],
+      };
   factory MindNode.fromJson(Map<String, dynamic> j) => MindNode(
         id: j['id']?.toString(),
         text: '${j['text'] ?? j['title'] ?? ''}',
-        children: [for (final c in (j['children'] as List?) ?? const []) MindNode.fromJson((c as Map).cast<String, dynamic>())],
+        note: '${j['note'] ?? ''}',
+        page: j['page'] is int ? j['page'] : int.tryParse('${j['page'] ?? ''}') ?? 0,
+        kpId: '${j['kpId'] ?? j['kp_id'] ?? ''}',
+        children: [for (final c in (j['children'] as List?) ?? const []) if (c is Map) MindNode.fromJson(c.cast<String, dynamic>())],
       );
 }
 

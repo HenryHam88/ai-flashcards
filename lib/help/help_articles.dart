@@ -46,7 +46,7 @@ class HelpIds {
   static const byName = {
     'quickStart': quickStart, 'keys': keys, 'upload': upload, 'chapters': chapters, 'generate': generate,
     'quality': quality, 'review': review, 'quiz': quiz, 'explain': explain, 'stats': stats, 'backup': backup,
-    'appearance': appearance, 'faq': faq, 'favorites': favorites, 'cloud': cloud,
+    'appearance': appearance, 'faq': faq, 'favorites': favorites, 'cloud': cloud, 'study': study,
   };
   static const quickStart = 'quick_start';
   static const keys = 'keys';
@@ -63,6 +63,7 @@ class HelpIds {
   static const faq = 'faq';
   static const favorites = 'favorites';
   static const cloud = 'cloud';
+  static const study = 'study';
 }
 
 const helpArticles = <HelpArticle>[
@@ -452,6 +453,32 @@ PDF 按章节分组，公式按应用里的样式排版成图片；文字用内�
 2. 可以按项目筛选、只看收藏，或在搜索框里搜题目和解释内容。
 3. 点开一条可以「继续追问」，或「去看这张卡 / 去做这道题」，也能查看原文。
 4. 点星标收藏重要的解释；「清空」只删除未收藏的记录。
+''',
+  ),
+  HelpArticle(
+    id: HelpIds.study,
+    category: 'study',
+    title: '学习板块：思维导图和 AI 伴学',
+    summary: '用已经解析好的教材学懂概念：每章按需生成思维导图，选定章节或页码和 AI 对话',
+    keywords: ['学习板块', '思维导图', '导图', 'AI 伴学', '伴学', '对话', '资料范围', '页码', '学懂'],
+    body: r'''
+闪卡和题目是检验记忆的；学习板块用来把概念真正学懂。它直接使用项目里已经解析好的资料，不需要重新上传或解析。
+
+### 打开
+打开项目，点计数下面的「学习板块」。每一章是一张卡片，显示页码范围、知识点数和字数。
+
+### 思维导图
+- 导图**不会自动生成**。想看哪一章，就点那一章的「生成思维导图」，只花很少的额度。
+- 生成后点「查看导图」：双指缩放、拖动；点节点右边的小圆圈可以展开 / 收起分支。
+- 点任意节点可以看说明和出处，还可以「查看原文」「让 AI 讲透」，或「编辑」「添加子节点」「添加同级」「删除」。对应知识点的节点还能直接收藏。
+- 右上角菜单：「全部展开」「只看第一层」「保存为图片」。
+- 不想用 AI 也可以在章节菜单里选「自己画导图」；改过的导图在「重新生成导图」前会提醒你。
+
+### AI 伴学
+1. 点页面底部的「AI 伴学」展开面板；点某一章的「问 AI」会自动选好这一章。
+2. 点面板上方的资料范围可以重新选择：按章节多选，勾选后点「页码」只选其中几页。会显示大约多少字，内容太多时只发送前一部分，建议缩小范围。
+3. 直接提问，或点「通俗讲讲这部分的核心脉络」等快捷问题。AI 会以你选的教材原文为依据讲解。
+4. 往下拉或点右上角的箭头就能收起面板，对话会自动保存；点历史图标可以切换以前的对话，加号开始新对话。
 ''',
   ),
   HelpArticle(

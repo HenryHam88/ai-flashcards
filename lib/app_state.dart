@@ -22,6 +22,7 @@ import 'services/quality.dart';
 import 'services/settings.dart';
 import 'theme/rich_text.dart' show stripMetaPreamble;
 import 'services/review_history.dart';
+import 'services/study.dart';
 import 'services/study_queue.dart';
 import 'services/chapter_reparse.dart';
 import 'services/concurrency.dart';
@@ -533,6 +534,40 @@ class AppState extends ChangeNotifier {
       }
     ]);
     return stripMetaPreamble(LatexUtil.autoFix(again));
+  }
+
+  // ---------- 学习板块 ----------
+  StudyService get study => StudyService(repo, settings);
+
+  /// 按需生成一章的思维导图（用户点按钮才调用）。
+  Future<ChapterMindMap> generateMindMap(StudyChapter c) async {
+    final m = await study.generateMindMap(await llm(), c);
+    changed();
+    return m;
+  }
+
+  /// AI 伴学：每次都把选中资料的原文放进系统提示，对话本身只存可见内容。
+  Future<StudyChat> studyAsk(StudyChat chat, String question) async {
+    final st = study;
+    final mat = await st.material(chat.projectId, chat.scope);
+    final scope = chat.scope.isEmpty ? '（未选择资料）' : await st.scopeLabel(chat.projectId, chat.scope);
+    final system = Prompts.fill(settings.prompt('study'), {
+      'scope': mat.truncated ? '$scope（原文较长，只附上了前一部分）' : scope,
+      'material': mat.text.isEmpty ? '（没有选择资料，请按一般教材知识回答，并提醒学生选择资料）' : mat.text,
+    });
+    final msgs = [
+      {'role': 'system', 'content': system},
+      ...chat.messages,
+      {'role': 'user', 'content': question},
+    ];
+    final client = await llm();
+    var answer = await client.chat(msgs);
+    answer = await _ensureLatex(client, msgs, answer);
+    chat.messages = [...chat.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': answer}];
+    if (chat.title.isEmpty) chat.title = question.length > 24 ? '${question.substring(0, 24)}…' : question;
+    chat.updatedAt = DateTime.now();
+    await repo.saveStudyChat(chat);
+    return chat;
   }
 
   /// 主观题 AI 批改，返回 (得分 0-10, 点评)。

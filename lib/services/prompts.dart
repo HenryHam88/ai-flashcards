@@ -17,6 +17,8 @@ class Prompts {
     'explain': 'AI 解释',
     'grade': '主观题批改',
     'fix': '质量修正 / AI 重写',
+    'mindmap': '章节思维导图',
+    'study': 'AI 伴学',
   };
 
   static const defaults = {
@@ -89,6 +91,36 @@ $formulaRule
 
 待修正：
 {{items}}''',
+    'mindmap': '''你是一名擅长梳理知识结构的大学老师。根据下面这一章的知识点和教材原文，整理一份思维导图，帮助学生看清本章的脉络。
+章节：{{chapter}}
+
+要求：
+- 根节点就是本章；第一层是本章的 3–7 个主题，下面再分要点，总共不超过 4 层。
+- 每个节点的 title 不超过 18 个字，可以含公式；详细说明放进 note（1–2 句，可含公式），没有就留空。
+- 节点对应下方某个知识点时填 kp_index（知识点序号），知道页码时填 page。
+- 只用给出的内容，不要编造教材里没有的东西。
+
+$formulaRule
+
+只输出 json，格式示例：
+{"title":"第一章 随机事件与概率","children":[{"title":"条件概率 \$P(A\\\\mid B)\$","note":"\$P(B)>0\$ 时，\$P(A\\\\mid B)=\\\\dfrac{P(AB)}{P(B)}\$","kp_index":0,"page":12,"children":[{"title":"乘法公式","note":"","page":12}]}]}
+
+知识点：
+{{kps}}
+
+教材原文（节选）：
+{{text}}''',
+    'study': '''你是一位耐心的大学老师，正在陪学生把教材真正学懂。请以下面提供的教材原文为依据回答；原文里没有的内容，先说明「教材这部分没有提到」，再简要补充。
+讲解时优先讲清：为什么这样定义、定理的直观含义、条件缺一不可的反例、和前后知识点的联系；需要时举例或推导，引用原文时注明页码。
+
+$answerStyle
+
+$formulaRule
+
+学生选择的资料：{{scope}}
+
+教材原文：
+{{material}}''',
   };
 
   static String fill(String tpl, Map<String, String> vars) {
