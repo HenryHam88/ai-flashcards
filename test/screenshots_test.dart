@@ -85,7 +85,7 @@ void main() {
   }
 
   testWidgets('首页', (t) async {
-    await shoot(t, const HomeShell(restoreSession: false), '1_home');
+    await shoot(t, const HomeShell(), '1_home');
   });
 
   testWidgets('闪卡 12/32', (t) async {
@@ -136,7 +136,7 @@ void main() {
     // 固定「今天」：热力图按星期对齐、到期预测按天计算，用真实日期截图每天都会变
     final fixed = DateTime(2026, 11, 20, 20, 30);
     await seedSampleData(state.repo, now: fixed);
-    await shoot(t, HomeShell(initialTab: 2, restoreSession: false, statsNow: fixed), '5_stats');
+    await shoot(t, HomeShell(initialTab: 2, statsNow: fixed), '5_stats');
   });
 
   testWidgets('PDF 解析设置（两种模式都选）', (t) async {
@@ -372,7 +372,7 @@ void main() {
     state.settings.dailyNewLimit = 30;
     state.settings.reminderOn = true;
     state.settings.autoBackup = true;
-    await shoot(t, const HomeShell(initialTab: 3, restoreSession: false), '19_settings');
+    await shoot(t, const HomeShell(initialTab: 3), '19_settings');
   });
 
   testWidgets('关于', (t) async {
@@ -396,7 +396,7 @@ void main() {
   testWidgets('深色模式', (t) async {
     state.settings.themeMode = 'dark';
     addTearDown(() => M.apply(false));
-    await shoot(t, const HomeShell(restoreSession: false), '22_dark');
+    await shoot(t, const HomeShell(), '22_dark');
   });
 
   testWidgets('解释历史', (t) async {
@@ -447,13 +447,13 @@ void main() {
   testWidgets('学习数据：概览', (t) async {
     await seedSampleData(state.repo, now: statsNow);
     await seedStudyHistory(state.repo, statsNow);
-    await shoot(t, HomeShell(initialTab: 2, restoreSession: false, statsNow: statsNow), '25_stats_overview');
+    await shoot(t, HomeShell(initialTab: 2, statsNow: statsNow), '25_stats_overview');
   });
 
   testWidgets('学习数据：掌握度和薄弱点', (t) async {
     await seedSampleData(state.repo, now: statsNow);
     await seedStudyHistory(state.repo, statsNow);
-    await shoot(t, HomeShell(initialTab: 2, restoreSession: false, statsNow: statsNow), '26_mastery', after: () async {
+    await shoot(t, HomeShell(initialTab: 2, statsNow: statsNow), '26_mastery', after: () async {
       await t.dragFrom(const Offset(200, 500), const Offset(0, -700));
       await t.pump(const Duration(milliseconds: 100));
       await t.tap(find.text('概率论 第3章').hitTestable().first);
@@ -580,7 +580,7 @@ void main() {
 
   testWidgets('新学 / 待复习分开计数', (t) async {
     await seedStudyHistory(state.repo, DateTime.now()); // 含今天学过的 5 张新卡和到期的复习
-    await shoot(t, const HomeShell(restoreSession: false), '35_new_vs_review', after: () async {
+    await shoot(t, const HomeShell(), '35_new_vs_review', after: () async {
       expect(find.text('今日新卡 5/20'), findsOneWidget);
       expect(find.text('学新卡'), findsOneWidget);
       expect(find.text('全部学习'), findsOneWidget);
@@ -641,7 +641,7 @@ void main() {
   testWidgets('遗忘预测：90 天按周、全部，点柱子打开到期安排', (t) async {
     await seedSampleData(state.repo, now: statsNow);
     await seedStudyHistory(state.repo, statsNow);
-    await shoot(t, HomeShell(initialTab: 2, restoreSession: false, statsNow: statsNow), '39_forecast_90', after: () async {
+    await shoot(t, HomeShell(initialTab: 2, statsNow: statsNow), '39_forecast_90', after: () async {
       await t.tap(find.text('90 天'));
       for (var i = 0; i < 4; i++) {
         await t.pump(const Duration(milliseconds: 100));
