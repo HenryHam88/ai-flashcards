@@ -334,18 +334,7 @@ class _ExplainThreadPageState extends State<ExplainThreadPage> {
             for (final m in msgs)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: m['role'] == 'user'
-                    ? Align(
-                        alignment: Alignment.centerRight,
-                        child: Glass(
-                            tint: M.greyBlue,
-                            radius: 16,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            child: Text(m['content']!, style: const TextStyle(color: Colors.white))))
-                    : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        MathText(stripMetaPreamble(m['content']!), style: const TextStyle(fontSize: 15, height: 1.6)),
-                        WebSourcesView(sourcesOf(m)),
-                      ]),
+                child: ChatMessageView(text: m['content']!, user: m['role'] == 'user', sources: sourcesOf(m)),
               ),
             if (busy) AiRunView(run: run, idle: aiIdleText(context.read<AppState>())),
           ]),

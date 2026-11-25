@@ -664,27 +664,13 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
           for (final x in msgs)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: x['role'] == 'user'
-                  ? Align(
-                      alignment: Alignment.centerRight,
-                      child: Glass(
-                          tint: M.greyBlue,
-                          radius: 16,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          child: Text(x['content']!, style: const TextStyle(color: Colors.white))))
-                  : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      MathText(stripMetaPreamble(x['content']!), style: const TextStyle(fontSize: 15, height: 1.6)),
-                      WebSourcesView(sourcesOf(x)),
-                      Row(children: [
-                        TextButton.icon(
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: x['content']!));
-                            toast(context, '已复制');
-                          },
-                          icon: const Icon(Icons.copy_rounded, size: 16),
-                          label: const Text('复制'),
-                          style: TextButton.styleFrom(foregroundColor: M.sub),
-                        ),
+              child: ChatMessageView(
+                text: x['content']!,
+                user: x['role'] == 'user',
+                sources: sourcesOf(x),
+                actions: x['role'] == 'user'
+                    ? const []
+                    : [
                         TextButton.icon(
                           onPressed: () async {
                             final kp = await pickKnowledgePoint(context, widget.projectId);
@@ -694,10 +680,10 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
                           },
                           icon: const Icon(Icons.edit_note_rounded, size: 18),
                           label: const Text('存为笔记'),
-                          style: TextButton.styleFrom(foregroundColor: M.sageDark),
+                          style: TextButton.styleFrom(foregroundColor: M.sageDark, visualDensity: VisualDensity.compact),
                         ),
-                      ]),
-                    ]),
+                      ],
+              ),
             ),
           if (pending != null)
             Padding(
