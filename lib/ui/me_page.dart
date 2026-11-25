@@ -5,16 +5,15 @@ import 'package:url_launcher/url_launcher.dart';
 import '../app_state.dart';
 import '../services/cloud_storage.dart' show CloudProvider;
 import '../services/concurrency.dart';
-import '../services/llm.dart';
 import '../services/prompts.dart';
 import '../services/settings.dart';
 import '../theme/glass.dart';
 import '../help/help_articles.dart' show HelpIds;
-import 'ai_widgets.dart';
 import 'cloud_settings_page.dart';
 import 'explain_history_page.dart';
 import 'favorites_page.dart';
 import 'help_page.dart';
+import 'llm_settings_page.dart';
 import 'number_input.dart';
 import 'settings_pages.dart';
 import 'wrong_book_page.dart';
@@ -44,7 +43,7 @@ class MePage extends StatelessWidget {
               onTap: () => go(const ExplainHistoryPage())),
         ]),
         SettingsGroup(title: '模型配置', children: [
-          SettingsTile(icon: Icons.smart_toy_outlined, title: '出题模型', subtitle: st.llmModel, onTap: () => go(const LlmSettingsPage())),
+          SettingsTile(icon: Icons.smart_toy_outlined, title: 'AI 模型', subtitle: st.llmModel, onTap: () => go(const LlmSettingsPage())),
           SettingsTile(
               icon: Icons.document_scanner_outlined,
               title: '文档解析（PDF / Word）',
@@ -148,218 +147,6 @@ Widget settingsTextField(String label, String value, void Function(String) onCha
       child: TextFormField(
           initialValue: value, onChanged: onChanged, decoration: InputDecoration(labelText: label, hintText: hint)),
     );
-
-class LlmSettingsPage extends StatefulWidget {
-  const LlmSettingsPage({super.key});
-  @override
-  State<LlmSettingsPage> createState() => _LlmSettingsPageState();
-}
-
-class _LlmSettingsPageState extends State<LlmSettingsPage> {
-  String? testResult;
-  final tick = ValueNotifier(0); // 接口地址 / 模型变了，联网是否可用要跟着变
-
-  @override
-  void dispose() {
-    tick.dispose();
-    super.dispose();
-  }
-
-
-  Widget _slotGroup(Settings st, {required String title, required String intro}) {
-    final isExplain = title == 'AI 解释模型';
-    return ValueListenableBuilder(
-      valueListenable: tick,
-      builder: (context, _, _) {
-        return Glass(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text(intro, style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
-            const SizedBox(height: 12),
-            settingsTextField('接口地址', isExplain ? st.explainBaseUrl : st.studyBaseUrl, (v) {
-              if (isExplain) {
-                st.explainBaseUrl = v;
-              } else {
-                st.studyBaseUrl = v;
-              }
-              tick.value++;
-            }, hint: st.llmBaseUrl),
-            KeyField(
-                label: 'API 密钥',
-                load: isExplain ? st.explainKeyRaw : st.studyKeyRaw,
-                save: isExplain ? st.setExplainKey : st.setStudyKey,
-                hint: '留空则用出题模型的密钥'),
-            settingsTextField('模型名称', isExplain ? st.explainModel : st.studyModel, (v) {
-              if (isExplain) {
-                st.explainModel = v;
-              } else {
-                st.studyModel = v;
-              }
-              tick.value++;
-            }, hint: st.llmModel),
-            settingsTextField(
-                '上下文长度（千 token）',
-                (isExplain ? st.explainContextK : st.studyContextK) == 0 ? '' : '${isExplain ? st.explainContextK : st.studyContextK}',
-                (v) {
-              final n = int.tryParse(v.trim()) ?? 0;
-              if (isExplain) {
-                st.explainContextK = n;
-              } else {
-                st.studyContextK = n;
-              }
-              tick.value++;
-            }, hint: st.llmContextK > 0 ? '${st.llmContextK}' : '留空 = 沿用出题模型（DeepSeek 1000，其他 128）'),
-          ]),
-        );
-      },
-    );
-  }
-
-  Widget _webGroup(Settings st) => ValueListenableBuilder(
-        valueListenable: tick,
-        builder: (context, _, _) {
-          final reason = st.webUnavailable;
-          final on = st.webSearch && reason == null;
-          Widget mode(WebMode m) => Expanded(
-                child: Glass(
-                  radius: 14,
-                  tint: on && st.webMode == m ? M.sage : null,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  onTap: on
-                      ? () {
-                          st.webMode = m;
-                          tick.value++;
-                        }
-                      : null,
-                  child: Column(children: [
-                    Text(webModeNames[m]!, style: TextStyle(fontWeight: FontWeight.w700, color: on && st.webMode == m ? Colors.white : M.text)),
-                    const SizedBox(height: 2),
-                    Text(m == WebMode.deep ? '更准，较慢' : '更快、更省',
-                        style: TextStyle(fontSize: 11, color: on && st.webMode == m ? Colors.white : M.sub)),
-                  ]),
-                ),
-              );
-          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SettingsGroup(title: 'AI 联网', children: [
-              SwitchTile(
-                icon: Icons.public_rounded,
-                title: 'AI 联网搜索',
-                subtitle: reason ?? 'AI 解释、伴学、笔记讲解、思维导图和主观题批改会在需要时上网查资料。出闪卡和出题不联网，只依据你的资料。',
-                value: on,
-                onChanged: (v) {
-                  if (reason != null) {
-                    toast(context, reason);
-                    return;
-                  }
-                  st.webSearch = v;
-                  tick.value++;
-                },
-              ),
-            ]),
-            const SizedBox(height: 10),
-            Opacity(
-              opacity: on ? 1 : 0.5,
-              child: Row(children: [mode(WebMode.deep), const SizedBox(width: 10), mode(WebMode.normal)]),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(
-                  '${webModeNames[WebMode.deep]}：${webModeHints[WebMode.deep]}。\n${webModeNames[WebMode.normal]}：${webModeHints[WebMode.normal]}。\n'
-                  '搜索和读网页本身不收费，搜到的内容按模型 Token 计费。AI 伴学里每个对话还能单独切换。',
-                  style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
-            ),
-            const SizedBox(height: 12),
-            Glass(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('联网模型', style: const TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text(
-                    '每个功能用的模型如果本身是 deepseek-flash，就直接联网；否则会先用下面的联网模型通过 DeepSeek 搜索整理，再交给它回答（多一次调用，按联网模型的 Token 计费）。联网只支持 DeepSeek 的 deepseek-flash。',
-                    style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
-                const SizedBox(height: 12),
-                settingsTextField('联网模型名称', st.webModel, (v) {
-                  st.webModel = v;
-                  tick.value++;
-                }, hint: 'deepseek-flash'),
-                KeyField(label: '联网 API 密钥（DeepSeek）', load: st.webKeyRaw, save: st.setWebKey, hint: '留空则用出题模型或 DeepSeek OCR 的密钥'),
-                Text('接口固定为 ${Settings.webBaseUrl}。', style: TextStyle(color: M.sub, fontSize: 12)),
-              ]),
-            ),
-          ]);
-        },
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    final s = context.read<AppState>();
-    final st = s.settings;
-    return GlassScaffold(
-      title: '出题模型',
-      actions: const [HelpButton(HelpIds.keys)],
-      body: ListView(padding: const EdgeInsets.all(20), children: [
-        Glass(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('兼容 OpenAI 格式的服务都能用（DeepSeek、通义千问、Kimi 等）。', style: TextStyle(color: M.sub, fontSize: 13)),
-            const SizedBox(height: 12),
-            settingsTextField('接口地址', st.llmBaseUrl, (v) {
-              st.llmBaseUrl = v;
-              tick.value++;
-            }, hint: 'https://api.deepseek.com'),
-            KeyField(label: 'API 密钥', load: st.llmKey, save: st.setLlmKey),
-            settingsTextField('模型名称', st.llmModel, (v) {
-              st.llmModel = v;
-              tick.value++;
-            }, hint: 'deepseek-flash'),
-            Wrap(spacing: 8, children: [
-              for (final m in ['deepseek-flash', 'deepseek-v4-pro'])
-                ActionChip(
-                    label: Text(m),
-                    onPressed: () {
-                      st.llmModel = m;
-                      tick.value++;
-                      setState(() {});
-                      toast(context, '已切换为 $m（重新进入页面可见）');
-                    }),
-            ]),
-            const SizedBox(height: 8),
-            Text('提示：日常用 deepseek-flash 便宜；难题可切到 deepseek-v4-pro。', style: TextStyle(color: M.sub, fontSize: 12)),
-            const SizedBox(height: 12),
-            settingsTextField('上下文长度（千 token）', st.llmContextK == 0 ? '' : '${st.llmContextK}', (v) => st.llmContextK = int.tryParse(v.trim()) ?? 0,
-                hint: '留空 = 自动（DeepSeek 1000，其他 128）'),
-            Text('没单独设置时，AI 解释和 AI 伴学也用这个长度。用其他服务时可按它的说明填写。', style: TextStyle(color: M.sub, fontSize: 12)),
-          ]),
-        ),
-        const SizedBox(height: 14),
-        _slotGroup(st,
-            title: 'AI 解释模型',
-            intro: '用于闪卡和测验里的「AI 解释」和追问。下面每一项留空都沿用出题模型。'),
-        const SizedBox(height: 14),
-        _slotGroup(st,
-            title: 'AI 伴学模型',
-            intro: '用于「AI 伴学」、思维导图和笔记里的「让 AI 讲解」。下面每一项留空都沿用出题模型。伴学附件能发多少字按这个模型的上下文长度计算。'),
-        _webGroup(st),
-        const SizedBox(height: 14),
-        GlassButton(
-          label: '测试连接',
-          icon: Icons.wifi_tethering_rounded,
-          expand: true,
-          onTap: () async {
-            setState(() => testResult = '测试中…');
-            try {
-              final r = await (await s.llm()).chatJson('请输出 json：{"ok":true}');
-              setState(() => testResult = '连接成功：$r');
-            } catch (e) {
-              setState(() => testResult = '失败：$e');
-            }
-          },
-        ),
-        if (testResult != null) Padding(padding: const EdgeInsets.all(8), child: Text(testResult!)),
-      ]),
-    );
-  }
-}
 
 class OcrSettingsPage extends StatefulWidget {
   const OcrSettingsPage({super.key});

@@ -816,9 +816,13 @@ class StudyChat {
   String title;
   List<MaterialRef> scope;
   List<Map<String, String>> messages; // 只存可见对话（user / assistant），资料原文每次发送时拼进系统提示
-  /// 这个对话的联网设置：null = 跟随「我的 → 出题模型」里的全局设置。
+  /// 这个对话的联网设置：null = 跟随「我的 → AI 模型」里的全局设置。
   bool? web;
   String? webMode; // 'deep' / 'normal'
+  /// 这个对话自己选的模型：空 = 跟随「AI 伴学」设置。
+  String? llmProvider;
+  String? llmModel;
+  String? reasoning;
   List<ChatAttachment> attachments;
   /// 最近一次计算的上下文分配（不保存）：附件实际发送了多少字、丢掉了几条较早的对话。
   ContextPlan? plan;
@@ -832,6 +836,9 @@ class StudyChat {
       List<Map<String, String>>? messages,
       this.web,
       this.webMode,
+      this.llmProvider,
+      this.llmModel,
+      this.reasoning,
       List<ChatAttachment>? attachments,
       DateTime? createdAt,
       DateTime? updatedAt})
@@ -848,6 +855,9 @@ class StudyChat {
         'messages': messages,
         if (web != null) 'web': web,
         if (webMode != null) 'webMode': webMode,
+        if (llmProvider != null) 'llmProvider': llmProvider,
+        if (llmModel != null) 'llmModel': llmModel,
+        if (reasoning != null) 'reasoning': reasoning,
         if (attachments.isNotEmpty) 'attachments': [for (final a in attachments) a.toJson()],
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),

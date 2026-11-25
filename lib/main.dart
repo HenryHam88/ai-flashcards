@@ -23,7 +23,9 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final repo = Repository(store);
   await repo.loadDocTypes();
-  final state = AppState(repo, Settings(prefs, SecureSecretStore()));
+  final settings = Settings(prefs, SecureSecretStore());
+  await settings.ensureMigrated();
+  final state = AppState(repo, settings);
   // 老用户升级上来已经有数据，不再显示首次引导
   if (!state.settings.onboarded && (await repo.projects()).isNotEmpty) state.settings.onboarded = true;
   try {

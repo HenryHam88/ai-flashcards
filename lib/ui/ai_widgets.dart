@@ -233,7 +233,7 @@ class WebModeChip extends StatelessWidget {
       (ctx, sc) => ListView(controller: sc, padding: const EdgeInsets.fromLTRB(20, 8, 20, 30), children: [
         const Text('这个对话的联网方式', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
         const SizedBox(height: 6),
-        Text(reason ?? '只影响当前对话。全局设置在「我的 → 出题模型」。回答始终以你选的资料为准，网上内容只作补充。',
+        Text(reason ?? '只影响当前对话。全局设置在「我的 → AI 模型」。回答始终以你选的资料为准，网上内容只作补充。',
             style: TextStyle(color: reason == null ? M.sub : M.roseDark, fontSize: 13, height: 1.5)),
         const SizedBox(height: 12),
         tile(ctx, '跟随全局设置（${webLabel(global)}）', '和其他 AI 功能保持一致', follow, const ChatWebChoice(null, null)),

@@ -22,6 +22,7 @@ import 'services/pipeline.dart';
 import 'services/prompts.dart';
 import 'services/quality.dart';
 import 'services/settings.dart';
+import 'services/providers.dart';
 import 'theme/rich_text.dart' show stripMetaPreamble;
 import 'services/review_history.dart';
 import 'services/study.dart';
@@ -50,6 +51,7 @@ class AppState extends ChangeNotifier {
   final LlmClient Function(AppState s, String key)? webLlmFactory;
   AppState(this.repo, this.settings, {this.llmFactory, this.explainLlmFactory, this.studyLlmFactory, this.webLlmFactory}) {
     requestLimiter.max = settings.concurrency; // 全局请求限流 = 「并发数」
+    settings.ensureMigrated();
     // 读资料原文件前先确认它在本机（放到云端的会自动下载回来）
     DocFiles.resolver = (d) async => (await cloud()).ensureDocLocal(d);
   }
@@ -163,15 +165,28 @@ class AppState extends ChangeNotifier {
       _client(settings.explain, await settings.explainKey(), explainLlmFactory ?? (settings.explain.custom ? null : llmFactory));
 
   /// AI 伴学、思维导图、笔记「让 AI 讲解」。未单独配置时与出题模型相同。
-  Future<LlmClient> studyLlm() async =>
-      _client(settings.study, await settings.studyKey(), studyLlmFactory ?? (settings.study.custom ? null : llmFactory));
+  /// [chat] 若指定了这个对话自己的模型，就用那个。
+  Future<LlmClient> studyLlm({StudyChat? chat}) async {
+    final e = studyEndpoint(chat);
+    final key = await settings.keyFor(e);
+    return _client(e, key, studyLlmFactory ?? (e.custom ? null : llmFactory));
+  }
+
+  LlmEndpoint studyEndpoint([StudyChat? chat]) =>
+      settings.resolved(LlmUse.study, overrideProvider: chat?.llmProvider, overrideModel: chat?.llmModel);
 
   /// 按这个接口实际能否联网决定：能直接用 DeepSeek 工具就直接联网，否则借联网模型检索后再交给它回答。
   Future<LlmClient> _client(LlmEndpoint e, String key, LlmClient Function(AppState s, String key)? factory) async {
-    final main = factory?.call(this, key) ?? LlmClient(baseUrl: e.baseUrl, apiKey: key, model: e.model);
+    final made = factory?.call(this, key);
+    final main = made ?? LlmClient(baseUrl: e.baseUrl, apiKey: key, model: e.model, kind: e.kind, reasoning: e.reasoning);
     if (settings.webNativeOf(e) || !settings.webRelayOf(e)) return main;
     final wk = await settings.webKey();
-    return WebRelayLlm(main, webLlmFactory?.call(this, wk) ?? LlmClient(baseUrl: Settings.webBaseUrl, apiKey: wk, model: settings.webModel));
+    final webE = settings.resolved(LlmUse.web);
+    return WebRelayLlm(
+      main,
+      webLlmFactory?.call(this, wk) ??
+          LlmClient(baseUrl: Settings.webBaseUrl, apiKey: wk, model: settings.webModel, kind: webE.kind, reasoning: webE.reasoning),
+    );
   }
 
   ParseService get parser => ParseService(repo, settings, chapters: chapterService);
@@ -622,7 +637,7 @@ class AppState extends ChangeNotifier {
     final names = [for (final a in chat.attachments) a.name].join('、');
     final head = '$system\n\n学生上传了附件（$names），回答时可以引用附件名。${images.isEmpty ? '' : '图片附在学生的提问里。'}\n';
     final plan = AttachmentService.plan(
-      context: settings.study.contextTokens,
+      context: studyEndpoint(chat).contextTokens,
       fixedChars: head.length + question.length + docs.fold<int>(0, (a, d) => a + d.name.length + 24),
       history: [for (final m in chat.messages) (m['content'] ?? '').length],
       attachChars: docs.fold<int>(0, (a, d) => a + d.text.length),
@@ -649,7 +664,7 @@ class AppState extends ChangeNotifier {
   /// AI 伴学：每次都把选中资料的原文放进系统提示，对话本身只存可见内容。
   Future<StudyChat> studyAsk(StudyChat chat, String question, {AiIo? io}) async {
     final (msgs, web) = await _studyPrompt(chat, question);
-    final r = await _answer(await studyLlm(), msgs, web: web, io: io);
+    final r = await _answer(await studyLlm(chat: chat), msgs, web: web, io: io);
     chat.messages = [...chat.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': r.content, ...r.extras()}];
     if (chat.title.isEmpty) chat.title = question.length > 24 ? '${question.substring(0, 24)}…' : question;
     chat.updatedAt = DateTime.now();
@@ -666,7 +681,7 @@ class AppState extends ChangeNotifier {
     if (err != null) throw AttachmentException(err);
     final kind = AttachmentService.kindOf(name)!;
     if (kind == 'image') {
-      final why = LlmClient.visionUnavailableReason(settings.study.baseUrl, settings.study.model);
+      final why = LlmClient.visionUnavailableReason(studyEndpoint(chat).baseUrl, studyEndpoint(chat).model);
       if (why != null) throw AttachmentException(why);
     }
     var text = '';
