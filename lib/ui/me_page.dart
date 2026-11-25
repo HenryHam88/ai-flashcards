@@ -3,11 +3,13 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
+import '../services/cloud_storage.dart' show CloudProvider;
 import '../services/concurrency.dart';
 import '../services/prompts.dart';
 import '../services/settings.dart';
 import '../theme/glass.dart';
 import '../help/help_articles.dart' show HelpIds;
+import 'cloud_settings_page.dart';
 import 'explain_history_page.dart';
 import 'help_page.dart';
 import 'number_input.dart';
@@ -71,6 +73,13 @@ class MePage extends StatelessWidget {
               title: '导出 / 导入数据',
               subtitle: st.autoBackup ? '备份、换手机迁移 · 已开启每周自动备份' : '备份、换手机迁移、分享项目',
               onTap: () => go(const DataPage())),
+          SettingsTile(
+              icon: Icons.cloud_outlined,
+              title: '云端存储',
+              subtitle: st.cloudBucket.isEmpty
+                  ? '未配置 · 用自己的阿里云 OSS / 腾讯云 COS 存放大文件，省手机空间'
+                  : '${CloudProvider.of(st.cloudProvider).name} · ${st.cloudBucket}',
+              onTap: () => go(const CloudSettingsPage())),
         ]),
         SettingsGroup(title: '帮助与关于', children: [
           SettingsTile(
@@ -85,23 +94,24 @@ class MePage extends StatelessWidget {
               onTap: () => go(const AboutPage())),
         ]),
         const SizedBox(height: 16),
-        Text('所有数据只保存在本机；API 密钥保存在系统安全存储中，不会上传到任何地方。',
+        Text('所有数据只保存在本机（配置云端存储后，只有你选择释放的大文件会放到你自己的存储桶）；密钥保存在系统安全存储中。',
             textAlign: TextAlign.center, style: TextStyle(color: M.sub, fontSize: 12, height: 1.6)),
       ]),
     );
   }
 }
 
-class _KeyField extends StatefulWidget {
+class KeyField extends StatefulWidget {
   final String label;
   final Future<String> Function() load;
   final Future<void> Function(String) save;
-  const _KeyField({required this.label, required this.load, required this.save});
+  final String hint;
+  const KeyField({super.key, required this.label, required this.load, required this.save, this.hint = 'sk-...'});
   @override
-  State<_KeyField> createState() => _KeyFieldState();
+  State<KeyField> createState() => KeyFieldState();
 }
 
-class _KeyFieldState extends State<_KeyField> {
+class KeyFieldState extends State<KeyField> {
   final c = TextEditingController();
   bool obscure = true;
   @override
@@ -119,7 +129,7 @@ class _KeyFieldState extends State<_KeyField> {
           onChanged: widget.save,
           decoration: InputDecoration(
             labelText: widget.label,
-            hintText: 'sk-...',
+            hintText: widget.hint,
             suffixIcon: IconButton(
                 icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                 onPressed: () => setState(() => obscure = !obscure)),
@@ -128,7 +138,7 @@ class _KeyFieldState extends State<_KeyField> {
       );
 }
 
-Widget _textField(String label, String value, void Function(String) onChanged, {String? hint}) => Padding(
+Widget settingsTextField(String label, String value, void Function(String) onChanged, {String? hint}) => Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
           initialValue: value, onChanged: onChanged, decoration: InputDecoration(labelText: label, hintText: hint)),
@@ -154,9 +164,9 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('兼容 OpenAI 格式的服务都能用（DeepSeek、通义千问、Kimi 等）。', style: TextStyle(color: M.sub, fontSize: 13)),
             const SizedBox(height: 12),
-            _textField('接口地址', st.llmBaseUrl, (v) => st.llmBaseUrl = v, hint: 'https://api.deepseek.com'),
-            _KeyField(label: 'API 密钥', load: st.llmKey, save: st.setLlmKey),
-            _textField('模型名称', st.llmModel, (v) => st.llmModel = v, hint: 'deepseek-flash'),
+            settingsTextField('接口地址', st.llmBaseUrl, (v) => st.llmBaseUrl = v, hint: 'https://api.deepseek.com'),
+            KeyField(label: 'API 密钥', load: st.llmKey, save: st.setLlmKey),
+            settingsTextField('模型名称', st.llmModel, (v) => st.llmModel = v, hint: 'deepseek-flash'),
             Wrap(spacing: 8, children: [
               for (final m in ['deepseek-flash', 'deepseek-v4-pro'])
                 ActionChip(
@@ -275,8 +285,8 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
                 style: TextStyle(color: M.sageDark, fontSize: 12, height: 1.5),
               ),
               const SizedBox(height: 12),
-              _textField('接口地址', st.ocrBaseUrl, (v) => st.ocrBaseUrl = v),
-              _KeyField(label: 'OCR 密钥（留空则使用出题模型的密钥）', load: st.ocrKeyRaw, save: st.setOcrKey),
+              settingsTextField('接口地址', st.ocrBaseUrl, (v) => st.ocrBaseUrl = v),
+              KeyField(label: 'OCR 密钥（留空则使用出题模型的密钥）', load: st.ocrKeyRaw, save: st.setOcrKey),
             ]),
           ),
         if (st.ocrProvider == OcrProvider.kimi)
@@ -286,8 +296,8 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
               const SizedBox(height: 4),
               Text('上传后由 Kimi 抽取文字（目前免费），支持 PDF 和 Word。PDF 每批的文字会记在该批首页；Word 按标题切成小节。', style: TextStyle(color: M.sub, fontSize: 12)),
               const SizedBox(height: 12),
-              _textField('接口地址', st.kimiBaseUrl, (v) => st.kimiBaseUrl = v),
-              _KeyField(label: 'Kimi API 密钥', load: st.kimiKey, save: st.setKimiKey),
+              settingsTextField('接口地址', st.kimiBaseUrl, (v) => st.kimiBaseUrl = v),
+              KeyField(label: 'Kimi API 密钥', load: st.kimiKey, save: st.setKimiKey),
             ]),
           ),
         if (st.ocrProvider == OcrProvider.local)

@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
+import '../models.dart' show MediaAsset;
 import '../services/backup.dart';
 import '../services/reminder.dart';
 import '../services/settings.dart' show Settings;
@@ -479,6 +480,7 @@ class DataPage extends StatefulWidget {
 
 class _DataPageState extends State<DataPage> {
   List<File> local = [];
+  List<MediaAsset> cloud = []; // 放到云端的备份
 
   @override
   void initState() {
@@ -487,9 +489,11 @@ class _DataPageState extends State<DataPage> {
   }
 
   Future<void> _loadLocal() async {
-    final b = await context.read<AppState>().backup();
+    final s = context.read<AppState>();
+    final b = await s.backup();
     final l = await b.localBackups();
-    if (mounted) setState(() => local = l);
+    final c = await (await s.cloud()).cloudBackups();
+    if (mounted) setState(() => (local = l, cloud = c));
   }
 
   @override
@@ -554,6 +558,37 @@ class _DataPageState extends State<DataPage> {
               ),
             ),
         ]),
+        if (cloud.isNotEmpty)
+          SettingsGroup(title: '云端的备份', children: [
+            for (final m in cloud)
+              SettingsTile(
+                icon: Icons.cloud_outlined,
+                title: m.fileName,
+                subtitle: '${fmtTime(m.createdAt)} · ${fmtSize(m.size)} · ${m.stateLabel}',
+                trailing: PopupMenuButton<String>(
+                  icon: Icon(Icons.more_horiz_rounded, color: M.sub),
+                  onSelected: (v) async {
+                    try {
+                      final f = await (await s.cloud()).ensureLocal(m);
+                      final bytes = await f.readAsBytes();
+                      if (!context.mounted) return;
+                      if (v == 'restore') {
+                        await importBytes(context, bytes);
+                      } else {
+                        await saveOrShareBackup(context, bytes, m.fileName);
+                      }
+                    } catch (e) {
+                      if (context.mounted) toast(context, '$e');
+                    }
+                    await _loadLocal();
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'restore', child: Text('下载并恢复')),
+                    PopupMenuItem(value: 'share', child: Text('下载并保存 / 分享')),
+                  ],
+                ),
+              ),
+          ]),
         const SizedBox(height: 12),
         Text('备份文件默认不含 API 密钥。导入时会先校验文件完整性；选择「覆盖」前会自动保存一份当前数据的安全备份，可在上方找回。',
             style: TextStyle(color: M.sub, fontSize: 12, height: 1.6)),

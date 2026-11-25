@@ -881,6 +881,8 @@ class MediaAsset {
   String sha256;
   String cloudKey; // 非空 = 云端已有一份
   bool offloaded; // true = 本地文件已删除，只在云端
+  bool cached; // true = 从云端下载回来的临时副本，超过缓存上限时可以自动删掉（云端仍保留）
+  String thumbPath; // 照片的本机小缩略图（原图放到云端后仍可预览）
   DateTime createdAt;
   DateTime lastAccess;
   MediaAsset({
@@ -894,6 +896,8 @@ class MediaAsset {
     this.sha256 = '',
     this.cloudKey = '',
     this.offloaded = false,
+    this.cached = false,
+    this.thumbPath = '',
     DateTime? createdAt,
     DateTime? lastAccess,
   })  : createdAt = createdAt ?? DateTime.now(),
@@ -915,6 +919,8 @@ class MediaAsset {
         'sha256': sha256,
         'cloudKey': cloudKey,
         'offloaded': offloaded,
+        if (cached) 'cached': true,
+        if (thumbPath.isNotEmpty) 'thumbPath': thumbPath,
         'createdAt': createdAt.toIso8601String(),
         'lastAccess': lastAccess.toIso8601String(),
       };
@@ -929,6 +935,8 @@ class MediaAsset {
         sha256: j['sha256'] ?? '',
         cloudKey: j['cloudKey'] ?? '',
         offloaded: j['offloaded'] == true,
+        cached: j['cached'] == true,
+        thumbPath: j['thumbPath'] ?? '',
         createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
         lastAccess: DateTime.tryParse(j['lastAccess'] ?? ''),
       );

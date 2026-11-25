@@ -7,6 +7,8 @@ import 'data/repository.dart';
 import 'models.dart';
 import 'services/backup.dart';
 import 'services/chapters.dart';
+import 'services/cloud_storage.dart';
+import 'services/doc_files.dart';
 import 'services/fsrs.dart';
 import 'services/json_utils.dart';
 import 'services/latex.dart';
@@ -37,6 +39,61 @@ class AppState extends ChangeNotifier {
   final LlmClient Function(AppState s, String key)? llmFactory; // 测试可注入
   AppState(this.repo, this.settings, {this.llmFactory}) {
     requestLimiter.max = settings.concurrency; // 全局请求限流 = 「并发数」
+    // 读资料原文件前先确认它在本机（放到云端的会自动下载回来）
+    DocFiles.resolver = (d) async => (await cloud()).ensureDocLocal(d);
+  }
+
+  /// 测试可注入云端客户端（模拟 HTTP）。
+  S3Client Function(CloudConfig c)? cloudClientFactory;
+
+  Future<Directory> appDir() async {
+    if (appDirOverride != null) return appDirOverride!;
+    try {
+      return await getApplicationDocumentsDirectory();
+    } catch (_) {
+      return Directory.systemTemp;
+    }
+  }
+
+  /// 云端存储（省手机空间）。没配置时各入口自动隐藏，不影响任何功能。
+  Future<CloudStorageService> cloud() async =>
+      CloudStorageService(repo: repo, settings: settings, appDir: await appDir(), clientFactory: cloudClientFactory);
+
+  /// 删除资料：本机文件、云端那份（[remote]）和全部解析结果。
+  Future<void> deleteDocEverywhere(PdfDoc d, {bool remote = false}) async {
+    final m = await repo.mediaAsset(MediaAsset.docId(d.id));
+    if (m != null) {
+      await (await cloud()).deleteAsset(m, remote: remote);
+    }
+    try {
+      final f = File(d.path);
+      if (d.path.isNotEmpty && await f.exists()) await f.delete();
+    } catch (_) {}
+    await repo.deleteDoc(d);
+  }
+
+  /// 这些资料 / 项目在云端有没有文件（删除时询问要不要一起删）。
+  Future<int> cloudFileCount({String? projectId, String? docId}) async => (await repo.media(projectId: projectId))
+      .where((m) => m.inCloud && (docId == null || m.id == MediaAsset.docId(docId)))
+      .length;
+
+  /// 删除项目：本机原文件、照片、导出文件，可选删除云端文件，再删数据。
+  Future<void> deleteProjectEverywhere(String projectId, {bool remote = false}) async {
+    final c = await cloud();
+    for (final m in await repo.media(projectId: projectId)) {
+      try {
+        await c.deleteAsset(m, remote: remote);
+      } catch (_) {
+        if (remote) rethrow;
+      }
+    }
+    for (final d in await repo.docs(projectId)) {
+      try {
+        final f = File(d.path);
+        if (d.path.isNotEmpty && await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+    await repo.deleteProject(projectId);
   }
 
   /// 应用版本号（main 里从安装包读取）。

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -8,6 +7,7 @@ import '../data/repository.dart';
 import '../models.dart';
 import 'chapters.dart';
 import 'concurrency.dart';
+import 'doc_files.dart';
 import 'json_utils.dart';
 import 'latex.dart';
 import 'llm.dart';
@@ -275,7 +275,7 @@ class ParseService {
   Future<int> parseDoc(PdfDoc doc, Progress onProgress) async {
     if (doc.isWord) return _parseWord(doc, onProgress);
     if (doc.isText) return _parseText(doc, onProgress);
-    final bytes = await File(doc.path).readAsBytes();
+    final bytes = await DocFiles.read(doc);
     if (doc.pageCount == 0) doc.pageCount = await PdfTools.pageCount(bytes);
     final cached = {for (final p in await repo.pages(doc.projectId, docId: doc.id)) p.page};
     final todo = List.generate(doc.pageCount, (i) => i + 1).where((p) => !cached.contains(p)).toList();
@@ -369,7 +369,7 @@ extension on ParseService {
       onProgress(ParseService.wordUnsupported, 1);
       return 1;
     }
-    final bytes = await File(doc.path).readAsBytes();
+    final bytes = await DocFiles.read(doc);
     doc.status = '解析中';
     doc.note = '';
     await repo.saveDoc(doc);
@@ -424,7 +424,7 @@ extension on ParseService {
     doc.note = '';
     await repo.saveDoc(doc);
     onProgress('正在读取 TXT…', 0.2);
-    final bytes = await File(doc.path).readAsBytes();
+    final bytes = await DocFiles.read(doc);
     final decoded = decodeTextBytes(bytes);
     final sections = splitTextPages(cleanImportedText(decoded.text));
     await repo.deletePages(doc.projectId, doc.id); // 小节数可能变化，整份重写
