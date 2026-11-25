@@ -10,6 +10,7 @@ import '../services/study.dart';
 import '../theme/glass.dart';
 import 'explain_sheet.dart' show showSourceSheet;
 import 'favorites_page.dart' show FavoriteButton;
+import 'notes_page.dart' show openNoteFor;
 import 'settings_pages.dart' show saveOrShareFile;
 
 /// 横向树布局：根在左，子节点向右展开；兄弟子树上下排开不重叠，父节点在子树中间，连线是三次贝塞尔曲线。
@@ -337,6 +338,11 @@ class _MindMapPageState extends State<MindMapPage> {
                 label: '查看原文',
                 icon: Icons.menu_book_outlined,
                 onTap: () => showSourceSheet(ctx, docId: map.docId, page: node.page, chapter: map.chapter)),
+          GlassButton(
+              label: '写笔记',
+              icon: Icons.edit_note_rounded,
+              onTap: () => act(() => openNoteFor(context,
+                  projectId: map.projectId, kpId: node.kpId, title: node.kpId.isEmpty ? node.text : '', chapter: map.chapter))),
           GlassButton(label: '编辑', icon: Icons.edit_outlined, onTap: () => act(() => _edit(node))),
           GlassButton(label: '添加子节点', icon: Icons.add_rounded, onTap: () => act(() => _add(node))),
           if (!isRoot) GlassButton(label: '添加同级', icon: Icons.playlist_add_rounded, onTap: () => act(() => _addSibling(node))),

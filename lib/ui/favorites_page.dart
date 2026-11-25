@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme/glass.dart';
 import 'explain_sheet.dart';
+import 'notes_page.dart' show openNoteFor;
 import 'quiz_page.dart';
 import 'review_page.dart';
 
@@ -390,6 +391,11 @@ Future<void> showFavoriteDetail(BuildContext context, FavoriteEntry e) => showGl
               icon: Icons.auto_awesome_rounded,
               onTap: () => showExplainSheet(ctx, card: c, question: q),
             ),
+          if (k != null)
+            GlassButton(
+                label: '写笔记',
+                icon: Icons.edit_note_rounded,
+                onTap: () => openNoteFor(ctx, projectId: k.projectId, kpId: k.id)),
           if (k != null && e.relatedCards > 0)
             GlassButton(
               label: '复习相关闪卡',

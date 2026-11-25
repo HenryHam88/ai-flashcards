@@ -460,3 +460,77 @@ class PdfExportService {
     }
   }
 }
+
+/// 笔记导出里的一条：笔记本身 + 解析好的知识点、题目、照片。
+class NoteExport {
+  final StudyNote note;
+  final KnowledgePoint? kp;
+  final List<Question> questions;
+  final List<Uint8List> photos;
+  final Map<String, String> docNames; // docId → 资料名（引用出处）
+  const NoteExport(this.note, {this.kp, this.questions = const [], this.photos = const [], this.docNames = const {}});
+}
+
+extension NotesPdf on PdfExportService {
+  /// 笔记 PDF：按章节分组，每条笔记依次是知识点、我的理解、AI 讲解、照片、相关题目、引用原文。
+  Future<Uint8List> notes(String title, List<NoteExport> items, {DateTime? now}) async {
+    final f = PdfFlow(fontBytes, math: math, footerTitle: '$title · 笔记');
+    f.title('$title · 笔记', '共 ${items.length} 条 · 导出于 ${PdfExportService.dateLabel(now ?? DateTime.now())}');
+    var lastChapter = '';
+    for (final it in items) {
+      final n = it.note;
+      if (n.chapter.isNotEmpty && n.chapter != lastChapter) {
+        f.section(n.chapter);
+        lastChapter = n.chapter;
+      }
+      f.ensure(60);
+      await f.rich(n.title.isEmpty ? '（无标题）' : n.title, size: 14, bold: true);
+      if (it.kp != null && it.kp!.content.isNotEmpty) {
+        f.meta('知识点${it.kp!.page > 0 ? ' · 第 ${it.kp!.page} 页' : ''}');
+        await f.rich(it.kp!.content, size: 10.5, color: PdfColors.sub);
+      }
+      Future<void> part(String label, String body) async {
+        if (body.trim().isEmpty) return;
+        f.gap(4);
+        f.text(label, size: 11, color: PdfColors.sageDark, bold: true, lineGap: 3);
+        await f.rich(body, size: 11);
+      }
+
+      await part('我的理解', n.own);
+      await part('AI 讲解', n.ai);
+      if (it.photos.isNotEmpty) {
+        f.gap(4);
+        f.text('照片', size: 11, color: PdfColors.sageDark, bold: true, lineGap: 3);
+        for (final p in it.photos) {
+          try {
+            f.image(p, maxHeight: 320);
+          } catch (_) {
+            f.meta('（图片无法读取）');
+          }
+        }
+      }
+      if (it.questions.isNotEmpty) {
+        f.gap(4);
+        f.text('相关题目', size: 11, color: PdfColors.sageDark, bold: true, lineGap: 3);
+        for (var i = 0; i < it.questions.length; i++) {
+          final q = it.questions[i];
+          await f.rich(q.stem, size: 10.5, prefix: '${i + 1}.');
+          for (var j = 0; j < q.options.length; j++) {
+            await f.rich(q.options[j], size: 10.5, indent: 18, prefix: '${String.fromCharCode(65 + j)}.');
+          }
+          await f.rich('**答案：**${q.type == '填空' ? q.answer.split('|').join(' / ') : q.answer}', size: 10.5, color: PdfColors.sageDark, indent: 18);
+        }
+      }
+      if (n.quotes.isNotEmpty) {
+        f.gap(4);
+        f.text('引用原文', size: 11, color: PdfColors.sageDark, bold: true, lineGap: 3);
+        for (final q in n.quotes) {
+          await f.rich(q.text, size: 10.5, color: PdfColors.sub, indent: 12);
+          f.text('——《${it.docNames[q.docId] ?? '资料'}》第 ${q.page} 页', size: 9, color: PdfColors.sub, indent: 12, lineGap: 4);
+        }
+      }
+      f.divider(before: 6, after: 12);
+    }
+    return f.finish();
+  }
+}

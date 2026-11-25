@@ -19,6 +19,7 @@ import '../services/cloud_storage.dart' show formatBytes;
 import 'settings_pages.dart' show showExportSheet;
 import 'explain_sheet.dart';
 import 'favorites_page.dart';
+import 'notes_page.dart';
 import 'study_page.dart';
 import 'feedback_sheet.dart';
 import 'auto_count_sheet.dart';
@@ -264,6 +265,8 @@ class _ProjectPageState extends State<ProjectPage> {
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
       child: Row(children: [
         entry(Icons.account_tree_outlined, '学习板块', () => open(StudyPage(projectId: d.project.id))),
+        const SizedBox(width: 8),
+        entry(Icons.edit_note_rounded, '笔记', () => open(NotesPage(projectId: d.project.id))),
         const SizedBox(width: 8),
         entry(Icons.star_outline_rounded, '收藏', () => open(FavoritesPage(projectId: d.project.id))),
       ]),

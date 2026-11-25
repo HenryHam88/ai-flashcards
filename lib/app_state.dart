@@ -570,6 +570,84 @@ class AppState extends ChangeNotifier {
     return chat;
   }
 
+  // ---------- 笔记 ----------
+  /// 打开某个知识点的笔记：已有就返回（不保存空笔记），没有就新建一条（未保存）。
+  Future<StudyNote> noteFor({required String projectId, String kpId = '', String title = '', String chapter = ''}) async {
+    if (kpId.isNotEmpty) {
+      final old = (await repo.notes(projectId: projectId)).where((n) => n.kpId == kpId).firstOrNull;
+      if (old != null) return old;
+      final kp = await repo.kp(kpId);
+      if (kp != null) {
+        title = title.isEmpty ? kp.title : title;
+        chapter = chapter.isEmpty ? kp.chapter : chapter;
+      }
+    }
+    return StudyNote(id: newId(), projectId: projectId, kpId: kpId, title: title, chapter: chapter);
+  }
+
+  Future<void> saveNote(StudyNote n) async {
+    n.updatedAt = DateTime.now();
+    await repo.saveNote(n);
+    changed();
+  }
+
+  /// 把（已压缩的）照片存进应用目录并登记，返回 MediaAsset id。
+  Future<String> addNotePhoto(StudyNote n, List<int> bytes, {String ext = 'jpg'}) async {
+    final dir = Directory(pth.join((await appDir()).path, 'media'))..createSync(recursive: true);
+    final id = 'photo_${newId()}';
+    final f = File(pth.join(dir.path, '$id.$ext'));
+    await f.writeAsBytes(bytes);
+    await repo.saveMedia(MediaAsset(
+        id: id, projectId: n.projectId, kind: 'photo', ownerId: n.id, localPath: f.path, fileName: '${n.title.isEmpty ? '笔记照片' : n.title}.$ext', size: bytes.length));
+    n.photoIds = [...n.photoIds, id];
+    await saveNote(n);
+    return id;
+  }
+
+  /// 照片文件：在本机直接用，放到云端的会自动下载。找不到时返回 null。
+  Future<File?> notePhoto(String id) async {
+    final m = await repo.mediaAsset(id);
+    if (m == null) return null;
+    try {
+      return await (await cloud()).ensureLocal(m);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> removeNotePhoto(StudyNote n, String id, {bool remote = true}) async {
+    final m = await repo.mediaAsset(id);
+    if (m != null) await (await cloud()).deleteAsset(m, remote: remote);
+    n.photoIds = n.photoIds.where((e) => e != id).toList();
+    await saveNote(n);
+  }
+
+  Future<void> deleteNoteEverywhere(StudyNote n, {bool remote = true}) async {
+    final c = await cloud();
+    for (final id in n.photoIds) {
+      final m = await repo.mediaAsset(id);
+      if (m != null) await c.deleteAsset(m, remote: remote);
+    }
+    await repo.deleteNote(n.id);
+    changed();
+  }
+
+  /// AI 讲解知识点：和「AI 解释」同一个提示词，带上知识点内容和教材原文。
+  Future<String> noteExplain(StudyNote n) async {
+    final kp = n.kpId.isEmpty ? null : await repo.kp(n.kpId);
+    final item = [n.title, if (kp != null && kp.content.isNotEmpty) kp.content, if (n.own.trim().isNotEmpty) '我的理解：${n.own}'].join('\n');
+    final docId = kp?.docId ?? (n.quotes.isEmpty ? '' : n.quotes.first.docId);
+    final page = kp?.page ?? (n.quotes.isEmpty ? 0 : n.quotes.first.page);
+    final src = await sourceText(docId, page);
+    final quotes = n.quotes.map((q) => q.text).join('\n');
+    final prompt = Prompts.fill(settings.prompt('explain'),
+        {'item': item, 'page': '$page', 'source': [src, quotes].where((e) => e.trim().isNotEmpty).join('\n\n').ifEmpty('（无原文）')});
+    final client = await llm();
+    final msgs = [{'role': 'user', 'content': prompt}];
+    final answer = await client.chat(msgs);
+    return _ensureLatex(client, msgs, answer);
+  }
+
   /// 主观题 AI 批改，返回 (得分 0-10, 点评)。
   Future<(int, String)> gradeSubjective(Question q, String userAnswer) async {
     final prompt = Prompts.fill(settings.prompt('grade'), {'stem': q.stem, 'answer': q.answer, 'user_answer': userAnswer});
@@ -578,6 +656,10 @@ class AppState extends ChangeNotifier {
   }
 }
 
+
+extension _IfEmpty on String {
+  String ifEmpty(String d) => isEmpty ? d : this;
+}
 
 class SessionTimer {
   final void Function(int seconds, DateTime start) onEnd;

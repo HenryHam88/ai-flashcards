@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- 笔记拍照（没有相机的设备也能安装，用相册选图） -->
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <application
         android:label="闪卡刷题"
         android:name="${applicationName}"

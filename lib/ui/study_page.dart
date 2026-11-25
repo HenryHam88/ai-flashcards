@@ -8,6 +8,7 @@ import '../services/study.dart';
 import '../theme/glass.dart';
 import 'chapter_reparse.dart' show showChapterKps;
 import 'mindmap_view.dart';
+import 'notes_page.dart' show openNoteFor, pickKnowledgePoint;
 import 'number_input.dart';
 
 String charsLabel(int n) => n >= 10000 ? '约 ${(n / 10000).toStringAsFixed(1)} 万字' : '约 $n 字';
@@ -445,6 +446,17 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
                           icon: const Icon(Icons.copy_rounded, size: 16),
                           label: const Text('复制'),
                           style: TextButton.styleFrom(foregroundColor: M.sub),
+                        ),
+                        TextButton.icon(
+                          onPressed: () async {
+                            final kp = await pickKnowledgePoint(context, widget.projectId);
+                            if (kp == null || !context.mounted) return;
+                            await openNoteFor(context,
+                                projectId: widget.projectId, kpId: kp.id, title: kp.title, chapter: kp.chapter, ai: stripMetaPreamble(x['content']!));
+                          },
+                          icon: const Icon(Icons.edit_note_rounded, size: 18),
+                          label: const Text('存为笔记'),
+                          style: TextButton.styleFrom(foregroundColor: M.sageDark),
                         ),
                       ]),
                     ]),
