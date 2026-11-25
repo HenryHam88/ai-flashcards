@@ -123,7 +123,10 @@ void main() {
   });
 
   testWidgets('统计', (t) async {
-    await shoot(t, const HomeShell(initialTab: 2, restoreSession: false), '5_stats');
+    // 固定「今天」：热力图按星期对齐、到期预测按天计算，用真实日期截图每天都会变
+    final fixed = DateTime(2026, 11, 20, 20, 30);
+    await seedSampleData(state.repo, now: fixed);
+    await shoot(t, HomeShell(initialTab: 2, restoreSession: false, statsNow: fixed), '5_stats');
   });
 
   testWidgets('PDF 解析设置（两种模式都选）', (t) async {
@@ -432,11 +435,13 @@ void main() {
   final statsNow = DateTime(2026, 11, 20, 20, 30);
 
   testWidgets('学习数据：概览', (t) async {
+    await seedSampleData(state.repo, now: statsNow);
     await seedStudyHistory(state.repo, statsNow);
     await shoot(t, HomeShell(initialTab: 2, restoreSession: false, statsNow: statsNow), '25_stats_overview');
   });
 
   testWidgets('学习数据：掌握度和薄弱点', (t) async {
+    await seedSampleData(state.repo, now: statsNow);
     await seedStudyHistory(state.repo, statsNow);
     await shoot(t, HomeShell(initialTab: 2, restoreSession: false, statsNow: statsNow), '26_mastery', after: () async {
       await t.dragFrom(const Offset(200, 500), const Offset(0, -700));
@@ -590,6 +595,7 @@ void main() {
   });
 
   testWidgets('每日到期卡片', (t) async {
+    await seedSampleData(state.repo, now: statsNow);
     await seedStudyHistory(state.repo, statsNow);
     await shoot(t, DueByDayPage(now: statsNow), '37_due_by_day', after: () async {
       expect(find.text('已逾期 · 12'), findsOneWidget);
@@ -623,6 +629,7 @@ void main() {
   });
 
   testWidgets('遗忘预测：90 天按周、全部，点柱子打开到期安排', (t) async {
+    await seedSampleData(state.repo, now: statsNow);
     await seedStudyHistory(state.repo, statsNow);
     await shoot(t, HomeShell(initialTab: 2, restoreSession: false, statsNow: statsNow), '39_forecast_90', after: () async {
       await t.tap(find.text('90 天'));
