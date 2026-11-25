@@ -45,7 +45,7 @@ class AppState extends ChangeNotifier {
   final Repository repo;
   final Settings settings;
   final LlmClient Function(AppState s, String key)? llmFactory; // 测试可注入
-  AppState(this.repo, this.settings, {this.llmFactory}) {
+  AppState(this.repo, this.settings, {this.llmFactory, this.webLlmFactory}) {
     requestLimiter.max = settings.concurrency; // 全局请求限流 = 「并发数」
     // 读资料原文件前先确认它在本机（放到云端的会自动下载回来）
     DocFiles.resolver = (d) async => (await cloud()).ensureDocLocal(d);
@@ -154,9 +154,14 @@ class AppState extends ChangeNotifier {
 
   Future<LlmClient> llm() async {
     final key = await settings.llmKey();
-    return llmFactory?.call(this, key) ??
-        LlmClient(baseUrl: settings.llmBaseUrl, apiKey: key, model: settings.llmModel);
+    final main = llmFactory?.call(this, key) ?? LlmClient(baseUrl: settings.llmBaseUrl, apiKey: key, model: settings.llmModel);
+    if (!settings.webRelay) return main;
+    // 出题模型不能直接联网：联网的调用先借联网模型（DeepSeek）检索，再交给出题模型回答
+    final wk = await settings.webKey();
+    return WebRelayLlm(main, webLlmFactory?.call(this, wk) ?? LlmClient(baseUrl: Settings.webBaseUrl, apiKey: wk, model: settings.webModel));
   }
+
+  final LlmClient Function(AppState s, String key)? webLlmFactory; // 测试可注入
 
   ParseService get parser => ParseService(repo, settings, chapters: chapterService);
 
@@ -606,7 +611,7 @@ class AppState extends ChangeNotifier {
     final names = [for (final a in chat.attachments) a.name].join('、');
     final head = '$system\n\n学生上传了附件（$names），回答时可以引用附件名。${images.isEmpty ? '' : '图片附在学生的提问里。'}\n';
     final plan = AttachmentService.plan(
-      context: LlmClient.contextTokens(settings.llmModel),
+      context: settings.contextTokens,
       fixedChars: head.length + question.length + docs.fold<int>(0, (a, d) => a + d.name.length + 24),
       history: [for (final m in chat.messages) (m['content'] ?? '').length],
       attachChars: docs.fold<int>(0, (a, d) => a + d.text.length),

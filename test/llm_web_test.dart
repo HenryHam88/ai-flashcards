@@ -61,7 +61,7 @@ void main() {
     expect(normal['thinking'], {'type': 'disabled'});
   });
 
-  test('只有 DeepSeek 接口 + deepseek-flash 能联网；设置默认开启、默认深度搜索，对话可单独关闭或切换', () async {
+  test('只有 DeepSeek 接口 + deepseek-flash 能直接联网；设置默认开启、默认深度搜索，对话可单独关闭或切换', () async {
     expect(LlmClient.webUnavailableReason('https://api.deepseek.com', 'deepseek-flash'), isNull);
     expect(LlmClient.webUnavailableReason('https://api.deepseek.com/v1', 'deepseek-v4-flash'), isNull);
     expect(LlmClient.webUnavailableReason('https://api.deepseek.com', 'deepseek-v4-pro'), contains('deepseek-flash'));
@@ -81,7 +81,9 @@ void main() {
     expect(st.web(chatOn: true, chatMode: WebMode.deep), WebMode.deep, reason: '对话可以单独打开');
     st.webSearch = true;
     st.llmModel = 'deepseek-v4-pro';
-    expect(st.web(chatOn: true), WebMode.off, reason: '模型不支持时一律不联网');
+    expect(st.web(chatOn: true), WebMode.normal, reason: '出题模型不能直接联网时借联网模型');
+    st.webModel = 'deepseek-v4-pro';
+    expect(st.web(chatOn: true), WebMode.off, reason: '联网模型也不支持时一律不联网');
   });
 
   test('非流式：解析正文、引用来源（先引用过的，再搜到的，去重）和联网记录', () async {

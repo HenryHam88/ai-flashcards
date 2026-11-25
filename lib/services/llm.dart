@@ -490,3 +490,85 @@ class LlmClient {
     throw LlmException('模型返回的 JSON 无法解析：$lastErr');
   }
 }
+
+/// 出题模型不能直接联网时的「借联网模型」：先让联网模型（DeepSeek 接口 + 服务端联网工具）检索整理，
+/// 再把检索结果作为补充资料交给出题模型回答。不联网的调用原样交给出题模型。
+class WebRelayLlm extends LlmClient {
+  final LlmClient inner;
+  final LlmClient searcher;
+  WebRelayLlm(this.inner, this.searcher) : super(baseUrl: inner.baseUrl, apiKey: inner.apiKey, model: inner.model, client: inner.client);
+
+  static const searchPrompt = '你是联网检索助手。请用联网工具搜索与学生问题相关的资料，整理成要点：只写查到的事实、定义、数据、出处，'
+      '每条后面用 [网站名] 标明来源，不要讲解、不要作答，不超过 1200 字。查不到可靠资料时直接说「没有查到可靠资料」。';
+
+  /// 检索用的问题：最后一个提问（截断），带上一条回答的结尾作为上下文。
+  static String queryOf(List<Map<String, String>> messages) {
+    String cut(String s, int n) => s.length > n ? s.substring(0, n) : s;
+    final users = messages.where((m) => m['role'] == 'user').toList();
+    final q = users.isEmpty ? '' : cut(users.last['content'] ?? '', 3000);
+    final prev = messages.lastWhere((m) => m['role'] == 'assistant', orElse: () => const {})['content'] ?? '';
+    return prev.isEmpty ? q : '（上一轮回答的结尾：${prev.length > 600 ? prev.substring(prev.length - 600) : prev}）\n\n学生的问题：$q';
+  }
+
+  static List<Map<String, String>> withFindings(List<Map<String, String>> messages, String findings) {
+    final note = '【联网检索结果】（由联网模型搜索整理，仅作补充；与资料冲突时以资料为准，引用时注明网站）\n$findings';
+    final out = [for (final m in messages) {for (final e in m.entries) if (e.key != 'tools' && e.key != 'reasoning') e.key: e.value}];
+    if (out.isNotEmpty && out.first['role'] == 'system') {
+      out[0] = {...out.first, 'content': '${out.first['content']}\n\n$note'};
+    } else {
+      out.insert(0, {'role': 'system', 'content': note});
+    }
+    return out;
+  }
+
+  String searchError = '';
+
+  Future<LlmReply?> _search(List<Map<String, String>> messages, WebMode web, LlmStatus? onStatus, AiCancel? cancel) async {
+    try {
+      final r = await searcher.ask([
+        {'role': 'system', 'content': searchPrompt},
+        {'role': 'user', 'content': queryOf(messages)},
+      ], web: web, onStatus: onStatus, cancel: cancel, retries: 2);
+      return r.content.trim().isEmpty ? null : r;
+    } on LlmCancelled {
+      rethrow;
+    } catch (e) {
+      searchError = e is LlmException && e.message.contains('API 密钥') ? '没有可用的联网模型密钥，请在「我的 → 出题模型 → AI 联网」填写' : '$e';
+      return null; // 联网失败不影响回答：直接用出题模型回答
+    }
+  }
+
+  @override
+  Future<LlmReply> ask(List<Map<String, String>> messages,
+      {WebMode web = WebMode.off,
+      bool json = false,
+      double temperature = 0.7,
+      int retries = 3,
+      void Function(String text)? onDelta,
+      LlmStatus? onStatus,
+      AiCancel? cancel}) async {
+    if (web == WebMode.off) {
+      return inner.ask(messages, json: json, temperature: temperature, retries: retries, onDelta: onDelta, onStatus: onStatus, cancel: cancel);
+    }
+    onStatus?.call('正在用联网模型搜索…');
+    final found = await _search(messages, web, onStatus, cancel);
+    final r = await inner.ask(found == null ? messages : withFindings(messages, found.content),
+        json: json, temperature: temperature, retries: retries, onDelta: onDelta, onStatus: onStatus, cancel: cancel);
+    return LlmReply(found == null ? '${r.content}\n\n（联网检索失败：$searchError。这次回答没有联网）' : r.content,
+        sources: found?.sources ?? const [], truncated: r.truncated);
+  }
+
+  @override
+  Future<Map<String, dynamic>> askJson(String prompt, {String? system, WebMode web = WebMode.off, int retries = 3}) async {
+    if (web == WebMode.off) return inner.chatJson(prompt, system: system, retries: retries);
+    final found = await _search([{'role': 'user', 'content': prompt}], web, null, null);
+    return inner.chatJson(found == null ? prompt : '$prompt\n\n【联网检索结果】（仅作补充，以资料为准）\n${found.content}', system: system, retries: retries);
+  }
+
+  @override
+  Future<String> chat(List<Map<String, String>> messages, {bool json = false, double temperature = 0.7, int retries = 3}) =>
+      inner.chat(messages, json: json, temperature: temperature, retries: retries);
+
+  @override
+  Future<Map<String, dynamic>> chatJson(String prompt, {String? system, int retries = 3}) => inner.chatJson(prompt, system: system, retries: retries);
+}

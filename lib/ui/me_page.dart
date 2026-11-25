@@ -219,6 +219,27 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
                   '搜索和读网页本身不收费，搜到的内容按模型 Token 计费。AI 伴学里每个对话还能单独切换。',
                   style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
             ),
+            const SizedBox(height: 12),
+            Glass(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('联网模型', style: const TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                    st.webNative
+                        ? '出题模型是 ${st.llmModel}，可以直接联网。换成其他模型时，会先用下面的联网模型通过 DeepSeek 搜索整理，再交给出题模型回答。'
+                        : st.webRelay
+                            ? '出题模型「${st.llmModel}」不能直接联网：会先用联网模型通过 DeepSeek 搜索整理，再把结果交给它回答（多一次调用，按联网模型的 Token 计费）。'
+                            : '联网只支持 DeepSeek 的 deepseek-flash，请把联网模型改为 deepseek-flash。',
+                    style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
+                const SizedBox(height: 12),
+                settingsTextField('联网模型名称', st.webModel, (v) {
+                  st.webModel = v;
+                  tick.value++;
+                }, hint: 'deepseek-flash'),
+                KeyField(label: '联网 API 密钥（DeepSeek）', load: st.webKeyRaw, save: st.setWebKey, hint: '留空则用出题模型或 DeepSeek OCR 的密钥'),
+                Text('接口固定为 ${Settings.webBaseUrl}。', style: TextStyle(color: M.sub, fontSize: 12)),
+              ]),
+            ),
           ]);
         },
       );
@@ -257,6 +278,10 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
             ]),
             const SizedBox(height: 8),
             Text('提示：日常用 deepseek-flash 便宜；难题可切到 deepseek-v4-pro。', style: TextStyle(color: M.sub, fontSize: 12)),
+            const SizedBox(height: 12),
+            settingsTextField('上下文长度（千 token）', st.llmContextK == 0 ? '' : '${st.llmContextK}', (v) => st.llmContextK = int.tryParse(v.trim()) ?? 0,
+                hint: '留空 = 自动（DeepSeek 1000，其他 128）'),
+            Text('AI 伴学按这个长度决定附件能发多少字。用其他服务时可按它的说明填写。', style: TextStyle(color: M.sub, fontSize: 12)),
           ]),
         ),
         _webGroup(st),
