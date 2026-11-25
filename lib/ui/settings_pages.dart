@@ -18,6 +18,7 @@ import '../services/settings.dart' show Settings;
 import '../theme/glass.dart';
 import '../help/help_articles.dart' show authorQQ;
 import 'help_page.dart' show HelpHomePage, copyQQ;
+import 'kb_export_sheet.dart';
 import 'number_input.dart';
 
 const repoUrl = 'https://github.com/HenryHam88/ai-flashcards';
@@ -440,7 +441,7 @@ class _ReminderPageState extends State<ReminderPage> {
 Future<void> saveOrShareBackup(BuildContext context, Uint8List bytes, String name) =>
     saveOrShareFile(context, bytes, name, title: '备份已生成（${fmtSize(bytes.length)}）', mimeType: 'application/zip');
 
-/// 生成好的文件（备份、PDF）：保存到文件夹或分享。
+/// 生成好的文件（备份、PDF、知识库压缩包）：保存到自己选的文件夹，或分享。
 Future<void> saveOrShareFile(BuildContext context, Uint8List bytes, String name, {required String title, required String mimeType}) async {
   final how = await showModalBottomSheet<String>(
     context: context,
@@ -448,12 +449,15 @@ Future<void> saveOrShareFile(BuildContext context, Uint8List bytes, String name,
     builder: (ctx) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 12),
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Text(title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+        ),
         const SizedBox(height: 8),
         ListTile(
             leading: const Icon(Icons.save_alt_rounded),
             title: const Text('保存到文件夹'),
-            subtitle: const Text('下载目录、网盘或任意文件夹'),
+            subtitle: const Text('打开系统文件夹，自己选存在哪里（下载、文档、网盘…）'),
             onTap: () => Navigator.pop(ctx, 'save')),
         ListTile(
             leading: const Icon(Icons.share_rounded),
@@ -466,14 +470,61 @@ Future<void> saveOrShareFile(BuildContext context, Uint8List bytes, String name,
   );
   if (how == null || !context.mounted) return;
   if (how == 'save') {
-    final uri = await FilePicker.saveFile(fileName: name, bytes: bytes, mimeType: mimeType);
-    if (uri != null && context.mounted) toast(context, '已保存：$name');
+    await saveToChosenFolder(context, bytes, name, mimeType: mimeType);
   } else {
     final dir = await Directory.systemTemp.createTemp('afc');
     final f = File(p.join(dir.path, name));
     await f.writeAsBytes(bytes);
     await SharePlus.instance.share(ShareParams(files: [XFile(f.path, mimeType: mimeType)], subject: name));
   }
+}
+
+/// 测试里替换系统的「另存为」窗口。
+@visibleForTesting
+Future<Uri?> Function({required String fileName, required Uint8List bytes, required String mimeType, String? initialDirectory})?
+    saveFileOverride;
+
+/// 打开系统的「另存为」窗口（从上次保存的文件夹开始），用户选好位置和文件名后写入；
+/// 保存后提示具体位置，取消时什么都不做。
+Future<Uri?> saveToChosenFolder(BuildContext context, Uint8List bytes, String name, {required String mimeType}) async {
+  final st = context.read<AppState>().settings;
+  final last = st.lastSaveUri;
+  Uri? uri;
+  try {
+    uri = saveFileOverride != null
+        ? await saveFileOverride!(fileName: name, bytes: bytes, mimeType: mimeType, initialDirectory: last.isEmpty ? null : last)
+        : await FilePicker.saveFile(
+            fileName: name, bytes: bytes, mimeType: mimeType, dialogTitle: '选择保存位置', initialDirectory: last.isEmpty ? null : last);
+  } catch (e) {
+    if (context.mounted) toast(context, '保存失败：$e');
+    return null;
+  }
+  if (uri == null) {
+    if (context.mounted) toast(context, '已取消保存');
+    return null;
+  }
+  st.lastSaveUri = uri.toString();
+  if (context.mounted) toast(context, '已保存到：${savedLocationLabel(uri, name)}');
+  return uri;
+}
+
+/// 把系统返回的文件地址变成看得懂的位置，如「内部存储/Download/备份.afcbak」。认不出来时只显示文件名。
+String savedLocationLabel(Uri uri, String fallbackName) {
+  if (uri.scheme == 'file') return uri.toFilePath();
+  if (uri.scheme != 'content') return fallbackName;
+  final segs = uri.pathSegments;
+  final i = segs.lastIndexOf('document');
+  final id = i >= 0 && i + 1 < segs.length ? segs[i + 1] : (segs.isEmpty ? '' : segs.last);
+  final colon = id.indexOf(':');
+  if (uri.host == 'com.android.externalstorage.documents' && colon > 0) {
+    final vol = id.substring(0, colon), path = id.substring(colon + 1);
+    return '${vol == 'primary' ? '内部存储' : 'SD 卡'}/$path';
+  }
+  if (uri.host == 'com.android.providers.downloads.documents') {
+    if (id.startsWith('raw:')) return id.substring(4);
+    return '下载/$fallbackName';
+  }
+  return fallbackName;
 }
 
 class DataPage extends StatefulWidget {
@@ -519,6 +570,14 @@ class _DataPageState extends State<DataPage> {
             title: '导入数据',
             subtitle: '从备份文件恢复，换手机时用；也可以导入同学分享的项目',
             onTap: () => pickAndImport(context).then((_) => _loadLocal()),
+          ),
+        ]),
+        SettingsGroup(title: '导出到笔记软件', children: [
+          SettingsTile(
+            icon: Icons.ios_share_rounded,
+            title: '导出到 Obsidian / Notion',
+            subtitle: '笔记、AI 伴学、AI 解释、收藏和错题，导出为可导入的 Markdown 压缩包',
+            onTap: () => showKbExportSheet(context),
           ),
         ]),
         SettingsGroup(title: '自动备份', children: [
@@ -646,8 +705,12 @@ class _ExportSheetState extends State<_ExportSheet> {
           options: BackupOptions(includeFiles: files, includeSecrets: !isProject && secrets, includeProgress: progress));
       if (!mounted) return;
       final name = BackupService.fileName(projectName: widget.projectName);
+      // 面板关掉后它自己的 context 就失效了，后面的「保存 / 分享」改用一直存在的导航器
+      final outer = Navigator.of(context).context;
       Navigator.pop(context);
-      await saveOrShareBackup(context, bytes, name);
+      if (!outer.mounted) return;
+      await saveOrShareBackup(outer, bytes, name);
+      return;
     } catch (e) {
       if (mounted) toast(context, '导出失败：$e');
     }
@@ -996,6 +1059,17 @@ class _AboutPageState extends State<AboutPage> {
   }
 }
 
+/// 更新日志显示用文字：去掉文件头说明和底部链接，版本标题改成「v1.4.0  ·  日期」。
+String changelogForDisplay(String md) {
+  var t = md.replaceAll('\r\n', '\n');
+  final i = t.indexOf('\n## [');
+  if (i > 0) t = t.substring(i + 1);
+  t = t.replaceAll(RegExp(r'^## \[Unreleased\]\n', multiLine: true), '').replaceAllMapped(
+      RegExp(r'^## \[(.+?)\] - (.+)$', multiLine: true), (m) => '## v${m[1]}  ·  ${m[2]}');
+  t = t.replaceAll(RegExp(r'^\[.+?\]: .+$', multiLine: true), '');
+  return t.trim();
+}
+
 class ChangelogPage extends StatelessWidget {
   const ChangelogPage({super.key});
   @override
@@ -1005,15 +1079,8 @@ class ChangelogPage extends StatelessWidget {
           future: rootBundle.loadString('CHANGELOG.md'),
           builder: (context, snap) {
             if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-            // 去掉文件头说明，只保留各版本
-            var t = snap.data!;
-            final i = t.indexOf('\n## [');
-            if (i > 0) t = t.substring(i + 1);
-            t = t.replaceAll('## [Unreleased]\n', '').replaceAllMapped(
-                RegExp(r'^## \[(.+?)\] - (.+)$', multiLine: true), (m) => '## v${m[1]}  ·  ${m[2]}');
-            t = t.replaceAll(RegExp(r'^\[.+?\]: .+$', multiLine: true), '');
             return ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 40), children: [
-              Glass(child: MathText(t.trim(), style: const TextStyle(fontSize: 14, height: 1.6))),
+              Glass(child: MathText(changelogForDisplay(snap.data!), style: const TextStyle(fontSize: 14, height: 1.6))),
             ]);
           },
         ),
