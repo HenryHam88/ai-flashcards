@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'concurrency.dart';
 import 'json_utils.dart';
+import 'providers.dart';
 
 /// AI 联网方式。DeepSeek 服务端联网工具：搜索和读网页都在服务端完成，工具调用本身不计费，结果按 Token 计费。
 /// - [normal] 联网搜索：关闭思考，模型按需搜索一次或几次后带引用作答（快、省）。
@@ -97,8 +98,10 @@ class LlmClient {
   final String baseUrl;
   final String apiKey;
   final String model;
+  final String kind;
+  final String? reasoning;
   final http.Client client;
-  LlmClient({required this.baseUrl, required this.apiKey, required this.model, http.Client? client})
+  LlmClient({required this.baseUrl, required this.apiKey, required this.model, this.kind = 'custom', this.reasoning, http.Client? client})
       : client = client ?? http.Client();
 
   Uri get _endpoint {
@@ -131,9 +134,8 @@ class LlmClient {
 
   /// 图片附件要模型能看图：DeepSeek 只有 deepseek-flash 支持图像理解（https://api-docs.deepseek.com/zh-cn/guides/vision）。
   static String? visionUnavailableReason(String baseUrl, String model) {
-    final host = Uri.tryParse(baseUrl.trim())?.host ?? '';
-    if (host == 'api.deepseek.com' && {...webModels, 'deepseek-v4-flash-vision-exp'}.contains(model.trim())) return null;
-    return '发图片需要模型能看图：请把出题模型设为 DeepSeek 的 deepseek-flash（当前：${model.trim().isEmpty ? '未填写' : model.trim()}）。PDF、Word、TXT 不受影响。';
+    if (ModelCatalog.canSeeImages(model)) return null;
+    return '发图片需要模型能看图。当前模型「${model.trim().isEmpty ? '未填写' : model.trim()}」看不了图，可以换一个带视觉能力的模型。PDF、Word、TXT 不受影响。';
   }
 
   /// 发给接口的消息：去掉应用自己存的附加字段；联网时把上一轮的联网记录和思考原样回传。
@@ -170,14 +172,12 @@ class LlmClient {
   Map<String, Object?> requestBody(List<Map<String, String>> messages,
       {WebMode web = WebMode.off, bool json = false, double temperature = 0.7, bool stream = false}) {
     final on = web != WebMode.off;
-    return {
+    final body = <String, Object?>{
       'model': model,
       'messages': wireMessages(messages, web: on),
       'temperature': temperature,
       'stream': stream,
       if (on) ...{
-        // 深度搜索 = 思考模式 + 联网；普通联网 = 关闭思考
-        'thinking': {'type': web == WebMode.deep ? 'enabled' : 'disabled'},
         'tools': [
           {'type': 'deepseek_web_search'},
           {'type': 'deepseek_read_url'},
@@ -186,6 +186,9 @@ class LlmClient {
       // 联网工具不能和 json_object 一起用（返回 400），联网时靠提示词约束 JSON
       if (json && !on) 'response_format': {'type': 'json_object'},
     };
+    // 思考档位按模型实际支持的来；深度搜索必须开思考，普通联网仍然关闭思考
+    Reasoning.apply(body, kind: kind, model: model, level: reasoning, deepSearch: web == WebMode.deep, normalSearch: web == WebMode.normal);
+    return body;
   }
 
   /// 从回答里取出引用来源：先是正文直接引用的，再是搜到过的，按 URL 去重。
@@ -259,7 +262,7 @@ class LlmClient {
       void Function(String text)? onDelta,
       LlmStatus? onStatus,
       AiCancel? cancel}) async {
-    if (apiKey.isEmpty) throw LlmException('还没有填写出题模型的 API 密钥，请到「我的 → 出题模型」填写');
+    if (apiKey.isEmpty) throw LlmException('还没有填写出题模型的 API 密钥，请到「我的 → AI 模型」填写');
     final stream = onDelta != null;
     Object? lastErr;
     for (var attempt = 0; attempt < retries; attempt++) {
@@ -428,7 +431,7 @@ class LlmClient {
   }
 
   Future<String> chat(List<Map<String, String>> messages, {bool json = false, double temperature = 0.7, int retries = 3}) async {
-    if (apiKey.isEmpty) throw LlmException('还没有填写出题模型的 API 密钥，请到「我的 → 出题模型」填写');
+    if (apiKey.isEmpty) throw LlmException('还没有填写出题模型的 API 密钥，请到「我的 → AI 模型」填写');
     Object? lastErr;
     for (var attempt = 0; attempt < retries; attempt++) {
       try {
@@ -496,7 +499,7 @@ class LlmClient {
 class WebRelayLlm extends LlmClient {
   final LlmClient inner;
   final LlmClient searcher;
-  WebRelayLlm(this.inner, this.searcher) : super(baseUrl: inner.baseUrl, apiKey: inner.apiKey, model: inner.model, client: inner.client);
+  WebRelayLlm(this.inner, this.searcher) : super(baseUrl: inner.baseUrl, apiKey: inner.apiKey, model: inner.model, kind: inner.kind, reasoning: inner.reasoning, client: inner.client);
 
   static const searchPrompt = '你是联网检索助手。请用联网工具搜索与学生问题相关的资料，整理成要点：只写查到的事实、定义、数据、出处，'
       '每条后面用 [网站名] 标明来源，不要讲解、不要作答，不超过 1200 字。查不到可靠资料时直接说「没有查到可靠资料」。';
@@ -533,7 +536,7 @@ class WebRelayLlm extends LlmClient {
     } on LlmCancelled {
       rethrow;
     } catch (e) {
-      searchError = e is LlmException && e.message.contains('API 密钥') ? '没有可用的联网模型密钥，请在「我的 → 出题模型 → AI 联网」填写' : '$e';
+      searchError = e is LlmException && e.message.contains('API 密钥') ? '没有可用的联网模型密钥，请在「我的 → AI 模型」的「联网」里填写' : '$e';
       return null; // 联网失败不影响回答：直接用出题模型回答
     }
   }

@@ -672,8 +672,9 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
           else
             Glass(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              MathText(n.ai, style: const TextStyle(fontSize: 14, height: 1.6)),
+              MathText(n.ai, selectable: true, style: const TextStyle(fontSize: 14, height: 1.6)),
               WebSourcesView(WebSource.decode(n.aiSources)),
+              CopyAction(n.ai),
             ])),
           _head('相关题目', trailing: _addButton('选择', Icons.playlist_add_rounded, _addQuestions)),
           if (questions.isEmpty) Text('把这个知识点的典型题、错题挂在这里，复习时一起看。', style: TextStyle(color: M.sub, fontSize: 13)),

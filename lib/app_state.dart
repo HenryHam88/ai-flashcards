@@ -22,6 +22,7 @@ import 'services/pipeline.dart';
 import 'services/prompts.dart';
 import 'services/quality.dart';
 import 'services/settings.dart';
+import 'services/providers.dart';
 import 'theme/rich_text.dart' show stripMetaPreamble;
 import 'services/review_history.dart';
 import 'services/study.dart';
@@ -45,8 +46,12 @@ class AppState extends ChangeNotifier {
   final Repository repo;
   final Settings settings;
   final LlmClient Function(AppState s, String key)? llmFactory; // 测试可注入
-  AppState(this.repo, this.settings, {this.llmFactory, this.webLlmFactory}) {
+  final LlmClient Function(AppState s, String key)? explainLlmFactory;
+  final LlmClient Function(AppState s, String key)? studyLlmFactory;
+  final LlmClient Function(AppState s, String key)? webLlmFactory;
+  AppState(this.repo, this.settings, {this.llmFactory, this.explainLlmFactory, this.studyLlmFactory, this.webLlmFactory}) {
     requestLimiter.max = settings.concurrency; // 全局请求限流 = 「并发数」
+    settings.ensureMigrated();
     // 读资料原文件前先确认它在本机（放到云端的会自动下载回来）
     DocFiles.resolver = (d) async => (await cloud()).ensureDocLocal(d);
   }
@@ -152,16 +157,37 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<LlmClient> llm() async {
-    final key = await settings.llmKey();
-    final main = llmFactory?.call(this, key) ?? LlmClient(baseUrl: settings.llmBaseUrl, apiKey: key, model: settings.llmModel);
-    if (!settings.webRelay) return main;
-    // 出题模型不能直接联网：联网的调用先借联网模型（DeepSeek）检索，再交给出题模型回答
-    final wk = await settings.webKey();
-    return WebRelayLlm(main, webLlmFactory?.call(this, wk) ?? LlmClient(baseUrl: Settings.webBaseUrl, apiKey: wk, model: settings.webModel));
+  /// 出题模型（出闪卡、出题、质检、分章、主观题批改）。
+  Future<LlmClient> llm() async => _client(settings.generate, await settings.llmKey(), llmFactory);
+
+  /// 闪卡 / 测验的「AI 解释」和追问。未单独配置时与出题模型相同。
+  Future<LlmClient> explainLlm() async =>
+      _client(settings.explain, await settings.explainKey(), explainLlmFactory ?? (settings.explain.custom ? null : llmFactory));
+
+  /// AI 伴学、思维导图、笔记「让 AI 讲解」。未单独配置时与出题模型相同。
+  /// [chat] 若指定了这个对话自己的模型，就用那个。
+  Future<LlmClient> studyLlm({StudyChat? chat}) async {
+    final e = studyEndpoint(chat);
+    final key = await settings.keyFor(e);
+    return _client(e, key, studyLlmFactory ?? (e.custom ? null : llmFactory));
   }
 
-  final LlmClient Function(AppState s, String key)? webLlmFactory; // 测试可注入
+  LlmEndpoint studyEndpoint([StudyChat? chat]) =>
+      settings.resolved(LlmUse.study, overrideProvider: chat?.llmProvider, overrideModel: chat?.llmModel);
+
+  /// 按这个接口实际能否联网决定：能直接用 DeepSeek 工具就直接联网，否则借联网模型检索后再交给它回答。
+  Future<LlmClient> _client(LlmEndpoint e, String key, LlmClient Function(AppState s, String key)? factory) async {
+    final made = factory?.call(this, key);
+    final main = made ?? LlmClient(baseUrl: e.baseUrl, apiKey: key, model: e.model, kind: e.kind, reasoning: e.reasoning);
+    if (settings.webNativeOf(e) || !settings.webRelayOf(e)) return main;
+    final wk = await settings.webKey();
+    final webE = settings.resolved(LlmUse.web);
+    return WebRelayLlm(
+      main,
+      webLlmFactory?.call(this, wk) ??
+          LlmClient(baseUrl: Settings.webBaseUrl, apiKey: wk, model: settings.webModel, kind: webE.kind, reasoning: webE.reasoning),
+    );
+  }
 
   ParseService get parser => ParseService(repo, settings, chapters: chapterService);
 
@@ -505,7 +531,7 @@ class AppState extends ChangeNotifier {
     final src = await sourceText(docId, page);
     final prompt = Prompts.fill(settings.prompt('explain'),
         {'item': itemText, 'page': '$page', 'source': src.isEmpty ? '（无原文）' : src});
-    final client = await llm();
+    final client = await explainLlm();
     final msgs = [{'role': 'user', 'content': prompt}];
     final r = await _answer(client, msgs, web: settings.web(), io: io);
     final c = ExplainCache(id: itemId, projectId: projectId, kind: kind, title: title, messages: [
@@ -518,7 +544,7 @@ class AppState extends ChangeNotifier {
 
   Future<ExplainCache> followUp(ExplainCache c, String question, {AiIo? io}) async {
     final msgs = [...c.messages, {'role': 'user', 'content': '$question\n（${Prompts.answerStyle}）'}];
-    final client = await llm();
+    final client = await explainLlm();
     final r = await _answer(client, msgs, web: settings.web(), io: io);
     c.messages = [...c.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': r.content, ...r.extras()}];
     c.updatedAt = DateTime.now();
@@ -581,7 +607,7 @@ class AppState extends ChangeNotifier {
 
   /// 按需生成一章的思维导图（用户点按钮才调用）。
   Future<ChapterMindMap> generateMindMap(StudyChapter c) async {
-    final m = await study.generateMindMap(await llm(), c, web: settings.web());
+    final m = await study.generateMindMap(await studyLlm(), c, web: settings.web());
     changed();
     return m;
   }
@@ -611,7 +637,7 @@ class AppState extends ChangeNotifier {
     final names = [for (final a in chat.attachments) a.name].join('、');
     final head = '$system\n\n学生上传了附件（$names），回答时可以引用附件名。${images.isEmpty ? '' : '图片附在学生的提问里。'}\n';
     final plan = AttachmentService.plan(
-      context: settings.contextTokens,
+      context: studyEndpoint(chat).contextTokens,
       fixedChars: head.length + question.length + docs.fold<int>(0, (a, d) => a + d.name.length + 24),
       history: [for (final m in chat.messages) (m['content'] ?? '').length],
       attachChars: docs.fold<int>(0, (a, d) => a + d.text.length),
@@ -638,7 +664,7 @@ class AppState extends ChangeNotifier {
   /// AI 伴学：每次都把选中资料的原文放进系统提示，对话本身只存可见内容。
   Future<StudyChat> studyAsk(StudyChat chat, String question, {AiIo? io}) async {
     final (msgs, web) = await _studyPrompt(chat, question);
-    final r = await _answer(await llm(), msgs, web: web, io: io);
+    final r = await _answer(await studyLlm(chat: chat), msgs, web: web, io: io);
     chat.messages = [...chat.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': r.content, ...r.extras()}];
     if (chat.title.isEmpty) chat.title = question.length > 24 ? '${question.substring(0, 24)}…' : question;
     chat.updatedAt = DateTime.now();
@@ -655,7 +681,7 @@ class AppState extends ChangeNotifier {
     if (err != null) throw AttachmentException(err);
     final kind = AttachmentService.kindOf(name)!;
     if (kind == 'image') {
-      final why = LlmClient.visionUnavailableReason(settings.llmBaseUrl, settings.llmModel);
+      final why = LlmClient.visionUnavailableReason(studyEndpoint(chat).baseUrl, studyEndpoint(chat).model);
       if (why != null) throw AttachmentException(why);
     }
     var text = '';
@@ -808,7 +834,7 @@ class AppState extends ChangeNotifier {
     final quotes = n.quotes.map((q) => q.text).join('\n');
     final prompt = Prompts.fill(settings.prompt('explain'),
         {'item': item, 'page': '$page', 'source': [src, quotes].where((e) => e.trim().isNotEmpty).join('\n\n').ifEmpty('（无原文）')});
-    return _answer(await llm(), [{'role': 'user', 'content': prompt}], web: settings.web(), io: io);
+    return _answer(await studyLlm(), [{'role': 'user', 'content': prompt}], web: settings.web(), io: io);
   }
 
   /// 主观题 AI 批改，返回 (得分 0-10, 点评)。

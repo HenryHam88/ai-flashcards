@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../theme/glass.dart';
 import 'help_page.dart' show openHelp;
-import 'me_page.dart';
+import 'llm_settings_page.dart';
 
 /// 首次启动引导：三页，随时可跳过。
 class OnboardingPage extends StatefulWidget {

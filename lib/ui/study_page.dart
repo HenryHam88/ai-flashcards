@@ -13,6 +13,7 @@ import '../services/llm.dart';
 import '../services/study.dart';
 import '../theme/glass.dart';
 import 'ai_widgets.dart';
+import 'llm_settings_page.dart';
 import 'chapter_reparse.dart' show showChapterKps;
 import 'mindmap_view.dart';
 import 'notes_page.dart' show openNoteFor, pickKnowledgePoint;
@@ -287,13 +288,15 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
   StudyMaterial? material;
   String scopeText = '';
   final run = AiRun();
-  // 还没有对话时选的联网方式（建对话时带上）
+  // 还没有对话时选的联网方式和模型（建对话时带上）
   bool? webOn;
   String? webMode;
+  String? llmProvider;
+  String? llmModel;
   String? attachStatus; // 正在读取附件时的提示
 
   StudyChat _ensureChat() {
-    final c = chat ?? StudyChat(id: newId(), projectId: widget.projectId, scope: scope, web: webOn, webMode: webMode);
+    final c = chat ?? StudyChat(id: newId(), projectId: widget.projectId, scope: scope, web: webOn, webMode: webMode, llmProvider: llmProvider, llmModel: llmModel);
     if (chat == null) setState(() => chat = c);
     return c;
   }
@@ -551,11 +554,26 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 10, 8, 4),
-        child: Row(children: [
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
           Icon(Icons.auto_awesome_rounded, color: M.sageDark, size: 20),
           const SizedBox(width: 8),
           const Text('AI 伴学', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          const SizedBox(width: 8),
+          const Spacer(),
+          IconButton(tooltip: '历史对话', onPressed: busy ? null : _history, icon: Icon(Icons.history_rounded, color: M.sub)),
+          IconButton(
+              tooltip: '新对话',
+              onPressed: busy
+                  ? null
+                  : () {
+                      setState(() => chat = null);
+                      _notify();
+                    },
+              icon: Icon(Icons.add_comment_outlined, color: M.sub)),
+          IconButton(tooltip: '收起', onPressed: () => Navigator.pop(context), icon: Icon(Icons.keyboard_arrow_down_rounded, color: M.sub)),
+        ]),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 6, children: [
           WebModeChip(
             state: context.read<AppState>(),
             on: chat?.web ?? webOn,
@@ -571,18 +589,31 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
               if (chat != null && chat!.messages.isNotEmpty) await context.read<AppState>().repo.saveStudyChat(chat!);
             },
           ),
-          const Spacer(),
-          IconButton(tooltip: '历史对话', onPressed: busy ? null : _history, icon: Icon(Icons.history_rounded, color: M.sub)),
-          IconButton(
-              tooltip: '新对话',
-              onPressed: busy
-                  ? null
-                  : () {
-                      setState(() => chat = null);
-                      _notify();
-                    },
-              icon: Icon(Icons.add_comment_outlined, color: M.sub)),
-          IconButton(tooltip: '收起', onPressed: () => Navigator.pop(context), icon: Icon(Icons.keyboard_arrow_down_rounded, color: M.sub)),
+          const SizedBox(width: 8),
+          ChatModelChip(
+            state: context.read<AppState>(),
+            providerId: chat?.llmProvider ?? llmProvider,
+            modelId: chat?.llmModel ?? llmModel,
+            enabled: !busy,
+            onChanged: (v) async {
+              setState(() {
+                if (v.follow) {
+                  llmProvider = null;
+                  llmModel = null;
+                  chat?.llmProvider = null;
+                  chat?.llmModel = null;
+                  chat?.reasoning = null;
+                } else {
+                  llmProvider = v.providerId;
+                  llmModel = v.modelId;
+                  chat?.llmProvider = v.providerId;
+                  chat?.llmModel = v.modelId;
+                }
+              });
+              if (chat != null && chat!.messages.isNotEmpty) await context.read<AppState>().repo.saveStudyChat(chat!);
+            },
+          ),
+        ]),
         ]),
       ),
       Padding(
@@ -633,27 +664,13 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
           for (final x in msgs)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: x['role'] == 'user'
-                  ? Align(
-                      alignment: Alignment.centerRight,
-                      child: Glass(
-                          tint: M.greyBlue,
-                          radius: 16,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          child: Text(x['content']!, style: const TextStyle(color: Colors.white))))
-                  : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      MathText(stripMetaPreamble(x['content']!), style: const TextStyle(fontSize: 15, height: 1.6)),
-                      WebSourcesView(sourcesOf(x)),
-                      Row(children: [
-                        TextButton.icon(
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: x['content']!));
-                            toast(context, '已复制');
-                          },
-                          icon: const Icon(Icons.copy_rounded, size: 16),
-                          label: const Text('复制'),
-                          style: TextButton.styleFrom(foregroundColor: M.sub),
-                        ),
+              child: ChatMessageView(
+                text: x['content']!,
+                user: x['role'] == 'user',
+                sources: sourcesOf(x),
+                actions: x['role'] == 'user'
+                    ? const []
+                    : [
                         TextButton.icon(
                           onPressed: () async {
                             final kp = await pickKnowledgePoint(context, widget.projectId);
@@ -663,10 +680,10 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
                           },
                           icon: const Icon(Icons.edit_note_rounded, size: 18),
                           label: const Text('存为笔记'),
-                          style: TextButton.styleFrom(foregroundColor: M.sageDark),
+                          style: TextButton.styleFrom(foregroundColor: M.sageDark, visualDensity: VisualDensity.compact),
                         ),
-                      ]),
-                    ]),
+                      ],
+              ),
             ),
           if (pending != null)
             Padding(

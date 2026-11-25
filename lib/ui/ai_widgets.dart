@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -76,7 +78,7 @@ class AiRunView extends StatelessWidget {
         if (!run.running) return const SizedBox();
         final status = run.status.isNotEmpty ? run.status : (run.text.isEmpty ? idle : '正在输出…');
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (run.text.isNotEmpty) MathText(stripMetaPreamble(run.text), style: const TextStyle(fontSize: 15, height: 1.6)),
+          if (run.text.isNotEmpty) MathText(stripMetaPreamble(run.text), selectable: true, style: const TextStyle(fontSize: 15, height: 1.6)),
           Row(children: [
             SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: M.sage)),
             const SizedBox(width: 8),
@@ -233,7 +235,7 @@ class WebModeChip extends StatelessWidget {
       (ctx, sc) => ListView(controller: sc, padding: const EdgeInsets.fromLTRB(20, 8, 20, 30), children: [
         const Text('这个对话的联网方式', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
         const SizedBox(height: 6),
-        Text(reason ?? '只影响当前对话。全局设置在「我的 → 出题模型」。回答始终以你选的资料为准，网上内容只作补充。',
+        Text(reason ?? '只影响当前对话。全局设置在「我的 → AI 模型」。回答始终以你选的资料为准，网上内容只作补充。',
             style: TextStyle(color: reason == null ? M.sub : M.roseDark, fontSize: 13, height: 1.5)),
         const SizedBox(height: 12),
         tile(ctx, '跟随全局设置（${webLabel(global)}）', '和其他 AI 功能保持一致', follow, const ChatWebChoice(null, null)),
@@ -244,5 +246,69 @@ class WebModeChip extends StatelessWidget {
       initial: 0.6,
     );
     if (r != null) onChanged(r);
+  }
+}
+
+/// 复制到剪贴板并提示「已复制」。
+Future<void> copyText(BuildContext context, String text) async {
+  await Clipboard.setData(ClipboardData(text: text));
+  if (context.mounted) toast(context, '已复制');
+}
+
+/// 消息下方的小「复制」按钮，样式与伴学里已有的一致。
+class CopyAction extends StatelessWidget {
+  final String text;
+  const CopyAction(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.trim().isEmpty) return const SizedBox.shrink();
+    return TextButton.icon(
+      onPressed: () => copyText(context, text),
+      icon: const Icon(Icons.copy_rounded, size: 16),
+      label: const Text('复制'),
+      style: TextButton.styleFrom(foregroundColor: M.sub, visualDensity: VisualDensity.compact),
+    );
+  }
+}
+
+/// 一条对话或 AI 回答：文字可长按选中，下方有「复制」（复制原文，含 Markdown / LaTeX 源码）。
+class ChatMessageView extends StatelessWidget {
+  final String text;
+  final bool user;
+  final List<WebSource> sources;
+  final List<Widget> actions;
+  const ChatMessageView({
+    super.key,
+    required this.text,
+    this.user = false,
+    this.sources = const [],
+    this.actions = const [],
+  });
+
+  String get copySource => user ? text : stripMetaPreamble(text);
+
+  @override
+  Widget build(BuildContext context) {
+    if (user) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: Glass(
+            tint: M.greyBlue,
+            radius: 16,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: SelectionArea(child: Text(text, style: const TextStyle(color: Colors.white))),
+          ),
+        ),
+        CopyAction(copySource),
+      ]);
+    }
+    final body = stripMetaPreamble(text);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      MathText(body, selectable: true, style: const TextStyle(fontSize: 15, height: 1.6)),
+      WebSourcesView(sources),
+      Row(children: [CopyAction(copySource), ...actions]),
+    ]);
   }
 }

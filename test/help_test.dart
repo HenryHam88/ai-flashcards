@@ -100,7 +100,7 @@ void main() {
     for (final id in HelpIds.byName.values) {
       expect(helpArticle(id), isNotNull, reason: id);
     }
-    expect(isKeyError('还没有填写出题模型的 API 密钥，请到「我的 → 出题模型」填写'), isTrue);
+    expect(isKeyError('还没有填写出题模型的 API 密钥，请到「我的 → AI 模型」填写'), isTrue);
     expect(isKeyError('账户余额不足（402）'), isTrue);
     expect(isKeyError('所选范围内没有内容'), isFalse);
   });

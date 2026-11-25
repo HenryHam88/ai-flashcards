@@ -14,7 +14,6 @@ import 'theme/glass.dart';
 import 'ui/onboarding_page.dart';
 import 'ui/home_page.dart';
 import 'ui/me_page.dart';
-import 'ui/review_page.dart';
 import 'ui/review_tab.dart';
 import 'ui/stats_page.dart';
 
@@ -24,7 +23,9 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final repo = Repository(store);
   await repo.loadDocTypes();
-  final state = AppState(repo, Settings(prefs, SecureSecretStore()));
+  final settings = Settings(prefs, SecureSecretStore());
+  await settings.ensureMigrated();
+  final state = AppState(repo, settings);
   // 老用户升级上来已经有数据，不再显示首次引导
   if (!state.settings.onboarded && (await repo.projects()).isNotEmpty) state.settings.onboarded = true;
   try {
@@ -85,30 +86,14 @@ class StudyApp extends StatelessWidget {
 
 class HomeShell extends StatefulWidget {
   final int initialTab;
-  final bool restoreSession;
   final DateTime? statsNow; // 截图用：固定统计页的「现在」
-  const HomeShell({super.key, this.initialTab = 0, this.restoreSession = true, this.statsNow});
+  const HomeShell({super.key, this.initialTab = 0, this.statsNow});
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends State<HomeShell> {
   late int tab = widget.initialTab;
-
-  @override
-  void initState() {
-    super.initState();
-    // 进程被系统杀掉后重新打开：自动回到上次的复习位置
-    if (widget.restoreSession) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final s = context.read<AppState>().settings.reviewSession;
-        if (s != null && mounted) {
-          Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => ReviewPage(projectId: s['projectId'] as String?, resume: true)));
-        }
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {

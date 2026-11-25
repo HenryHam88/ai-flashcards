@@ -127,11 +127,11 @@ void main() {
     expect('字'.allMatches(sys).length, greaterThanOrEqualTo(chat.plan!.attachSent));
   });
 
-  test('图片：deepseek-flash 才能发，随提问以 image_url 发给模型；其他模型给出原因', () async {
+  test('图片：模型要能看图才能发，随提问以 image_url 发给模型；其他模型给出原因', () async {
     final chat = StudyChat(id: 'c2', projectId: 'p1');
     final png = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]);
     s.settings.llmModel = 'deepseek-v4-pro';
-    expect(() => s.addChatAttachment(chat, '板书.png', png), throwsA(isA<AttachmentException>().having((e) => e.message, 'm', contains('deepseek-flash'))));
+    expect(() => s.addChatAttachment(chat, '板书.png', png), throwsA(isA<AttachmentException>().having((e) => e.message, 'm', contains('看不了图'))));
     s.settings.llmModel = 'deepseek-flash';
     final a = await s.addChatAttachment(chat, '板书.png', png);
     expect(a.isImage, isTrue);

@@ -185,7 +185,9 @@ class MathText extends StatelessWidget {
   final TextAlign textAlign;
   /// 搜索高亮：普通文字中的匹配加底色；公式源码包含关键词时整个公式加底色。
   final String? highlight;
-  const MathText(this.text, {super.key, this.style, this.textAlign = TextAlign.start, this.highlight});
+  /// 长按可选中文字。公式在选区里按原始 LaTeX（`$...$` / `$$...$$`）复制。
+  final bool selectable;
+  const MathText(this.text, {super.key, this.style, this.textAlign = TextAlign.start, this.highlight, this.selectable = false});
 
   /// 高亮颜色（搜索结果）。
   static Color get highlightColor => M.oat.withValues(alpha: 0.9);
@@ -250,6 +252,17 @@ class MathText extends StatelessWidget {
             child: w)
         : w;
 
+    /// 可选中时，把公式的原始 LaTeX 放进一个几乎看不见的文字，这样复制能拿到源码。
+    InlineSpan mathSpan(TexSegment seg, TextStyle s, {bool display = false}) {
+      final visual = marked(seg, mathWidget(seg, s, display: display));
+      if (!selectable) return WidgetSpan(alignment: PlaceholderAlignment.middle, child: visual);
+      final src = latexCopySource(seg, display: display);
+      return TextSpan(children: [
+        TextSpan(text: src, style: const TextStyle(color: Color(0x00000000), fontSize: 0.01, height: 0.01)),
+        WidgetSpan(alignment: PlaceholderAlignment.middle, child: SelectionContainer.disabled(child: visual)),
+      ]);
+    }
+
     List<InlineSpan> inline(String src, TextStyle s) {
       final out = <InlineSpan>[];
       var pos = 0;
@@ -272,7 +285,7 @@ class MathText extends StatelessWidget {
                   backgroundColor: M.glass.withValues(alpha: 0.6))));
         } else {
           final seg = doc.math[int.parse(m[5]!)];
-          out.add(WidgetSpan(alignment: PlaceholderAlignment.middle, child: marked(seg, mathWidget(seg, s))));
+          out.add(mathSpan(seg, s));
         }
         pos = m.end;
       }
@@ -345,12 +358,15 @@ class MathText extends StatelessWidget {
         case MdBlockType.table:
           widgets.add(_table(doc, doc.tables[int.parse(blk.text)], st, (src, s) => rich(src, s, align: TextAlign.start)));
         case MdBlockType.math:
+          final seg = doc.math[int.parse(blk.text)];
           widgets.add(Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Center(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: marked(doc.math[int.parse(blk.text)], mathWidget(doc.math[int.parse(blk.text)], st, display: true)),
+                child: selectable
+                    ? Text.rich(TextSpan(style: st, children: [mathSpan(seg, st, display: true)]))
+                    : marked(seg, mathWidget(seg, st, display: true)),
               ),
             ),
           ));
@@ -372,6 +388,7 @@ class MathText extends StatelessWidget {
         children: spaced,
       );
     }
+    if (selectable) return SelectionArea(child: result);
     // 公式排版较重：单独成层，滚动时不重绘
     return doc.math.isEmpty ? result : RepaintBoundary(child: result);
   }
@@ -463,4 +480,11 @@ class MathText extends StatelessWidget {
       ),
     ]);
   }
+}
+
+/// 复制公式时用的原始写法：行内 `$...$`，独立公式 `$$...$$`。
+String latexCopySource(TexSegment seg, {bool display = false}) {
+  final src = seg.text;
+  if (display || seg.display) return '\$\$$src\$\$';
+  return '\$$src\$';
 }

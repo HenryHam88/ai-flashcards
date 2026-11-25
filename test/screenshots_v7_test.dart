@@ -10,7 +10,7 @@ import 'package:ai_flashcards/services/llm.dart';
 import 'package:ai_flashcards/services/settings.dart';
 import 'package:ai_flashcards/ui/cloud_settings_page.dart';
 import 'package:ai_flashcards/ui/favorites_page.dart';
-import 'package:ai_flashcards/ui/me_page.dart' show LlmSettingsPage;
+import 'package:ai_flashcards/ui/llm_settings_page.dart' show LlmSettingsPage;
 import 'package:ai_flashcards/ui/wrong_book_page.dart';
 import 'package:ai_flashcards/ui/study_page.dart';
 import 'package:ai_flashcards/ui/mindmap_view.dart';
