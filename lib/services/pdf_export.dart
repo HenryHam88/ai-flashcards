@@ -4,6 +4,7 @@ import 'dart:ui' show Offset, Rect;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../models.dart';
+import 'font_coverage.dart';
 import '../theme/latex_text.dart' show Mk;
 import '../theme/rich_text.dart' show MdMath, MdBlockType;
 
@@ -393,6 +394,33 @@ class PdfExportService {
   final Uint8List fontBytes;
   final MathRasterizer? math;
   PdfExportService(this.fontBytes, {this.math});
+
+  late final FontCoverage? coverage = FontCoverage.parse(fontBytes);
+
+  /// 导出前检查：字体里没有的字（会显示成空白或方框）。字体读不出来时返回空。
+  List<String> missingGlyphs(Iterable<String> texts) => coverage?.missing(texts) ?? const [];
+
+  static Iterable<String> wrongTexts(String title, List<ExportItem> items) sync* {
+    yield title;
+    for (final it in items) {
+      final q = it.question, c = it.card;
+      if (q != null) yield* [q.stem, ...q.options, q.answer, q.explanation, q.chapter];
+      if (c != null) yield* [c.front, c.back, c.explanation, c.chapter];
+      yield it.lastAnswer;
+    }
+  }
+
+  static Iterable<String> noteTexts(String title, List<NoteExport> items) sync* {
+    yield title;
+    for (final it in items) {
+      final n = it.note;
+      yield* [n.title, n.chapter, n.own, n.ai, for (final q in n.quotes) q.text];
+      if (it.kp != null) yield* [it.kp!.title, it.kp!.content];
+      for (final q in it.questions) {
+        yield* [q.stem, ...q.options, q.answer, q.explanation];
+      }
+    }
+  }
 
   static String dateLabel(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 

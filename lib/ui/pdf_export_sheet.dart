@@ -32,6 +32,12 @@ class _WrongExportSheetState extends State<WrongExportSheet> {
     setState(() => (busy = true, error = null));
     try {
       final svc = await s.pdfExporter();
+      final miss = svc.missingGlyphs(PdfExportService.wrongTexts(widget.title, widget.items));
+      if (!mounted) return;
+      if (!await confirmMissingGlyphs(context, miss)) {
+        if (mounted) setState(() => busy = false);
+        return;
+      }
       final bytes = await svc.wrongQuestions(
           widget.title, widget.items, PdfExportOptions(layout: layout, explanation: explanation, lastAnswer: lastAnswer));
       final name = '${widget.title}-错题集-${PdfExportService.dateLabel(DateTime.now())}.pdf'.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
@@ -107,4 +113,23 @@ class _WrongExportSheetState extends State<WrongExportSheet> {
       ),
     ]);
   }
+}
+
+/// 导出 PDF 前：有字体里没有的字时提醒（会显示成空白或方框），用户确认后再导出。没有缺字时直接返回 true。
+Future<bool> confirmMissingGlyphs(BuildContext context, List<String> missing) async {
+  if (missing.isEmpty) return true;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: M.sheet,
+      title: const Text('有些字导出后可能显示不出来'),
+      content: Text('PDF 字体里没有这 ${missing.length >= 30 ? '30 多' : missing.length} 个字：\n${missing.join(' ')}\n\n'
+          '导出后它们会显示为空白或方框，公式不受影响。仍要导出吗？'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('仍然导出')),
+      ],
+    ),
+  );
+  return ok == true;
 }

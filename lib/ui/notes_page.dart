@@ -9,6 +9,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../services/llm.dart';
 import '../services/pdf_export.dart';
+import 'pdf_export_sheet.dart' show confirmMissingGlyphs;
 import '../theme/glass.dart';
 import 'ai_widgets.dart';
 import 'explain_sheet.dart' show showSourceSheet;
@@ -33,7 +34,10 @@ Future<void> exportNotesPdf(BuildContext context, String title, List<StudyNote> 
           photos: photos,
           docNames: docNames));
     }
-    final bytes = await (await s.pdfExporter()).notes(title, items);
+    final svc = await s.pdfExporter();
+    if (!context.mounted) return;
+    if (!await confirmMissingGlyphs(context, svc.missingGlyphs(PdfExportService.noteTexts(title, items)))) return;
+    final bytes = await svc.notes(title, items);
     final name = '$title-笔记-${PdfExportService.dateLabel(DateTime.now())}.pdf'.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
     await s.saveExport(notes.isEmpty ? '' : notes.first.projectId, name, bytes);
     if (context.mounted) await saveOrShareFile(context, bytes, name, title: 'PDF 已生成（${fmtSize(bytes.length)}）', mimeType: 'application/pdf');
