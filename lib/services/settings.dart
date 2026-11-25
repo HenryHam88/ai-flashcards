@@ -167,6 +167,35 @@ class Settings {
     requestLimiter.max = n;
   }
 
+  // ---------- 云端存储（省手机空间） ----------
+  // 只存连接信息；AccessKey 存在系统安全存储里，并且不进入任何备份（见 [cloudKeyId] / [cloudSecret]）。
+  String get cloudProvider => prefs.getString('cloud_provider') ?? 'aliyun'; // aliyun / tencent / s3
+  set cloudProvider(String v) => prefs.setString('cloud_provider', v);
+  String get cloudRegion => prefs.getString('cloud_region') ?? '';
+  set cloudRegion(String v) => prefs.setString('cloud_region', v.trim());
+  String get cloudBucket => prefs.getString('cloud_bucket') ?? '';
+  set cloudBucket(String v) => prefs.setString('cloud_bucket', v.trim());
+  /// 自定义 S3 兼容服务的地址（阿里云 / 腾讯云按地域自动生成，留空即可）。
+  String get cloudEndpoint => prefs.getString('cloud_endpoint') ?? '';
+  set cloudEndpoint(String v) => prefs.setString('cloud_endpoint', v.trim());
+  /// 对象路径前缀，默认 ai-flashcards/。
+  String get cloudPrefix => prefs.getString('cloud_prefix') ?? 'ai-flashcards/';
+  set cloudPrefix(String v) => prefs.setString('cloud_prefix', v.trim());
+  /// 从云端下载回来的文件在本机最多占多少 MB，超过后自动删除最久没用的（云端仍保留）。
+  int get cloudCacheMb => prefs.getInt('cloud_cache_mb') ?? 300;
+  set cloudCacheMb(int v) => prefs.setInt('cloud_cache_mb', v.clamp(50, 5000));
+  Future<String> cloudKeyId() async => await secrets.read('cloud_ak') ?? '';
+  Future<void> setCloudKeyId(String v) => secrets.write('cloud_ak', v.trim());
+  Future<String> cloudSecret() async => await secrets.read('cloud_sk') ?? '';
+  Future<void> setCloudSecret(String v) => secrets.write('cloud_sk', v.trim());
+
+  /// 云端存储是否填写完整（没买 / 没填时整个功能自动隐藏，不影响使用）。
+  Future<bool> cloudConfigured() async =>
+      cloudBucket.isNotEmpty &&
+      (cloudRegion.isNotEmpty || cloudEndpoint.isNotEmpty) &&
+      (await cloudKeyId()).isNotEmpty &&
+      (await cloudSecret()).isNotEmpty;
+
   // ---------- 首次启动 ----------
   bool get onboarded => prefs.getBool('onboarded') ?? false;
   set onboarded(bool v) => prefs.setBool('onboarded', v);
@@ -178,6 +207,8 @@ class Settings {
     'math_scale', 'reduce_motion', 'haptics', 'reminder_on', 'reminder_minutes', 'auto_backup', 'review_before_add',
     'auto_cap', 'concurrency',
   ];
+  /// 可以随备份导出的密钥（用户勾选「包含 API 密钥」时）。
+  /// 云端存储的 AccessKey（cloud_ak / cloud_sk）故意不在这里：备份文件本身可能被上传到云端，绝不能带着钥匙。
   static const secretKeys = ['llm_key', 'ocr_key', 'kimi_key'];
 
   Map<String, dynamic> exportPrefs() {

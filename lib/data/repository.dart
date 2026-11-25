@@ -60,6 +60,8 @@ class Repository {
 
   Future<void> deleteDoc(PdfDoc d) async {
     await store.delete('chapters', d.id);
+    await store.delete('media', MediaAsset.docId(d.id));
+    await store.deleteWhere('mindmaps', projectId: d.projectId, field: 'docId', equals: d.id);
     for (final c in ['pages', 'chunks', 'reparse']) {
       await store.deleteWhere(c, projectId: d.projectId, field: 'docId', equals: d.id);
     }
@@ -235,4 +237,63 @@ class Repository {
       await store.delete('inbox_questions', q.id);
     }
   }
+
+  // ---------- 收藏 ----------
+  Future<List<FavoriteItem>> favorites({String? projectId}) async =>
+      (await store.list('favorites', projectId: projectId)).map(FavoriteItem.fromJson).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  Future<bool> isFavorite(String kind, String targetId) async => await store.get('favorites', FavoriteItem.idFor(kind, targetId)) != null;
+  Future<void> saveFavorite(FavoriteItem f) => store.put('favorites', f.id, f.projectId, f.toJson());
+  Future<void> deleteFavorite(String kind, String targetId) => store.delete('favorites', FavoriteItem.idFor(kind, targetId));
+
+  /// 切换收藏，返回切换后的状态。
+  Future<bool> toggleFavorite(FavoriteItem f) async {
+    if (await isFavorite(f.kind, f.targetId)) {
+      await deleteFavorite(f.kind, f.targetId);
+      return false;
+    }
+    await saveFavorite(f);
+    return true;
+  }
+
+  // ---------- 思维导图 ----------
+  Future<List<ChapterMindMap>> mindMaps(String projectId) async =>
+      (await store.list('mindmaps', projectId: projectId)).map(ChapterMindMap.fromJson).toList();
+  Future<ChapterMindMap?> mindMap(String docId, String chapter) async {
+    final j = await store.get('mindmaps', ChapterMindMap.idFor(docId, chapter));
+    return j == null ? null : ChapterMindMap.fromJson(j);
+  }
+
+  Future<void> saveMindMap(ChapterMindMap m) => store.put('mindmaps', m.id, m.projectId, m.toJson());
+  Future<void> deleteMindMap(String id) => store.delete('mindmaps', id);
+
+  // ---------- 学习对话 ----------
+  Future<List<StudyChat>> studyChats(String projectId) async =>
+      (await store.list('study_chats', projectId: projectId)).map(StudyChat.fromJson).toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  Future<void> saveStudyChat(StudyChat c) => store.put('study_chats', c.id, c.projectId, c.toJson());
+  Future<void> deleteStudyChat(String id) => store.delete('study_chats', id);
+
+  // ---------- 笔记 ----------
+  Future<List<StudyNote>> notes({String? projectId}) async =>
+      (await store.list('notes', projectId: projectId)).map(StudyNote.fromJson).toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  Future<StudyNote?> note(String id) async {
+    final j = await store.get('notes', id);
+    return j == null ? null : StudyNote.fromJson(j);
+  }
+
+  Future<void> saveNote(StudyNote n) => store.put('notes', n.id, n.projectId, n.toJson());
+  Future<void> deleteNote(String id) => store.delete('notes', id);
+
+  // ---------- 大文件（云端省空间） ----------
+  Future<List<MediaAsset>> media({String? projectId}) async =>
+      (await store.list('media', projectId: projectId)).map(MediaAsset.fromJson).toList();
+  Future<MediaAsset?> mediaAsset(String id) async {
+    final j = await store.get('media', id);
+    return j == null ? null : MediaAsset.fromJson(j);
+  }
+
+  Future<void> saveMedia(MediaAsset m) => store.put('media', m.id, m.projectId, m.toJson());
+  Future<void> deleteMedia(String id) => store.delete('media', id);
 }

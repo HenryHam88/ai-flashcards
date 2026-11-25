@@ -650,3 +650,286 @@ class StudySession {
       start: DateTime.tryParse(j['start'] ?? '') ?? DateTime.now(),
       seconds: (j['seconds'] as num?)?.toInt() ?? 0);
 }
+
+// ============================================================ v7：收藏 / 导图 / 学习对话 / 笔记 / 云端文件
+
+/// 收藏：知识点、闪卡、题目。id = kind_targetId，同一对象只收藏一次。
+class FavoriteItem {
+  String projectId;
+  String kind; // kp / card / question
+  String targetId;
+  String title; // 收藏时的标题快照（对象被删后仍能显示）
+  DateTime createdAt;
+  FavoriteItem({required this.projectId, required this.kind, required this.targetId, this.title = '', DateTime? createdAt})
+      : createdAt = createdAt ?? DateTime.now();
+  String get id => idFor(kind, targetId);
+  static String idFor(String kind, String targetId) => '${kind}_$targetId';
+  static const kinds = ['kp', 'card', 'question'];
+  static const kindNames = {'kp': '知识点', 'card': '闪卡', 'question': '题目'};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'kind': kind,
+        'targetId': targetId,
+        'title': title,
+        'createdAt': createdAt.toIso8601String(),
+      };
+  factory FavoriteItem.fromJson(Map<String, dynamic> j) => FavoriteItem(
+        projectId: j['projectId'] ?? '',
+        kind: j['kind'] ?? 'kp',
+        targetId: j['targetId'] ?? '',
+        title: j['title'] ?? '',
+        createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
+      );
+}
+
+/// 思维导图节点（树）。text 支持 $...$ 公式。
+class MindNode {
+  String id;
+  String text;
+  List<MindNode> children;
+  MindNode({String? id, required this.text, List<MindNode>? children})
+      : id = id ?? newId(),
+        children = children ?? [];
+  int get count => 1 + children.fold(0, (a, c) => a + c.count);
+  MindNode? find(String nodeId) {
+    if (id == nodeId) return this;
+    for (final c in children) {
+      final r = c.find(nodeId);
+      if (r != null) return r;
+    }
+    return null;
+  }
+
+  MindNode? parentOf(String nodeId) {
+    for (final c in children) {
+      if (c.id == nodeId) return this;
+      final r = c.parentOf(nodeId);
+      if (r != null) return r;
+    }
+    return null;
+  }
+
+  Map<String, dynamic> toJson() => {'id': id, 'text': text, if (children.isNotEmpty) 'children': [for (final c in children) c.toJson()]};
+  factory MindNode.fromJson(Map<String, dynamic> j) => MindNode(
+        id: j['id']?.toString(),
+        text: '${j['text'] ?? j['title'] ?? ''}',
+        children: [for (final c in (j['children'] as List?) ?? const []) MindNode.fromJson((c as Map).cast<String, dynamic>())],
+      );
+}
+
+/// 一章的思维导图（按需生成，可手动编辑）。id = docId|章节名。
+class ChapterMindMap {
+  String projectId;
+  String docId;
+  String chapter;
+  MindNode root;
+  DateTime updatedAt;
+  bool edited; // 生成后是否手动改过
+  ChapterMindMap({required this.projectId, required this.docId, required this.chapter, required this.root, DateTime? updatedAt, this.edited = false})
+      : updatedAt = updatedAt ?? DateTime.now();
+  String get id => idFor(docId, chapter);
+  static String idFor(String docId, String chapter) => '$docId|$chapter';
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'docId': docId,
+        'chapter': chapter,
+        'root': root.toJson(),
+        'updatedAt': updatedAt.toIso8601String(),
+        if (edited) 'edited': true,
+      };
+  factory ChapterMindMap.fromJson(Map<String, dynamic> j) => ChapterMindMap(
+        projectId: j['projectId'] ?? '',
+        docId: j['docId'] ?? '',
+        chapter: j['chapter'] ?? '',
+        root: MindNode.fromJson(((j['root'] as Map?) ?? {'text': j['chapter'] ?? ''}).cast<String, dynamic>()),
+        updatedAt: DateTime.tryParse(j['updatedAt'] ?? ''),
+        edited: j['edited'] == true,
+      );
+}
+
+/// 学习对话里选中的一段已解析资料：某份资料的某一章，或一段页码。
+class MaterialRef {
+  String docId;
+  String chapter; // 非空 = 按章
+  int pageFrom;
+  int pageTo;
+  MaterialRef({required this.docId, this.chapter = '', this.pageFrom = 0, this.pageTo = 0});
+  Map<String, dynamic> toJson() => {'docId': docId, if (chapter.isNotEmpty) 'chapter': chapter, 'pageFrom': pageFrom, 'pageTo': pageTo};
+  factory MaterialRef.fromJson(Map<String, dynamic> j) =>
+      MaterialRef(docId: j['docId'] ?? '', chapter: j['chapter'] ?? '', pageFrom: j['pageFrom'] ?? 0, pageTo: j['pageTo'] ?? 0);
+}
+
+/// 学习板块的 AI 对话（基于用户选定的资料范围）。
+class StudyChat {
+  String id;
+  String projectId;
+  String title;
+  List<MaterialRef> scope;
+  List<Map<String, String>> messages; // 只存可见对话（user / assistant），资料原文每次发送时拼进系统提示
+  DateTime createdAt;
+  DateTime updatedAt;
+  StudyChat({required this.id, required this.projectId, this.title = '', List<MaterialRef>? scope, List<Map<String, String>>? messages, DateTime? createdAt, DateTime? updatedAt})
+      : scope = scope ?? [],
+        messages = messages ?? [],
+        createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? createdAt ?? DateTime.now();
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'title': title,
+        'scope': [for (final r in scope) r.toJson()],
+        'messages': messages,
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+      };
+  factory StudyChat.fromJson(Map<String, dynamic> j) => StudyChat(
+        id: j['id'],
+        projectId: j['projectId'] ?? '',
+        title: j['title'] ?? '',
+        scope: [for (final r in (j['scope'] as List?) ?? const []) MaterialRef.fromJson((r as Map).cast<String, dynamic>())],
+        messages: [for (final m in (j['messages'] as List?) ?? const []) (m as Map).map((k, v) => MapEntry('$k', '$v'))],
+        createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
+        updatedAt: DateTime.tryParse(j['updatedAt'] ?? ''),
+      );
+}
+
+/// 笔记里引用的一段已解析原文。
+class NoteQuote {
+  String docId;
+  int page;
+  String text;
+  NoteQuote({required this.docId, this.page = 0, required this.text});
+  Map<String, dynamic> toJson() => {'docId': docId, 'page': page, 'text': text};
+  factory NoteQuote.fromJson(Map<String, dynamic> j) => NoteQuote(docId: j['docId'] ?? '', page: j['page'] ?? 0, text: j['text'] ?? '');
+}
+
+/// 笔记：挂在一个知识点下（kpId 可为空 = 未关联知识点）。
+class StudyNote {
+  String id;
+  String projectId;
+  String kpId;
+  String chapter;
+  String title;
+  String own; // 自己的理解（Markdown + 公式）
+  String ai; // AI 解释
+  List<NoteQuote> quotes;
+  List<String> questionIds;
+  List<String> photoIds; // MediaAsset id
+  DateTime createdAt;
+  DateTime updatedAt;
+  StudyNote({
+    required this.id,
+    required this.projectId,
+    this.kpId = '',
+    this.chapter = '',
+    this.title = '',
+    this.own = '',
+    this.ai = '',
+    List<NoteQuote>? quotes,
+    List<String>? questionIds,
+    List<String>? photoIds,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  })  : quotes = quotes ?? [],
+        questionIds = questionIds ?? [],
+        photoIds = photoIds ?? [],
+        createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? createdAt ?? DateTime.now();
+  bool get isEmpty => own.trim().isEmpty && ai.trim().isEmpty && quotes.isEmpty && questionIds.isEmpty && photoIds.isEmpty;
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'kpId': kpId,
+        'chapter': chapter,
+        'title': title,
+        'own': own,
+        'ai': ai,
+        'quotes': [for (final q in quotes) q.toJson()],
+        'questionIds': questionIds,
+        'photoIds': photoIds,
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+      };
+  factory StudyNote.fromJson(Map<String, dynamic> j) => StudyNote(
+        id: j['id'],
+        projectId: j['projectId'] ?? '',
+        kpId: j['kpId'] ?? '',
+        chapter: j['chapter'] ?? '',
+        title: j['title'] ?? '',
+        own: j['own'] ?? '',
+        ai: j['ai'] ?? '',
+        quotes: [for (final q in (j['quotes'] as List?) ?? const []) NoteQuote.fromJson((q as Map).cast<String, dynamic>())],
+        questionIds: [for (final x in (j['questionIds'] as List?) ?? const []) '$x'],
+        photoIds: [for (final x in (j['photoIds'] as List?) ?? const []) '$x'],
+        createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
+        updatedAt: DateTime.tryParse(j['updatedAt'] ?? ''),
+      );
+}
+
+/// 可以放到云端省空间的大文件（原始资料、笔记照片、导出的 PDF、备份）。
+/// 资料文件的 id = `doc_<docId>`；本地路径就是原来的位置，释放空间后删除本地文件，用到时再下载回同一位置。
+class MediaAsset {
+  String id;
+  String projectId;
+  String kind; // doc / photo / export / backup
+  String ownerId; // 资料 id、笔记 id……
+  String localPath;
+  String fileName;
+  int size;
+  String sha256;
+  String cloudKey; // 非空 = 云端已有一份
+  bool offloaded; // true = 本地文件已删除，只在云端
+  DateTime createdAt;
+  DateTime lastAccess;
+  MediaAsset({
+    required this.id,
+    required this.projectId,
+    required this.kind,
+    this.ownerId = '',
+    required this.localPath,
+    this.fileName = '',
+    this.size = 0,
+    this.sha256 = '',
+    this.cloudKey = '',
+    this.offloaded = false,
+    DateTime? createdAt,
+    DateTime? lastAccess,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        lastAccess = lastAccess ?? createdAt ?? DateTime.now();
+  static String docId(String id) => 'doc_$id';
+  bool get inCloud => cloudKey.isNotEmpty;
+
+  /// 状态文字：仅本机 / 本机 + 云端 / 仅云端。
+  String get stateLabel => offloaded ? '仅云端' : (inCloud ? '本机 + 云端' : '仅本机');
+  static const kindNames = {'doc': '原始资料', 'photo': '笔记照片', 'export': '导出的 PDF', 'backup': '备份'};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'kind': kind,
+        'ownerId': ownerId,
+        'localPath': localPath,
+        'fileName': fileName,
+        'size': size,
+        'sha256': sha256,
+        'cloudKey': cloudKey,
+        'offloaded': offloaded,
+        'createdAt': createdAt.toIso8601String(),
+        'lastAccess': lastAccess.toIso8601String(),
+      };
+  factory MediaAsset.fromJson(Map<String, dynamic> j) => MediaAsset(
+        id: j['id'],
+        projectId: j['projectId'] ?? '',
+        kind: j['kind'] ?? 'doc',
+        ownerId: j['ownerId'] ?? '',
+        localPath: j['localPath'] ?? '',
+        fileName: j['fileName'] ?? '',
+        size: j['size'] ?? 0,
+        sha256: j['sha256'] ?? '',
+        cloudKey: j['cloudKey'] ?? '',
+        offloaded: j['offloaded'] == true,
+        createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
+        lastAccess: DateTime.tryParse(j['lastAccess'] ?? ''),
+      );
+}
