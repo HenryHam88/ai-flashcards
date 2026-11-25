@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path/path.dart' as pth;
 import 'package:path_provider/path_provider.dart';
 
 import 'data/repository.dart';
@@ -13,6 +15,7 @@ import 'services/fsrs.dart';
 import 'services/json_utils.dart';
 import 'services/latex.dart';
 import 'services/llm.dart';
+import 'services/pdf_export.dart';
 import 'services/pipeline.dart';
 import 'services/prompts.dart';
 import 'services/quality.dart';
@@ -22,6 +25,7 @@ import 'services/review_history.dart';
 import 'services/study_queue.dart';
 import 'services/chapter_reparse.dart';
 import 'services/concurrency.dart';
+import 'ui/math_raster.dart';
 
 /// 全局状态：持有仓库与设置，提供业务操作。UI 通过 Provider 读取。
 /// 单个 PDF 的解析任务状态（用于多文件队列的逐个进度显示）。
@@ -46,6 +50,24 @@ class AppState extends ChangeNotifier {
 
   /// 测试可注入云端客户端（模拟 HTTP）。
   S3Client Function(CloudConfig c)? cloudClientFactory;
+
+  /// PDF 导出：内置中文字体子集 + 公式栅格化（测试里可以替换）。
+  Future<PdfExportService> Function()? pdfExporterOverride;
+  Future<PdfExportService> pdfExporter() async {
+    if (pdfExporterOverride != null) return pdfExporterOverride!();
+    final font = await rootBundle.load('assets/fonts/NotoSansSC-Regular-subset.ttf');
+    return PdfExportService(font.buffer.asUint8List(), math: FlutterMathRasterizer());
+  }
+
+  /// 把导出的 PDF 存进应用目录并登记（可以在「释放空间」里放到云端）。
+  Future<File> saveExport(String projectId, String fileName, Uint8List bytes) async {
+    final dir = Directory(pth.join((await appDir()).path, 'exports'))..createSync(recursive: true);
+    final id = 'export_${DateTime.now().microsecondsSinceEpoch}';
+    final f = File(pth.join(dir.path, '${id}_$fileName'));
+    await f.writeAsBytes(bytes);
+    await repo.saveMedia(MediaAsset(id: id, projectId: projectId, kind: 'export', ownerId: '', localPath: f.path, fileName: fileName, size: bytes.length));
+    return f;
+  }
 
   Future<Directory> appDir() async {
     if (appDirOverride != null) return appDirOverride!;

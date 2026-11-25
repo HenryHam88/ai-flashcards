@@ -9,6 +9,8 @@ import 'package:ai_flashcards/models.dart';
 import 'package:ai_flashcards/services/settings.dart';
 import 'package:ai_flashcards/ui/cloud_settings_page.dart';
 import 'package:ai_flashcards/ui/favorites_page.dart';
+import 'package:ai_flashcards/ui/wrong_book_page.dart';
+import 'package:ai_flashcards/services/pdf_export.dart';
 import 'package:ai_flashcards/ui/project_page.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -104,5 +106,29 @@ void main() {
   testWidgets('收藏页：知识点、闪卡、题目', (t) async {
     await t.runAsync(seedFavorites);
     await shoot(t, const FavoritesPage(), '53_favorites');
+  });
+
+  testWidgets('导出错题 PDF 面板；生成后登记为导出文件', (t) async {
+    await t.runAsync(() async {
+      await state.repo.saveQuestions([
+        Question(id: 'q9', projectId: 'p2', chapter: '第二章 一阶微分方程', type: QType.judge, stem: r"方程 $y'=ky^2$ 是线性方程", answer: '错'),
+      ]);
+      await state.repo.saveWrong(WrongEntry(id: 'q1', projectId: 'p2', questionId: 'q1', lastAnswer: 'A'));
+      await state.repo.saveWrong(WrongEntry(id: 'q9', projectId: 'p2', questionId: 'q9', mark: '不确定'));
+    });
+    state.pdfExporterOverride = () async => PdfExportService(File('assets/fonts/NotoSansSC-Regular-subset.ttf').readAsBytesSync());
+    await shoot(t, const WrongBookPage(projectId: 'p2'), '54_wrong_export', after: () async {
+      await t.tap(find.text('导出 PDF'));
+      await settle(t, 8);
+    });
+    await t.tap(find.text('全部放在最后'));
+    await t.pump();
+    await t.tap(find.text('生成 PDF'));
+    await settle(t, 20);
+    expect(find.textContaining('PDF 已生成'), findsOneWidget);
+    final media = await t.runAsync(() => state.repo.media());
+    final m = media!.singleWhere((e) => e.kind == 'export');
+    expect(m.fileName, startsWith('常微分方程-错题集-'));
+    expect(File(m.localPath).readAsBytesSync().take(4), '%PDF'.codeUnits);
   });
 }

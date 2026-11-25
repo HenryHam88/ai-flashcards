@@ -437,14 +437,18 @@ class _ReminderPageState extends State<ReminderPage> {
 
 // ------------------------------------------------------------------ 数据：导出 / 导入
 
-Future<void> saveOrShareBackup(BuildContext context, Uint8List bytes, String name) async {
+Future<void> saveOrShareBackup(BuildContext context, Uint8List bytes, String name) =>
+    saveOrShareFile(context, bytes, name, title: '备份已生成（${fmtSize(bytes.length)}）', mimeType: 'application/zip');
+
+/// 生成好的文件（备份、PDF）：保存到文件夹或分享。
+Future<void> saveOrShareFile(BuildContext context, Uint8List bytes, String name, {required String title, required String mimeType}) async {
   final how = await showModalBottomSheet<String>(
     context: context,
     backgroundColor: M.sheet,
     builder: (ctx) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 12),
-        Text('备份已生成（${fmtSize(bytes.length)}）', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
         const SizedBox(height: 8),
         ListTile(
             leading: const Icon(Icons.save_alt_rounded),
@@ -462,13 +466,13 @@ Future<void> saveOrShareBackup(BuildContext context, Uint8List bytes, String nam
   );
   if (how == null || !context.mounted) return;
   if (how == 'save') {
-    final uri = await FilePicker.saveFile(fileName: name, bytes: bytes, mimeType: 'application/zip');
+    final uri = await FilePicker.saveFile(fileName: name, bytes: bytes, mimeType: mimeType);
     if (uri != null && context.mounted) toast(context, '已保存：$name');
   } else {
     final dir = await Directory.systemTemp.createTemp('afc');
     final f = File(p.join(dir.path, name));
     await f.writeAsBytes(bytes);
-    await SharePlus.instance.share(ShareParams(files: [XFile(f.path, mimeType: 'application/zip')], subject: name));
+    await SharePlus.instance.share(ShareParams(files: [XFile(f.path, mimeType: mimeType)], subject: name));
   }
 }
 

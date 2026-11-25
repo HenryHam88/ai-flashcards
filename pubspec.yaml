@@ -81,6 +81,7 @@ flutter:
     - CHANGELOG.md
     - assets/logo.png
     - assets/help/
+    - assets/fonts/NotoSansSC-Regular-subset.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:
