@@ -6,9 +6,11 @@ import 'package:ai_flashcards/data/doc_store.dart';
 import 'package:ai_flashcards/data/repository.dart';
 import 'package:ai_flashcards/main.dart';
 import 'package:ai_flashcards/models.dart';
+import 'package:ai_flashcards/services/llm.dart';
 import 'package:ai_flashcards/services/settings.dart';
 import 'package:ai_flashcards/ui/cloud_settings_page.dart';
 import 'package:ai_flashcards/ui/favorites_page.dart';
+import 'package:ai_flashcards/ui/me_page.dart' show LlmSettingsPage;
 import 'package:ai_flashcards/ui/wrong_book_page.dart';
 import 'package:ai_flashcards/ui/study_page.dart';
 import 'package:ai_flashcards/ui/mindmap_view.dart';
@@ -181,12 +183,23 @@ void main() {
 
 $$P(A\mid B)=\frac{P(AB)}{P(B)}$$
 
-如果 $P(B)=0$，分母为零，「在 $B$ 发生的条件下」本身就没有意义（教材第 12 页）。'''},
+如果 $P(B)=0$，分母为零，「在 $B$ 发生的条件下」本身就没有意义（教材第 12 页）。''',
+          'sources': WebSource.encode(const [
+            WebSource(url: 'https://zh.wikipedia.org/wiki/条件概率', title: '条件概率 - 维基百科', cited: true),
+            WebSource(url: 'https://math.example.edu/prob/ch1', title: '概率论讲义 第一章'),
+          ])},
       ]));
     });
     await shoot(t, const StudyPage(projectId: 'p1'), '57_study_chat', after: () async {
       await t.tap(find.text('AI 伴学 · 为什么要求 P(B)>0'));
       await settle(t, 8);
+    });
+  });
+
+  testWidgets('出题模型：AI 联网（默认开启、深度搜索）', (t) async {
+    await shoot(t, const LlmSettingsPage(), '60_llm_web', after: () async {
+      await t.drag(find.byType(ListView).first, const Offset(0, -300));
+      await settle(t, 3);
     });
   });
 

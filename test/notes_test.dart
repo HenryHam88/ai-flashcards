@@ -5,6 +5,7 @@ import 'package:ai_flashcards/app_state.dart';
 import 'package:ai_flashcards/data/doc_store.dart';
 import 'package:ai_flashcards/data/repository.dart';
 import 'package:ai_flashcards/models.dart';
+import 'package:ai_flashcards/services/llm.dart';
 import 'package:ai_flashcards/services/pdf_export.dart';
 import 'package:ai_flashcards/services/settings.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -67,8 +68,12 @@ void main() {
     final n = await s.noteFor(projectId: 'p1', kpId: 'kp1');
     n.own = '分母不能为零';
     final a = await s.noteExplain(n);
-    expect(a, contains(r'\dfrac'));
-    final prompt = llm.chats.single.single['content']!;
+    expect(a.content, contains(r'\dfrac'));
+    // 默认联网（深度搜索）：系统提示说明以教材为准，并带回参考网页
+    expect(llm.webs.single, WebMode.deep);
+    expect(llm.chats.single.first['content'], contains('以学生自己的教材'));
+    expect(a.sources.single.url, 'https://example.com/p');
+    final prompt = llm.chats.single.last['content']!;
     expect(prompt, contains('条件概率'));
     expect(prompt, contains('设 P(B)>0'));
     expect(prompt, contains('我的理解：分母不能为零'));

@@ -491,32 +491,65 @@ class AppState extends ChangeNotifier {
       required String docId,
       required int page,
       String kind = '',
-      String title = ''}) async {
+      String title = '',
+      AiIo? io}) async {
     final cached = await repo.explain(itemId);
     if (cached != null && cached.messages.isNotEmpty) return cached;
     final src = await sourceText(docId, page);
     final prompt = Prompts.fill(settings.prompt('explain'),
         {'item': itemText, 'page': '$page', 'source': src.isEmpty ? '（无原文）' : src});
     final client = await llm();
-    var answer = await client.chat([{'role': 'user', 'content': prompt}]);
-    answer = await _ensureLatex(client, [{'role': 'user', 'content': prompt}], answer);
+    final msgs = [{'role': 'user', 'content': prompt}];
+    final r = await _answer(client, msgs, web: settings.web(), io: io);
     final c = ExplainCache(id: itemId, projectId: projectId, kind: kind, title: title, messages: [
       {'role': 'user', 'content': prompt},
-      {'role': 'assistant', 'content': answer},
+      {'role': 'assistant', 'content': r.content, ...r.extras()},
     ]);
     await repo.saveExplain(c);
     return c;
   }
 
-  Future<ExplainCache> followUp(ExplainCache c, String question) async {
+  Future<ExplainCache> followUp(ExplainCache c, String question, {AiIo? io}) async {
     final msgs = [...c.messages, {'role': 'user', 'content': '$question\n（${Prompts.answerStyle}）'}];
     final client = await llm();
-    var answer = await client.chat(msgs);
-    answer = await _ensureLatex(client, msgs, answer);
-    c.messages = [...c.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': answer}];
+    final r = await _answer(client, msgs, web: settings.web(), io: io);
+    c.messages = [...c.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': r.content, ...r.extras()}];
     c.updatedAt = DateTime.now();
     await repo.saveExplain(c);
     return c;
+  }
+
+  /// 联网时在系统提示里说明「教材为准、网页补充」。
+  static List<Map<String, String>> withWebGuide(List<Map<String, String>> msgs, WebMode web) {
+    if (web == WebMode.off) return msgs;
+    if (msgs.isNotEmpty && msgs.first['role'] == 'system') {
+      return [{...msgs.first, 'content': '${msgs.first['content']}\n\n${Prompts.webGuide}'}, ...msgs.skip(1)];
+    }
+    return [{'role': 'system', 'content': Prompts.webGuide}, ...msgs];
+  }
+
+  /// 一次可联网、可流式、可停止的回答。停止时保留已经收到的部分；什么都还没收到就抛 [LlmCancelled]。
+  Future<LlmReply> _answer(LlmClient client, List<Map<String, String>> msgs, {required WebMode web, AiIo? io}) async {
+    var partial = '';
+    final onDelta = io?.onDelta;
+    try {
+      final r = await client.ask(withWebGuide(msgs, web),
+          web: web,
+          onDelta: onDelta == null
+              ? null
+              : (t) {
+                  partial = t;
+                  onDelta(t);
+                },
+          onStatus: io?.onStatus,
+          cancel: io?.cancel);
+      final fixed = await _ensureLatex(client, msgs, r.content);
+      return LlmReply(r.truncated ? '$fixed\n\n（回答太长，被截断了，可以追问「接着讲」）' : fixed,
+          sources: r.sources, serverToolCalls: r.serverToolCalls, reasoning: r.reasoning);
+    } on LlmCancelled {
+      if (partial.trim().isEmpty) rethrow;
+      return LlmReply('${stripMetaPreamble(LatexUtil.autoFix(partial))}\n\n（已停止生成）');
+    }
   }
 
   /// LaTeX 校验失败时让模型修正一次，仍失败则做本地修复。
@@ -525,7 +558,7 @@ class AppState extends ChangeNotifier {
     final problems = LatexUtil.validate(fixed);
     if (problems.isEmpty) return fixed;
     final again = await client.chat([
-      ...msgs,
+      for (final m in msgs) {'role': m['role'] ?? 'user', 'content': m['content'] ?? ''},
       {'role': 'assistant', 'content': answer},
       {
         'role': 'user',
@@ -541,29 +574,30 @@ class AppState extends ChangeNotifier {
 
   /// 按需生成一章的思维导图（用户点按钮才调用）。
   Future<ChapterMindMap> generateMindMap(StudyChapter c) async {
-    final m = await study.generateMindMap(await llm(), c);
+    final m = await study.generateMindMap(await llm(), c, web: settings.web());
     changed();
     return m;
   }
 
   /// AI 伴学：每次都把选中资料的原文放进系统提示，对话本身只存可见内容。
-  Future<StudyChat> studyAsk(StudyChat chat, String question) async {
+  Future<StudyChat> studyAsk(StudyChat chat, String question, {AiIo? io}) async {
     final st = study;
     final mat = await st.material(chat.projectId, chat.scope);
     final scope = chat.scope.isEmpty ? '（未选择资料）' : await st.scopeLabel(chat.projectId, chat.scope);
+    final web = settings.web(chatOn: chat.web, chatMode: chat.webMode == null ? null : (chat.webMode == 'normal' ? WebMode.normal : WebMode.deep));
     final system = Prompts.fill(settings.prompt('study'), {
-      'scope': mat.truncated ? '$scope（原文较长，只附上了前一部分）' : scope,
-      'material': mat.text.isEmpty ? '（没有选择资料，请按一般教材知识回答，并提醒学生选择资料）' : mat.text,
+      'scope': mat.truncated ? '$scope（原文较长，只附上了前 ${mat.used} 字，约占所选范围的 ${mat.percent}%）' : scope,
+      'material': mat.text.isEmpty
+          ? (web == WebMode.off ? '（没有选择资料，请按一般教材知识回答，并提醒学生选择资料）' : '（没有选择资料，可以联网查资料回答，并提醒学生选择资料）')
+          : mat.text,
     });
     final msgs = [
       {'role': 'system', 'content': system},
       ...chat.messages,
       {'role': 'user', 'content': question},
     ];
-    final client = await llm();
-    var answer = await client.chat(msgs);
-    answer = await _ensureLatex(client, msgs, answer);
-    chat.messages = [...chat.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': answer}];
+    final r = await _answer(await llm(), msgs, web: web, io: io);
+    chat.messages = [...chat.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': r.content, ...r.extras()}];
     if (chat.title.isEmpty) chat.title = question.length > 24 ? '${question.substring(0, 24)}…' : question;
     chat.updatedAt = DateTime.now();
     await repo.saveStudyChat(chat);
@@ -633,7 +667,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// AI 讲解知识点：和「AI 解释」同一个提示词，带上知识点内容和教材原文。
-  Future<String> noteExplain(StudyNote n) async {
+  Future<LlmReply> noteExplain(StudyNote n, {AiIo? io}) async {
     final kp = n.kpId.isEmpty ? null : await repo.kp(n.kpId);
     final item = [n.title, if (kp != null && kp.content.isNotEmpty) kp.content, if (n.own.trim().isNotEmpty) '我的理解：${n.own}'].join('\n');
     final docId = kp?.docId ?? (n.quotes.isEmpty ? '' : n.quotes.first.docId);
@@ -642,16 +676,13 @@ class AppState extends ChangeNotifier {
     final quotes = n.quotes.map((q) => q.text).join('\n');
     final prompt = Prompts.fill(settings.prompt('explain'),
         {'item': item, 'page': '$page', 'source': [src, quotes].where((e) => e.trim().isNotEmpty).join('\n\n').ifEmpty('（无原文）')});
-    final client = await llm();
-    final msgs = [{'role': 'user', 'content': prompt}];
-    final answer = await client.chat(msgs);
-    return _ensureLatex(client, msgs, answer);
+    return _answer(await llm(), [{'role': 'user', 'content': prompt}], web: settings.web(), io: io);
   }
 
   /// 主观题 AI 批改，返回 (得分 0-10, 点评)。
   Future<(int, String)> gradeSubjective(Question q, String userAnswer) async {
     final prompt = Prompts.fill(settings.prompt('grade'), {'stem': q.stem, 'answer': q.answer, 'user_answer': userAnswer});
-    final j = await (await llm()).chatJson(prompt);
+    final j = await (await llm()).askJson(prompt, web: settings.web());
     return (asInt(j['score']).clamp(0, 10), LatexUtil.autoFix('${j['comment'] ?? ''}'));
   }
 }

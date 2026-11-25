@@ -7,8 +7,10 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../services/llm.dart';
 import '../services/pdf_export.dart';
 import '../theme/glass.dart';
+import 'ai_widgets.dart';
 import 'explain_sheet.dart' show showSourceSheet;
 import 'settings_pages.dart' show fmtSize, saveOrShareFile;
 
@@ -269,6 +271,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   List<Question> questions = [];
   Map<String, PdfDoc> docs = {};
   bool aiBusy = false;
+  final aiRun = AiRun();
   bool dirty = false;
   late final AppState s = context.read<AppState>();
 
@@ -299,6 +302,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     if (dirty) _save();
     title.dispose();
     own.dispose();
+    aiRun.dispose();
     super.dispose();
   }
 
@@ -374,12 +378,17 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       n
         ..title = title.text.trim()
         ..own = own.text;
-      final a = await s.noteExplain(n);
-      n.ai = a;
+      final a = await s.noteExplain(n, io: aiRun.start());
+      n
+        ..ai = a.content
+        ..aiSources = a.sources.isEmpty ? '' : WebSource.encode(a.sources);
       await s.saveNote(n);
+    } on LlmCancelled {
+      if (mounted) toast(context, '已停止');
     } catch (e) {
       if (mounted) toast(context, '$e');
     }
+    aiRun.finish();
     if (mounted) setState(() => aiBusy = false);
   }
 
@@ -640,7 +649,9 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
                       onSelected: (v) async {
                         if (v == 'regen') await _ai();
                         if (v == 'clear') {
-                          n.ai = '';
+                          n
+                            ..ai = ''
+                            ..aiSources = '';
                           await s.saveNote(n);
                           setState(() {});
                         }
@@ -651,11 +662,15 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
                       ],
                     )),
           if (aiBusy)
-            Padding(padding: const EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(color: M.sage)))
+            Glass(child: AiRunView(run: aiRun, idle: aiIdleText(s)))
           else if (n.ai.isEmpty)
             GlassButton(label: '让 AI 讲解这个知识点', icon: Icons.auto_awesome_rounded, expand: true, onTap: _ai)
           else
-            Glass(child: MathText(n.ai, style: const TextStyle(fontSize: 14, height: 1.6))),
+            Glass(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              MathText(n.ai, style: const TextStyle(fontSize: 14, height: 1.6)),
+              WebSourcesView(WebSource.decode(n.aiSources)),
+            ])),
           _head('相关题目', trailing: _addButton('选择', Icons.playlist_add_rounded, _addQuestions)),
           if (questions.isEmpty) Text('把这个知识点的典型题、错题挂在这里，复习时一起看。', style: TextStyle(color: M.sub, fontSize: 13)),
           for (final q in questions)

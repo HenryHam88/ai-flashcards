@@ -5,10 +5,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../app_state.dart';
 import '../services/cloud_storage.dart' show CloudProvider;
 import '../services/concurrency.dart';
+import '../services/llm.dart';
 import '../services/prompts.dart';
 import '../services/settings.dart';
 import '../theme/glass.dart';
 import '../help/help_articles.dart' show HelpIds;
+import 'ai_widgets.dart';
 import 'cloud_settings_page.dart';
 import 'explain_history_page.dart';
 import 'favorites_page.dart';
@@ -155,6 +157,72 @@ class LlmSettingsPage extends StatefulWidget {
 
 class _LlmSettingsPageState extends State<LlmSettingsPage> {
   String? testResult;
+  final tick = ValueNotifier(0); // 接口地址 / 模型变了，联网是否可用要跟着变
+
+  @override
+  void dispose() {
+    tick.dispose();
+    super.dispose();
+  }
+
+  Widget _webGroup(Settings st) => ValueListenableBuilder(
+        valueListenable: tick,
+        builder: (context, _, _) {
+          final reason = st.webUnavailable;
+          final on = st.webSearch && reason == null;
+          Widget mode(WebMode m) => Expanded(
+                child: Glass(
+                  radius: 14,
+                  tint: on && st.webMode == m ? M.sage : null,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  onTap: on
+                      ? () {
+                          st.webMode = m;
+                          tick.value++;
+                        }
+                      : null,
+                  child: Column(children: [
+                    Text(webModeNames[m]!, style: TextStyle(fontWeight: FontWeight.w700, color: on && st.webMode == m ? Colors.white : M.text)),
+                    const SizedBox(height: 2),
+                    Text(m == WebMode.deep ? '更准，较慢' : '更快、更省',
+                        style: TextStyle(fontSize: 11, color: on && st.webMode == m ? Colors.white : M.sub)),
+                  ]),
+                ),
+              );
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SettingsGroup(title: 'AI 联网', children: [
+              SwitchTile(
+                icon: Icons.public_rounded,
+                title: 'AI 联网搜索',
+                subtitle: reason ?? 'AI 解释、伴学、笔记讲解、思维导图和主观题批改会在需要时上网查资料。出闪卡和出题不联网，只依据你的资料。',
+                value: on,
+                onChanged: (v) {
+                  if (reason != null) {
+                    toast(context, reason);
+                    return;
+                  }
+                  st.webSearch = v;
+                  tick.value++;
+                },
+              ),
+            ]),
+            const SizedBox(height: 10),
+            Opacity(
+              opacity: on ? 1 : 0.5,
+              child: Row(children: [mode(WebMode.deep), const SizedBox(width: 10), mode(WebMode.normal)]),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                  '${webModeNames[WebMode.deep]}：${webModeHints[WebMode.deep]}。\n${webModeNames[WebMode.normal]}：${webModeHints[WebMode.normal]}。\n'
+                  '搜索和读网页本身不收费，搜到的内容按模型 Token 计费。AI 伴学里每个对话还能单独切换。',
+                  style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
+            ),
+          ]);
+        },
+      );
+
   @override
   Widget build(BuildContext context) {
     final s = context.read<AppState>();
@@ -167,15 +235,22 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('兼容 OpenAI 格式的服务都能用（DeepSeek、通义千问、Kimi 等）。', style: TextStyle(color: M.sub, fontSize: 13)),
             const SizedBox(height: 12),
-            settingsTextField('接口地址', st.llmBaseUrl, (v) => st.llmBaseUrl = v, hint: 'https://api.deepseek.com'),
+            settingsTextField('接口地址', st.llmBaseUrl, (v) {
+              st.llmBaseUrl = v;
+              tick.value++;
+            }, hint: 'https://api.deepseek.com'),
             KeyField(label: 'API 密钥', load: st.llmKey, save: st.setLlmKey),
-            settingsTextField('模型名称', st.llmModel, (v) => st.llmModel = v, hint: 'deepseek-flash'),
+            settingsTextField('模型名称', st.llmModel, (v) {
+              st.llmModel = v;
+              tick.value++;
+            }, hint: 'deepseek-flash'),
             Wrap(spacing: 8, children: [
               for (final m in ['deepseek-flash', 'deepseek-v4-pro'])
                 ActionChip(
                     label: Text(m),
                     onPressed: () {
                       st.llmModel = m;
+                      tick.value++;
                       setState(() {});
                       toast(context, '已切换为 $m（重新进入页面可见）');
                     }),
@@ -184,6 +259,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
             Text('提示：日常用 deepseek-flash 便宜；难题可切到 deepseek-v4-pro。', style: TextStyle(color: M.sub, fontSize: 12)),
           ]),
         ),
+        _webGroup(st),
         const SizedBox(height: 14),
         GlassButton(
           label: '测试连接',

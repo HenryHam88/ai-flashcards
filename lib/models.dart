@@ -791,9 +791,21 @@ class StudyChat {
   String title;
   List<MaterialRef> scope;
   List<Map<String, String>> messages; // 只存可见对话（user / assistant），资料原文每次发送时拼进系统提示
+  /// 这个对话的联网设置：null = 跟随「我的 → 出题模型」里的全局设置。
+  bool? web;
+  String? webMode; // 'deep' / 'normal'
   DateTime createdAt;
   DateTime updatedAt;
-  StudyChat({required this.id, required this.projectId, this.title = '', List<MaterialRef>? scope, List<Map<String, String>>? messages, DateTime? createdAt, DateTime? updatedAt})
+  StudyChat(
+      {required this.id,
+      required this.projectId,
+      this.title = '',
+      List<MaterialRef>? scope,
+      List<Map<String, String>>? messages,
+      this.web,
+      this.webMode,
+      DateTime? createdAt,
+      DateTime? updatedAt})
       : scope = scope ?? [],
         messages = messages ?? [],
         createdAt = createdAt ?? DateTime.now(),
@@ -804,6 +816,8 @@ class StudyChat {
         'title': title,
         'scope': [for (final r in scope) r.toJson()],
         'messages': messages,
+        if (web != null) 'web': web,
+        if (webMode != null) 'webMode': webMode,
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
       };
@@ -813,6 +827,8 @@ class StudyChat {
         title: j['title'] ?? '',
         scope: [for (final r in (j['scope'] as List?) ?? const []) MaterialRef.fromJson((r as Map).cast<String, dynamic>())],
         messages: [for (final m in (j['messages'] as List?) ?? const []) (m as Map).map((k, v) => MapEntry('$k', '$v'))],
+        web: j['web'] is bool ? j['web'] : null,
+        webMode: j['webMode'] is String ? j['webMode'] : null,
         createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
         updatedAt: DateTime.tryParse(j['updatedAt'] ?? ''),
       );
@@ -837,6 +853,7 @@ class StudyNote {
   String title;
   String own; // 自己的理解（Markdown + 公式）
   String ai; // AI 解释
+  String aiSources; // AI 讲解引用的网页（WebSource.encode）
   List<NoteQuote> quotes;
   List<String> questionIds;
   List<String> photoIds; // MediaAsset id
@@ -850,6 +867,7 @@ class StudyNote {
     this.title = '',
     this.own = '',
     this.ai = '',
+    this.aiSources = '',
     List<NoteQuote>? quotes,
     List<String>? questionIds,
     List<String>? photoIds,
@@ -869,6 +887,7 @@ class StudyNote {
         'title': title,
         'own': own,
         'ai': ai,
+        if (aiSources.isNotEmpty) 'aiSources': aiSources,
         'quotes': [for (final q in quotes) q.toJson()],
         'questionIds': questionIds,
         'photoIds': photoIds,
@@ -883,6 +902,7 @@ class StudyNote {
         title: j['title'] ?? '',
         own: j['own'] ?? '',
         ai: j['ai'] ?? '',
+        aiSources: j['aiSources'] ?? '',
         quotes: [for (final q in (j['quotes'] as List?) ?? const []) NoteQuote.fromJson((q as Map).cast<String, dynamic>())],
         questionIds: [for (final x in (j['questionIds'] as List?) ?? const []) '$x'],
         photoIds: [for (final x in (j['photoIds'] as List?) ?? const []) '$x'],

@@ -4,8 +4,10 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../services/llm.dart';
 import '../services/study.dart';
 import '../theme/glass.dart';
+import 'ai_widgets.dart';
 import 'chapter_reparse.dart' show showChapterKps;
 import 'mindmap_view.dart';
 import 'notes_page.dart' show openNoteFor, pickKnowledgePoint;
@@ -262,6 +264,17 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
   String? pending; // 正在等回答的问题
   StudyMaterial? material;
   String scopeText = '';
+  final run = AiRun();
+  // 还没有对话时选的联网方式（建对话时带上）
+  bool? webOn;
+  String? webMode;
+
+  @override
+  void dispose() {
+    run.dispose();
+    input.dispose();
+    super.dispose();
+  }
 
   static const quick = ['通俗讲讲这部分的核心脉络', '推导一下关键公式', '举个典型例题并讲解', '有哪些容易混淆的概念？'];
 
@@ -285,16 +298,19 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
     q = q.trim();
     if (q.isEmpty || busy) return;
     final s = context.read<AppState>();
-    final c = chat ?? StudyChat(id: newId(), projectId: widget.projectId, scope: scope);
+    final c = chat ?? StudyChat(id: newId(), projectId: widget.projectId, scope: scope, web: webOn, webMode: webMode);
     c.scope = scope;
     setState(() => (busy = true, chat = c, pending = q));
     input.clear();
     try {
-      final r = await s.studyAsk(c, q);
+      final r = await s.studyAsk(c, q, io: run.start());
       if (mounted) setState(() => chat = r);
+    } on LlmCancelled {
+      if (mounted) toast(context, '已停止');
     } catch (e) {
       if (mounted) toast(context, '$e');
     }
+    run.finish();
     _notify();
     if (mounted) setState(() => (busy = false, pending = null));
   }
@@ -368,6 +384,22 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
           Icon(Icons.auto_awesome_rounded, color: M.sageDark, size: 20),
           const SizedBox(width: 8),
           const Text('AI 伴学', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 8),
+          WebModeChip(
+            state: context.read<AppState>(),
+            on: chat?.web ?? webOn,
+            mode: chat?.webMode ?? webMode,
+            enabled: !busy,
+            onChanged: (v) async {
+              setState(() {
+                webOn = v.on;
+                webMode = v.mode;
+                chat?.web = v.on;
+                chat?.webMode = v.mode;
+              });
+              if (chat != null && chat!.messages.isNotEmpty) await context.read<AppState>().repo.saveStudyChat(chat!);
+            },
+          ),
           const Spacer(),
           IconButton(tooltip: '历史对话', onPressed: busy ? null : _history, icon: Icon(Icons.history_rounded, color: M.sub)),
           IconButton(
@@ -404,8 +436,10 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
       if (m != null && m.truncated)
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 6),
-          child: Text('选的内容比较多，只会发送前 ${charsLabel(StudyService.budget).substring(2)}原文，缩小范围回答会更准。',
-              style: TextStyle(color: M.roseDark, fontSize: 12)),
+          child: Text(
+              '所选范围共${charsLabel(m.chars)}，超过上限，AI 只能看到前 ${m.used} 字（约 ${m.percent}%，到第 ${m.lastPage} ${m.unit}为止）。'
+              '后面的内容它看不到，建议在上面缩小到具体章节或页码。',
+              style: TextStyle(color: M.roseDark, fontSize: 12, height: 1.4)),
         ),
       Expanded(
         child: ListView(controller: widget.controller, padding: const EdgeInsets.symmetric(horizontal: 20), children: [
@@ -437,6 +471,7 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
                           child: Text(x['content']!, style: const TextStyle(color: Colors.white))))
                   : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       MathText(stripMetaPreamble(x['content']!), style: const TextStyle(fontSize: 15, height: 1.6)),
+                      WebSourcesView(sourcesOf(x)),
                       Row(children: [
                         TextButton.icon(
                           onPressed: () {
@@ -472,7 +507,10 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       child: Text(pending!, style: const TextStyle(color: Colors.white)))),
             ),
-          if (busy) Padding(padding: const EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(color: M.sage))),
+          if (busy)
+            Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: AiRunView(run: run, idle: aiIdleText(context.read<AppState>(), web: chatWebMode(context.read<AppState>(), chat?.web, chat?.webMode)))),
           const SizedBox(height: 16),
         ]),
       ),

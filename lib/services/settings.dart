@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'concurrency.dart';
+import 'llm.dart';
 import 'prompts.dart';
 
 /// 密钥存储抽象（正式环境用 flutter_secure_storage，测试用内存）。
@@ -49,6 +50,22 @@ class Settings {
   set llmModel(String v) => prefs.setString('llm_model', v.trim());
   Future<String> llmKey() async => await secrets.read('llm_key') ?? '';
   Future<void> setLlmKey(String v) => secrets.write('llm_key', v.trim());
+
+  // AI 联网（DeepSeek 服务端联网工具）。默认开启、默认深度搜索；出闪卡 / 出题永远不联网。
+  bool get webSearch => prefs.getBool('web_search') ?? true;
+  set webSearch(bool v) => prefs.setBool('web_search', v);
+  WebMode get webMode => prefs.getString('web_mode') == 'normal' ? WebMode.normal : WebMode.deep;
+  set webMode(WebMode v) => prefs.setString('web_mode', v == WebMode.normal ? 'normal' : 'deep');
+
+  /// 当前模型不能联网的原因；null = 可以联网。
+  String? get webUnavailable => LlmClient.webUnavailableReason(llmBaseUrl, llmModel);
+
+  /// 实际使用的联网方式：[chatOn] / [chatMode] 是单个对话的设置（null = 跟随全局）。
+  WebMode web({bool? chatOn, WebMode? chatMode}) {
+    if (webUnavailable != null) return WebMode.off;
+    if (!(chatOn ?? webSearch)) return WebMode.off;
+    return chatMode ?? webMode;
+  }
 
   // PDF 解析
   OcrProvider get ocrProvider =>
@@ -202,7 +219,7 @@ class Settings {
 
   /// 不含任何密钥的设置项，用于备份。
   static const backupKeys = [
-    'llm_base', 'llm_model', 'ocr_provider', 'ocr_modes', 'ocr_base', 'ocr_batch', 'kimi_base', 'gen_templates',
+    'llm_base', 'llm_model', 'web_search', 'web_mode', 'ocr_provider', 'ocr_modes', 'ocr_base', 'ocr_batch', 'kimi_base', 'gen_templates',
     'daily_new_limit', 'daily_review_limit', 'desired_retention', 'day_start_hour', 'theme_mode', 'text_scale',
     'math_scale', 'reduce_motion', 'haptics', 'reminder_on', 'reminder_minutes', 'auto_backup', 'review_before_add',
     'auto_cap', 'concurrency',

@@ -15,6 +15,7 @@ class FakeLlm extends LlmClient {
   final String answer;
   final prompts = <String>[];
   final chats = <List<Map<String, String>>>[];
+  final webs = <WebMode>[];
   FakeLlm({this.json = const {}, this.answer = '## 条件概率\n就是在 \$B\$ 发生的前提下 \$A\$ 的概率。'}) : super(baseUrl: 'http://x', apiKey: 'k', model: 'm');
   @override
   Future<Map<String, dynamic>> chatJson(String prompt, {String? system, int retries = 3}) async {
@@ -23,9 +24,24 @@ class FakeLlm extends LlmClient {
   }
 
   @override
+  Future<Map<String, dynamic>> askJson(String prompt, {String? system, WebMode web = WebMode.off, int retries = 3}) async {
+    webs.add(web);
+    return chatJson(prompt, system: system);
+  }
+
+  @override
   Future<String> chat(List<Map<String, String>> messages, {bool json = false, double temperature = 0.7, int retries = 3}) async {
     chats.add(messages);
     return answer;
+  }
+
+  @override
+  Future<LlmReply> ask(List<Map<String, String>> messages,
+      {WebMode web = WebMode.off, bool json = false, double temperature = 0.7, int retries = 3, void Function(String text)? onDelta, LlmStatus? onStatus, AiCancel? cancel}) async {
+    chats.add(messages);
+    webs.add(web);
+    onDelta?.call(answer);
+    return LlmReply(answer, sources: web == WebMode.off ? const [] : const [WebSource(url: 'https://example.com/p', title: '条件概率 - 百科', cited: true)]);
   }
 }
 
@@ -104,6 +120,7 @@ void main() {
     final saved = await s.repo.mindMap('d1', '第一章 随机事件与概率');
     expect(saved!.root.count, m.root.count);
     expect((await s.study.chapters('p1'))[0].map, isNotNull);
+    expect(llm.webs.single, WebMode.deep, reason: '导图跟随全局联网设置（默认深度搜索）');
   });
 
   test('没有文字的章节不能生成；AI 返回空树时报错', () async {
@@ -128,6 +145,35 @@ void main() {
     await s.studyAsk(r, '再举个例子');
     expect(llm.chats.last.length, 4, reason: 'system + 上一轮两条 + 新问题');
     expect((await s.repo.studyChats('p1')).single.messages.length, 4);
+    // 默认联网：回答保存了参考网页；系统提示里写明以资料为准
+    expect(llm.webs, [WebMode.deep, WebMode.deep]);
+    expect(sent.first['content'], contains('必须以学生自己的教材'));
+    expect(WebSource.decode(r.messages[1]['sources']).single.title, '条件概率 - 百科');
+  });
+
+  test('AI 伴学：对话可以单独切换普通联网或关闭联网，并随对话保存', () async {
+    final chat = StudyChat(id: 'c2', projectId: 'p1', web: true, webMode: 'normal');
+    await s.studyAsk(chat, '问题一');
+    expect(llm.webs.last, WebMode.normal);
+    chat.web = false;
+    final r = await s.studyAsk(chat, '问题二');
+    expect(llm.webs.last, WebMode.off);
+    expect(llm.chats.last.first['content'], isNot(contains('联网搜索')));
+    expect(r.messages[3]['sources'], isNull);
+    final saved = (await s.repo.studyChats('p1')).firstWhere((c) => c.id == 'c2');
+    expect((saved.web, saved.webMode), (false, 'normal'));
+    // 全局关掉后，跟随全局的对话不联网
+    s.settings.webSearch = false;
+    await s.studyAsk(StudyChat(id: 'c3', projectId: 'p1'), '问题三');
+    expect(llm.webs.last, WebMode.off);
+  });
+
+  test('主观题批改跟随全局联网设置', () async {
+    await s.gradeSubjective(Question(id: 'q', projectId: 'p1', type: '简答', stem: '题', answer: '答'), '我的答案');
+    expect(llm.webs.last, WebMode.deep);
+    s.settings.webSearch = false;
+    await s.gradeSubjective(Question(id: 'q', projectId: 'p1', type: '简答', stem: '题', answer: '答'), '我的答案');
+    expect(llm.webs.last, WebMode.off);
   });
 
   test('导图节点 JSON 往返（含说明、页码、知识点）', () {

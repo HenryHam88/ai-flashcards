@@ -24,7 +24,12 @@ class StudyMaterial {
   final int chars; // 选中范围的原文总字数
   final bool truncated; // 超出预算，只发了一部分
   final int pages;
-  const StudyMaterial(this.text, this.chars, this.truncated, this.pages);
+  final int lastPage; // 实际发送的最后一页
+  final String unit; // 页 / 节
+  const StudyMaterial(this.text, this.chars, this.truncated, this.pages, {this.lastPage = 0, this.unit = '页', this.usedChars = -1});
+  final int usedChars; // 实际发送的原文字数（-1 = 按正文长度）
+  int get used => usedChars >= 0 ? usedChars : text.length;
+  int get percent => chars == 0 ? 100 : (used * 100 / chars).round().clamp(1, 100);
 }
 
 class StudyService {
@@ -65,6 +70,8 @@ class StudyService {
     final b = StringBuffer();
     var total = 0, used = 0, pages = 0;
     var truncated = false;
+    var last = 0;
+    var lastUnit = '页';
     final docs = {for (final d in await repo.docs(projectId)) d.id: d};
     for (final r in refs) {
       final d = docs[r.docId];
@@ -81,12 +88,14 @@ class StudyService {
           continue;
         }
         used += t.length;
+        last = p.page;
+        lastUnit = unit;
         b.writeln('【《${d.name}》第 ${p.page} $unit】');
         b.writeln(t);
         b.writeln();
       }
     }
-    return StudyMaterial(b.toString().trim(), total, truncated, pages);
+    return StudyMaterial(b.toString().trim(), total, truncated, pages, lastPage: last, unit: lastUnit, usedChars: used);
   }
 
   /// 资料范围的文字说明，如「概率论 · 第一章（第 1–20 页）」。
@@ -103,7 +112,7 @@ class StudyService {
   }
 
   /// 生成一章的思维导图（只在用户点按钮时调用）。
-  Future<ChapterMindMap> generateMindMap(LlmClient llm, StudyChapter c) async {
+  Future<ChapterMindMap> generateMindMap(LlmClient llm, StudyChapter c, {WebMode web = WebMode.off}) async {
     final kps = (await repo.kps(c.doc.projectId))
         .where((k) => k.docId == c.doc.id && (k.chapter == c.title || (k.chapter.isEmpty && k.page >= c.range.start && k.page <= c.range.end)))
         .toList();
@@ -113,7 +122,7 @@ class StudyService {
         ? '（本章还没有分析知识点，请直接根据原文整理）'
         : [for (var i = 0; i < kps.length; i++) '$i. ${kps[i].title}${kps[i].type.isEmpty ? '' : '（${kps[i].type}）'}：${kps[i].content}（第 ${kps[i].page} 页）'].join('\n');
     final prompt = Prompts.fill(settings.prompt('mindmap'), {'chapter': c.title, 'kps': kpText, 'text': m.text});
-    final j = await llm.chatJson(prompt);
+    final j = await llm.askJson(prompt, web: web);
     final root = parseMindTree(j, c.title, kps);
     if (root.children.isEmpty) throw LlmException('AI 没有返回导图内容，请重试');
     final map = ChapterMindMap(projectId: c.doc.projectId, docId: c.doc.id, chapter: c.title, root: root);

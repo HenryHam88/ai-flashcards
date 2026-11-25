@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../services/llm.dart';
 import '../theme/glass.dart';
+import 'ai_widgets.dart';
 import 'explain_sheet.dart';
 import 'quiz_page.dart';
 
@@ -223,6 +225,15 @@ class _ExplainThreadPageState extends State<ExplainThreadPage> {
   final input = TextEditingController();
   final sc = ScrollController();
   bool busy = false;
+  final run = AiRun();
+
+  @override
+  void dispose() {
+    run.dispose();
+    input.dispose();
+    sc.dispose();
+    super.dispose();
+  }
 
   Future<void> _ask() async {
     final q = input.text.trim();
@@ -230,14 +241,17 @@ class _ExplainThreadPageState extends State<ExplainThreadPage> {
     setState(() => busy = true);
     input.clear();
     try {
-      final c = await context.read<AppState>().followUp(e, q);
+      final c = await context.read<AppState>().followUp(e, q, io: run.start());
       if (mounted) setState(() => e = c);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (sc.hasClients) sc.animateTo(sc.position.maxScrollExtent, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
       });
+    } on LlmCancelled {
+      if (mounted) toast(context, '已停止');
     } catch (err) {
       if (mounted) toast(context, '$err');
     }
+    run.finish();
     if (mounted) setState(() => busy = false);
   }
 
@@ -328,9 +342,12 @@ class _ExplainThreadPageState extends State<ExplainThreadPage> {
                             radius: 16,
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             child: Text(m['content']!, style: const TextStyle(color: Colors.white))))
-                    : MathText(stripMetaPreamble(m['content']!), style: const TextStyle(fontSize: 15, height: 1.6)),
+                    : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        MathText(stripMetaPreamble(m['content']!), style: const TextStyle(fontSize: 15, height: 1.6)),
+                        WebSourcesView(sourcesOf(m)),
+                      ]),
               ),
-            if (busy) Padding(padding: const EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(color: M.sage))),
+            if (busy) AiRunView(run: run, idle: aiIdleText(context.read<AppState>())),
           ]),
         ),
         SafeArea(

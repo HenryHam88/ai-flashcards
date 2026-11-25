@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../services/llm.dart';
 import '../theme/glass.dart';
+import 'ai_widgets.dart';
 import 'quiz_page.dart';
 
 /// 查看教材原文（半屏面板）。
@@ -40,6 +42,15 @@ class _ExplainBodyState extends State<_ExplainBody> {
   String? error;
   bool busy = true;
   final input = TextEditingController();
+  final run = AiRun();
+  String? pending; // 正在等回答的追问
+
+  @override
+  void dispose() {
+    run.dispose();
+    input.dispose();
+    super.dispose();
+  }
 
   String get itemId => widget.card?.id ?? widget.question!.id;
   String get projectId => widget.card?.projectId ?? widget.question!.projectId;
@@ -68,26 +79,33 @@ class _ExplainBodyState extends State<_ExplainBody> {
           docId: widget.card?.docId ?? widget.question!.docId,
           page: widget.card?.page ?? widget.question!.page,
           kind: widget.card != null ? 'card' : 'question',
-          title: widget.card?.front ?? widget.question!.stem);
+          title: widget.card?.front ?? widget.question!.stem,
+          io: run.start());
       if (mounted) setState(() => cache = c);
+    } on LlmCancelled {
+      if (mounted) setState(() => error = '已停止。关掉面板再打开可以重新生成。');
     } catch (e) {
       if (mounted) setState(() => error = '$e');
     }
+    run.finish();
     if (mounted) setState(() => busy = false);
   }
 
   Future<void> _ask() async {
     final q = input.text.trim();
     if (q.isEmpty || cache == null) return;
-    setState(() => busy = true);
+    setState(() => (busy = true, pending = q));
     input.clear();
     try {
-      final c = await context.read<AppState>().followUp(cache!, q);
+      final c = await context.read<AppState>().followUp(cache!, q, io: run.start());
       if (mounted) setState(() => cache = c);
+    } on LlmCancelled {
+      if (mounted) toast(context, '已停止');
     } catch (e) {
       if (mounted) toast(context, '$e');
     }
-    if (mounted) setState(() => busy = false);
+    run.finish();
+    if (mounted) setState(() => (busy = false, pending = null));
   }
 
   @override
@@ -119,9 +137,23 @@ class _ExplainBodyState extends State<_ExplainBody> {
                           radius: 16,
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           child: Text(m['content']!, style: const TextStyle(color: Colors.white))))
-                  : MathText(stripMetaPreamble(m['content']!), style: const TextStyle(fontSize: 15, height: 1.6)),
+                  : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      MathText(stripMetaPreamble(m['content']!), style: const TextStyle(fontSize: 15, height: 1.6)),
+                      WebSourcesView(sourcesOf(m)),
+                    ]),
             ),
-          if (busy) Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(color: M.sage))),
+          if (pending != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Glass(
+                      tint: M.greyBlue,
+                      radius: 16,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: Text(pending!, style: const TextStyle(color: Colors.white)))),
+            ),
+          if (busy) Padding(padding: const EdgeInsets.only(bottom: 10), child: AiRunView(run: run, idle: aiIdleText(s))),
           const SizedBox(height: 8),
           Row(children: [
             Expanded(
