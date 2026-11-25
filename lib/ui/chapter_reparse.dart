@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../services/chapter_reparse.dart';
 import '../theme/glass.dart';
+import 'favorites_page.dart' show FavoriteButton;
 
 // ============================================================================
 // 按章重新解析（选引擎 → 进度 / 取消 → 新旧对比 → 保存）和章节知识点（查看 / 重新分析）。
@@ -702,6 +703,12 @@ class _ChapterKpSheetState extends State<ChapterKpSheet> {
                   child: MathText(k.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                 ),
                 if (k.type.isNotEmpty) Text(k.type, style: TextStyle(color: M.sub, fontSize: 11)),
+                if (d == null)
+                  SizedBox(
+                    width: 32,
+                    height: 28,
+                    child: FavoriteButton(kind: 'kp', targetId: k.id, projectId: k.projectId, title: k.title, size: 20),
+                  ),
                 if (tag != null) ...[
                   const SizedBox(width: 6),
                   Container(

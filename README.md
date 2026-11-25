@@ -216,6 +216,22 @@ flutter build apk --release --split-per-abi
 
 发布签名从 `android/key.properties`（或环境变量 `AI_FLASHCARDS_KEY_PROPERTIES` 指定的文件）读取，未配置时使用 debug 签名。
 
+<details>
+<summary>配置发布签名</summary>
+
+1. 第一次发布时生成密钥库（之后一直用同一个，丢了就无法覆盖安装旧版）：
+
+   ```bash
+   keytool -genkeypair -v -keystore ~/keys/ai-flashcards-release.jks \
+     -alias ai-flashcards -keyalg RSA -keysize 4096 -validity 10000
+   ```
+
+2. 复制 `android/key.properties.example` 为 `android/key.properties`，填写路径、别名和两个密码。
+   `key.properties`、`*.jks`、`*.keystore` 都在 `.gitignore` 里，**不要提交**；密钥库请另外备份。
+3. `flutter build apk --release --split-per-abi`，再用 `apksigner verify --print-certs <apk>` 核对证书指纹与上面公布的一致——
+   指纹不同的安装包无法覆盖安装已发布的版本。
+</details>
+
 ## 参与贡献
 
 欢迎提交 Issue 和 Pull Request，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。版本变更记录见 [CHANGELOG.md](CHANGELOG.md)。

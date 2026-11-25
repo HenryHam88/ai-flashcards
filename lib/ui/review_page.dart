@@ -6,9 +6,11 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../services/review_history.dart';
 import '../services/study_queue.dart';
 import '../theme/glass.dart';
 import 'explain_sheet.dart';
+import 'favorites_page.dart' show FavoriteButton;
 import 'feedback_sheet.dart';
 
 /// 闪卡复习。进度（如 12/32）每一步都写入本地，切出 App、被系统杀掉后都能恢复。
@@ -33,8 +35,9 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
   double dx = 0;
   String? filter; // 混合复习时的项目筛选（null=全部）
   List<(String, String)> projects = [];
-  List<Map<String, dynamic>> undoStack = []; // 本轮每次评分的撤销记录（可多步返回）
-  List<Map<String, dynamic>> redoStack = []; // 退回后可「下一张」原样恢复的评分
+  /// 本轮已评分的卡（第 i 条 = 第 i 张）。index < history.length 时是在回看，可以改评分。
+  List<ReviewEntry> history = [];
+  int base = 0; // history[0] 对应第 base 张（旧版会话恢复时前面的卡没有评分记录）
   bool hintSeen = true;
   late StudyMode mode = widget.mode;
   StudyCounts? counts; // 完成页：新卡是否已达今日上限
@@ -82,8 +85,25 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       flipped = saved['flipped'] == true;
       filter = saved['filter'] as String?;
       mode = studyModeOf(saved['mode'] as String?);
-      undoStack = ((saved['undo'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
-      redoStack = ((saved['redo'] as List?) ?? []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+      history = [for (final e in (saved['history'] as List?) ?? const []) ReviewEntry.fromJson((e as Map).cast<String, dynamic>())];
+      // 旧版会话（撤销栈）：转换成评分记录，评分从复习记录里读出
+      for (final e in (saved['undo'] as List?) ?? const []) {
+        final u = (e as Map).cast<String, dynamic>();
+        final log = await s.repo.logEntry('${u['log']}');
+        history.add(ReviewEntry(
+            cardId: '${(u['card'] as Map)['id']}',
+            pre: (u['card'] as Map).cast<String, dynamic>(),
+            grade: log == null ? Grade.good : (log.grade > 0 ? log.grade : (log.correct ? Grade.good : Grade.again)),
+            at: log?.at ?? DateTime.now(),
+            logId: '${u['log']}'));
+      }
+      base = (saved['base'] as int?) ?? 0;
+      if (base + history.length > index) history = history.sublist(0, max(0, index - base));
+      // 很旧的会话没有评分记录：前面这些卡算已评分，但不能回看修改
+      if (base + history.length < index) {
+        base = index;
+        history = [];
+      }
     } else {
       cards = await s.studyQueue(projectId: widget.projectId, mode: mode);
       index = 0;
@@ -111,8 +131,8 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
         'flipped': flipped,
         'filter': filter,
         'mode': mode.name,
-        'undo': undoStack,
-        'redo': redoStack,
+        'history': [for (final e in history) e.toJson()],
+        if (base > 0) 'base': base,
       };
     }
   }
@@ -129,8 +149,8 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       index = 0;
       flipped = false;
       dx = 0;
-      undoStack = [];
-      redoStack = [];
+      history = [];
+      base = 0;
     });
     _persist();
   }
@@ -139,20 +159,34 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       ? ProjectFilterChips(projects: projects, value: filter, onChanged: _setFilter)
       : const SizedBox();
 
-  Future<void> _rate(bool remembered) async {
+  /// 正在回看已经评过分的卡。
+  bool get reviewing => index >= base && index - base < history.length;
+  ReviewEntry? get entry => reviewing ? history[index - base] : null;
+  bool get canBack => index - 1 >= base && history.isNotEmpty;
+
+  /// 评分。回看时点另一个评分 = 修改这张卡的评分（按评分前的快照和原时间重新计算，不影响后面已评的卡）。
+  Future<void> _rate(int grade) async {
     timer.touch();
     if (M.haptics) HapticFeedback.lightImpact();
     if (index >= cards.length) return;
-    final undo = await s.reviewCard(cards[index], remembered);
+    if (reviewing) {
+      final e = entry!;
+      if (e.grade != grade) {
+        final old = e.grade;
+        cards[index] = await s.changeRating(history, index - base, grade);
+        if (mounted) toast(context, '已把「${Grade.label(old)}」改为「${Grade.label(grade)}」');
+      }
+    } else {
+      history.add(await s.rateCard(cards[index], grade));
+    }
     if (!hintSeen) {
       hintSeen = true;
       s.settings.prefs.setBool('swipe_hint_seen', true);
     }
+    if (!mounted) return;
     setState(() {
-      undoStack.add(undo);
-      redoStack = []; // 重新评分：替换原来的结果，重做记录作废
       index++;
-      flipped = false;
+      flipped = reviewing; // 回看的卡直接显示答案
       dx = 0;
     });
     _persist();
@@ -162,30 +196,23 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
     }
   }
 
-  /// 上一张：撤销上一次评分（恢复状态、删除记录），回到那张卡的正面；原评分进入重做栈。
-  Future<void> _undo() async {
-    if (undoStack.isEmpty || index == 0) return;
-    final (restored, redo) = await s.undoReview(undoStack.removeLast());
+  /// 上一张：回到上一张卡看答案和当时的评分，不改动任何数据；想改就点另一个评分。
+  void _back() {
+    if (!canBack) return;
     setState(() {
-      redoStack.add(redo);
       index--;
-      cards[index] = restored;
-      flipped = false;
+      flipped = true;
       dx = 0;
     });
     _persist();
   }
 
-  /// 下一张：不用重新评分，原样恢复刚才撤销的评分并前进。
-  Future<void> _redo() async {
-    if (redoStack.isEmpty || index >= cards.length) return;
-    final redo = redoStack.removeLast();
-    final undo = await s.redoReview(redo);
+  /// 下一张：回看时向前，最多到还没评分的那张。
+  void _forward() {
+    if (!reviewing) return;
     setState(() {
-      undoStack.add(undo);
-      cards[index] = Flashcard.fromJson((redo['post'] as Map).cast<String, dynamic>());
       index++;
-      flipped = false;
+      flipped = reviewing;
       dx = 0;
     });
     _persist();
@@ -202,6 +229,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       ),
       leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => Navigator.pop(context)),
       actions: [
+        if (card != null) FavoriteButton(kind: 'card', targetId: card.id, projectId: card.projectId, title: card.front),
         if (card != null)
           IconButton(
             tooltip: '这张有问题',
@@ -239,7 +267,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              KindBadge(cardKind(card!)),
+                              KindBadge(cardKind(reviewing ? withFsrsState(card!, entry!.pre) : card!)),
                               const SizedBox(width: 6),
                               Flexible(
                                 child: Text(
@@ -258,7 +286,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                             Padding(
                               padding: EdgeInsets.only(bottom: 8),
                               child: Text(
-                                '右滑 = 记得，左滑 = 忘了，点按翻面；上一张 / 下一张可回看',
+                                '右滑 = 记住了，左滑 = 没记住；上一张可回看、改评分',
                                 style: TextStyle(color: M.sub, fontSize: 12),
                               ),
                             ),
@@ -267,7 +295,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                               GlassButton(
                                 label: '上一张',
                                 icon: Icons.undo_rounded,
-                                onTap: index > 0 && undoStack.isNotEmpty ? _undo : null,
+                                onTap: canBack ? _back : null,
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -281,32 +309,18 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                               GlassButton(
                                 label: '下一张',
                                 icon: Icons.redo_rounded,
-                                onTap: redoStack.isNotEmpty ? _redo : null,
+                                onTap: reviewing ? _forward : null,
                               ),
                             ],
                           ),
                           const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: GlassButton(
-                                  label: '没记住',
-                                  icon: Icons.cancel_outlined,
-                                  tint: M.rose,
-                                  onTap: () => _rate(false),
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: GlassButton(
-                                  label: '记住了',
-                                  icon: Icons.check_circle_outline,
-                                  tint: M.sage,
-                                  onTap: () => _rate(true),
-                                ),
-                              ),
-                            ],
-                          ),
+                          if (reviewing)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text('本轮已评「${Grade.label(entry!.grade)}」，点其他评分可以修改',
+                                  style: TextStyle(color: M.sub, fontSize: 12)),
+                            ),
+                          _gradeRow(card),
                         ],
                       ),
                     ),
@@ -326,9 +340,9 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
       onHorizontalDragUpdate: (d) => setState(() => dx += d.delta.dx),
       onHorizontalDragEnd: (d) {
         if (dx > 110) {
-          _rate(true);
+          _rate(Grade.good);
         } else if (dx < -110) {
-          _rate(false);
+          _rate(Grade.again);
         } else {
           setState(() => dx = 0);
         }
@@ -420,6 +434,34 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
     );
   }
 
+  /// 四档评分按钮：没记住 / 模糊 / 记住了 / 很简单，下面显示下次复习的间隔。
+  /// 回看时只有当时选的那个是实心的，点其他的就是修改评分。
+  Widget _gradeRow(Flashcard card) {
+    final e = entry;
+    final iv = previewIntervals(card, s.fsrs, pre: e?.pre, now: e?.at);
+    final specs = [
+      (Grade.again, M.rose, M.roseDark),
+      (Grade.hard, M.oat, M.text),
+      (Grade.good, M.sage, M.sageDark),
+      (Grade.easy, M.greyBlue, M.wordBlue),
+    ];
+    return Row(children: [
+      for (var i = 0; i < specs.length; i++) ...[
+        if (i > 0) const SizedBox(width: 8),
+        Expanded(
+          child: GradeButton(
+            label: Grade.label(specs[i].$1),
+            interval: iv[specs[i].$1] ?? '',
+            tint: specs[i].$2,
+            fg: specs[i].$3,
+            selected: e == null || e.grade == specs[i].$1,
+            onTap: () => _rate(specs[i].$1),
+          ),
+        ),
+      ],
+    ]);
+  }
+
   String _emptyText() {
     final scope = filter == null && widget.projectId == null ? '' : '这个项目';
     return switch (mode) {
@@ -472,8 +514,8 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (undoStack.isNotEmpty) ...[
-                  GlassButton(label: '上一张', icon: Icons.undo_rounded, onTap: _undo),
+                if (canBack) ...[
+                  GlassButton(label: '上一张', icon: Icons.undo_rounded, onTap: _back),
                   const SizedBox(width: 12),
                 ],
                 GlassButton(label: '返回', onTap: () => Navigator.pop(context)),
@@ -501,6 +543,33 @@ class KindBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
       child: Text(cardKindLabel(kind), style: TextStyle(fontSize: 11, height: 1.4, fontWeight: FontWeight.w700, color: fg)),
+    );
+  }
+}
+
+/// 评分按钮：玻璃底 + 评分名 + 下次间隔。[selected] 为 false 时只显示描边文字（回看时未选中的评分）。
+class GradeButton extends StatelessWidget {
+  final String label;
+  final String interval;
+  final Color tint;
+  final Color fg;
+  final bool selected;
+  final VoidCallback onTap;
+  const GradeButton(
+      {super.key, required this.label, required this.interval, required this.tint, required this.fg, this.selected = true, required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? Colors.white : fg;
+    return Glass(
+      radius: 18,
+      tint: selected ? tint : null,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 9),
+      onTap: onTap,
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(label, maxLines: 1, style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 1),
+        Text(interval, maxLines: 1, style: TextStyle(color: color.withValues(alpha: 0.85), fontSize: 11)),
+      ]),
     );
   }
 }

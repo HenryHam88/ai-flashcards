@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme/glass.dart';
+import '../services/pdf_export.dart' show ExportItem;
+import 'pdf_export_sheet.dart';
 import 'quiz_page.dart';
 
 class WrongBookPage extends StatelessWidget {
@@ -37,7 +39,10 @@ class _WrongListState extends State<WrongList> {
     final projectId = widget.projectId ?? filter;
     Future<(List<(WrongEntry, Question?, Flashcard?)>, List<(String, String)>)> load() async {
       final out = <(WrongEntry, Question?, Flashcard?)>[];
-      final projects = mixed ? [for (final p in await s.repo.projects()) (p.id, p.name)] : <(String, String)>[];
+      final projects = [
+        for (final p in await s.repo.projects())
+          if (mixed || p.id == projectId) (p.id, p.name),
+      ];
       for (final w in await s.repo.wrong(projectId: projectId)) {
         out.add((
           w,
@@ -60,20 +65,45 @@ class _WrongListState extends State<WrongList> {
             Glass(
               child: Text('错题本是空的。答错的题会自动收进来，连续答对 3 次后自动移出。', style: TextStyle(color: M.sub)),
             ),
-          if (qIds.isNotEmpty)
+          if (items.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: GlassButton(
-                label: '重做错题（${qIds.length} 道）',
-                icon: Icons.replay_rounded,
-                tint: M.sage,
-                expand: true,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        QuizPage(projectId: projectId, questionIds: qIds, sessionKey: wrongRedoKey(projectId, qIds)),
+              child: Row(
+                children: [
+                  if (qIds.isNotEmpty)
+                    Expanded(
+                      child: GlassButton(
+                        label: '重做错题（${qIds.length} 道）',
+                        icon: Icons.replay_rounded,
+                        tint: M.sage,
+                        expand: true,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                QuizPage(projectId: projectId, questionIds: qIds, sessionKey: wrongRedoKey(projectId, qIds)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (qIds.isNotEmpty) const SizedBox(width: 10),
+                  GlassButton(
+                    label: '导出 PDF',
+                    icon: Icons.picture_as_pdf_outlined,
+                    onTap: () {
+                      // 同一章的题放在一起，章节按第一次出现的顺序
+                      final byChapter = <String, List<ExportItem>>{};
+                      for (final (w, q, c) in items) {
+                        if (q == null && c == null) continue;
+                        byChapter
+                            .putIfAbsent(q?.chapter ?? c!.chapter, () => [])
+                            .add(ExportItem(question: q, card: q == null ? c : null, mark: w.mark, lastAnswer: w.lastAnswer));
+                      }
+                      final list = [for (final l in byChapter.values) ...l];
+                      final name = projectId == null ? '全部项目' : (projects.where((e) => e.$1 == projectId).firstOrNull?.$2 ?? '错题');
+                      showWrongExportSheet(context, title: name, projectId: projectId ?? '', items: list);
+                    },
                   ),
-                ),
+                ],
               ),
             ),
         ];

@@ -1,19 +1,4 @@
 {
- "help:quick_start": [],
- "help:keys": [],
- "help:upload": [],
- "help:chapters": [],
- "help:generate": [],
- "help:quality": [],
- "help:review": [],
- "help:quiz": [
-  "I:..."
- ],
- "help:explain_history": [],
- "help:stats": [],
- "help:backup": [],
- "help:appearance": [],
- "help:faq": [],
  "$$ $$ 空公式 $ $": [],
  "$$\\begin{aligned}a&=b+c\\\\&=d\\end{aligned}$$": [
   "D:\\begin{aligned}a&=b+c\\\\&=d\\end{aligned}"
@@ -264,5 +249,27 @@
   "I:P(A\\mid B)=\\frac{P(AB)}{P(B)}"
  ],
  "贝叶斯公式": [],
- "运筹学": []
+ "运筹学": [],
+ "help:quick_start": [],
+ "help:keys": [],
+ "help:upload": [],
+ "help:chapters": [],
+ "help:generate": [],
+ "help:quality": [],
+ "help:review": [],
+ "help:quiz": [
+  "I:..."
+ ],
+ "help:explain_history": [],
+ "help:study": [],
+ "help:notes": [
+  "I:..."
+ ],
+ "help:web_search": [],
+ "help:favorites": [],
+ "help:cloud": [],
+ "help:stats": [],
+ "help:backup": [],
+ "help:appearance": [],
+ "help:faq": []
 }

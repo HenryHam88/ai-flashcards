@@ -2,8 +2,9 @@ import 'package:ai_flashcards/data/repository.dart';
 import 'package:ai_flashcards/models.dart';
 
 /// 截图和演示用的示例数据（不调用任何 API）。
-Future<void> seedSampleData(Repository repo) async {
-  final now = DateTime.now();
+/// [now] 固定时可让和日期有关的截图（统计、热力图）每天都一样。
+Future<void> seedSampleData(Repository repo, {DateTime? now}) async {
+  now ??= DateTime.now();
   final p1 = Project(id: 'p1', name: '概率论 第3章', createdAt: now);
   final p2 = Project(id: 'p2', name: '常微分方程', createdAt: now.subtract(const Duration(days: 1)));
   final p3 = Project(id: 'p3', name: '运筹学', createdAt: now.subtract(const Duration(days: 2)));

@@ -14,8 +14,13 @@ import '../services/settings.dart';
 import '../theme/glass.dart';
 import 'chapter_editor_page.dart';
 import 'chapter_view_page.dart';
+import 'cloud_settings_page.dart' show showReleaseSheet, confirmDeleteWithCloud;
+import '../services/cloud_storage.dart' show formatBytes;
 import 'settings_pages.dart' show showExportSheet;
 import 'explain_sheet.dart';
+import 'favorites_page.dart';
+import 'notes_page.dart';
+import 'study_page.dart';
 import 'feedback_sheet.dart';
 import 'auto_count_sheet.dart';
 import 'gen_sheet.dart';
@@ -37,7 +42,10 @@ class ProjectData {
   final List<String> chapters;
   final int inbox; // 待审核数量
   final StudyCounts? counts; // 新学 / 待复习
-  ProjectData(this.project, this.docs, this.cards, this.questions, this.chapters, {this.inbox = 0, this.counts});
+  final Map<String, MediaAsset> docMedia; // docId -> 云端文件记录
+  final bool cloudOn; // 是否配置了云端存储
+  ProjectData(this.project, this.docs, this.cards, this.questions, this.chapters,
+      {this.inbox = 0, this.counts, this.docMedia = const {}, this.cloudOn = false});
 }
 
 class ProjectPage extends StatefulWidget {
@@ -80,7 +88,9 @@ class _ProjectPageState extends State<ProjectPage> {
     return ProjectData(pr, await s.repo.docs(pr.id), await s.repo.cards(projectId: pr.id),
         await s.repo.questions(projectId: pr.id), chapters,
         inbox: (await s.repo.inboxCards(projectId: pr.id)).length + (await s.repo.inboxQuestions(projectId: pr.id)).length,
-        counts: await s.studyCounts(projectId: pr.id));
+        counts: await s.studyCounts(projectId: pr.id),
+        docMedia: {for (final m in await s.repo.media(projectId: pr.id)) if (m.kind == 'doc') m.ownerId: m},
+        cloudOn: await s.settings.cloudConfigured());
   }
 
   void _progress(String m, double f) {
@@ -215,30 +225,52 @@ class _ProjectPageState extends State<ProjectPage> {
         await s.repo.saveProject(pr);
         s.changed();
       }
+    } else if (v == 'release') {
+      await showReleaseSheet(context, projectId: pr.id);
     } else if (v == 'delete') {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: M.sheet,
-          title: const Text('删除项目？'),
-          content: Text('「${pr.name}」里的资料、闪卡、题目和错题都会被删除，无法恢复。'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('删除', style: TextStyle(color: M.roseDark))),
-          ],
-        ),
-      );
-      if (ok == true) {
-        for (final d in await s.repo.docs(pr.id)) {
-          try {
-            await File(d.path).delete();
-          } catch (_) {}
-        }
-        await s.repo.deleteProject(pr.id);
-        s.changed();
-        if (mounted) Navigator.pop(context);
+      final cloudFiles = await s.cloudFileCount(projectId: pr.id);
+      if (!mounted) return;
+      final remote = await confirmDeleteWithCloud(context,
+          title: '删除项目？',
+          content: '「${pr.name}」里的资料、闪卡、题目、错题、笔记和导图都会被删除，无法恢复。',
+          cloudFiles: cloudFiles);
+      if (remote == null) return;
+      try {
+        await s.deleteProjectEverywhere(pr.id, remote: remote);
+      } catch (e) {
+        if (mounted) errorToast(context, '云端文件删除失败（项目没有删除）：$e');
+        return;
       }
+      s.changed();
+      if (mounted) Navigator.pop(context);
     }
+  }
+
+  /// 项目里的其他板块入口：都直接用这个项目已经解析好的资料和知识点。
+  Widget _sectionsRow(ProjectData d) {
+    void open(Widget page) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    Widget entry(IconData icon, String label, VoidCallback onTap) => Expanded(
+          child: Glass(
+            radius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+            onTap: onTap,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(icon, size: 18, color: M.sageDark),
+              const SizedBox(width: 6),
+              Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+            ]),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+      child: Row(children: [
+        entry(Icons.account_tree_outlined, '学习板块', () => open(StudyPage(projectId: d.project.id))),
+        const SizedBox(width: 8),
+        entry(Icons.edit_note_rounded, '笔记', () => open(NotesPage(projectId: d.project.id))),
+        const SizedBox(width: 8),
+        entry(Icons.star_outline_rounded, '收藏', () => open(FavoritesPage(projectId: d.project.id))),
+      ]),
+    );
   }
 
   /// 新学 / 待复习 计数和「学新卡」「复习」「到期」入口（「学习」按钮 = 先复习后新卡）。
@@ -284,10 +316,11 @@ class _ProjectPageState extends State<ProjectPage> {
             actions: [
               PopupMenuButton<String>(
                 onSelected: (v) => _menu(v, d.project),
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'rename', child: Text('重命名')),
-                  PopupMenuItem(value: 'export', child: Text('导出 / 分享此项目')),
-                  PopupMenuItem(value: 'delete', child: Text('删除项目')),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'rename', child: Text('重命名')),
+                  const PopupMenuItem(value: 'export', child: Text('导出 / 分享此项目')),
+                  if (d.cloudOn) const PopupMenuItem(value: 'release', child: Text('释放手机空间')),
+                  const PopupMenuItem(value: 'delete', child: Text('删除项目')),
                 ],
               ),
             ],
@@ -315,6 +348,7 @@ class _ProjectPageState extends State<ProjectPage> {
                 ]),
               ),
               if (d.cards.isNotEmpty && d.counts != null) _countsRow(d),
+              _sectionsRow(d),
               if (progress != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -415,9 +449,14 @@ class _ProjectPageState extends State<ProjectPage> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(doc.name, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
                     Text(
-                        doc.isSectioned
-                            ? '${doc.isText ? 'TXT' : 'Word'} · ${doc.status}${doc.pageCount > 0 ? ' · ${doc.pageCount} 个小节' : ''}'
-                            : '${doc.status} · 已解析 ${doc.parsedPages}/${doc.pageCount} 页',
+                        (doc.isSectioned
+                                ? '${doc.isText ? 'TXT' : 'Word'} · ${doc.status}${doc.pageCount > 0 ? ' · ${doc.pageCount} 个小节' : ''}'
+                                : '${doc.status} · 已解析 ${doc.parsedPages}/${doc.pageCount} 页') +
+                            switch (d.docMedia[doc.id]) {
+                              final m? when m.offloaded => ' · 原文件在云端',
+                              final m? when m.inCloud => ' · 云端有备份',
+                              _ => '',
+                            },
                         style: TextStyle(color: M.sub, fontSize: 12)),
                     if (doc.note.isNotEmpty)
                       Padding(
@@ -441,8 +480,35 @@ class _ProjectPageState extends State<ProjectPage> {
                         final nd = await _load();
                         if (nd != null && mounted) await _generate(nd, preset: r);
                       }
+                    } else if (v == 'release' || v == 'download') {
+                      await _run(() async {
+                        final c = await s.cloud();
+                        final m = await c.assetForDoc(doc);
+                        if (v == 'release') {
+                          _progress('正在上传「${doc.name}」…', 0);
+                          final n = await c.release(m, onProgress: (f) => _progress('正在上传「${doc.name}」…', f));
+                          if (mounted) toast(context, '已释放 ${formatBytes(n)}，需要时会自动下载回来');
+                        } else {
+                          _progress('正在下载「${doc.name}」…', 0);
+                          await c.ensureLocal(m, onProgress: (f) => _progress('正在下载「${doc.name}」…', f));
+                          if (mounted) toast(context, '已下载回本机');
+                        }
+                      });
+                      s.changed();
                     } else if (v == 'delete') {
-                      await s.repo.deleteDoc(doc);
+                      final cloudFiles = await s.cloudFileCount(projectId: doc.projectId, docId: doc.id);
+                      if (!mounted) return;
+                      final remote = cloudFiles == 0
+                          ? false
+                          : await confirmDeleteWithCloud(context,
+                              title: '删除资料？', content: '「${doc.name}」的解析结果会一起删除。', cloudFiles: cloudFiles);
+                      if (remote == null) return;
+                      try {
+                        await s.deleteDocEverywhere(doc, remote: remote);
+                      } catch (e) {
+                        if (mounted) errorToast(context, '云端文件删除失败：$e');
+                        return;
+                      }
                       s.changed();
                     }
                   },
@@ -454,6 +520,9 @@ class _ProjectPageState extends State<ProjectPage> {
                             : (doc.parsedPages >= doc.pageCount && doc.pageCount > 0 ? '重新切分章节' : '解析（继续未完成的页）'))),
                     if (doc.parsedPages > 0) const PopupMenuItem(value: 'view', child: Text('查看章节内容')),
                     if (doc.parsedPages > 0) const PopupMenuItem(value: 'chapters', child: Text('编辑章节')),
+                    if (d.cloudOn && doc.status == '已解析' && d.docMedia[doc.id]?.offloaded != true)
+                      const PopupMenuItem(value: 'release', child: Text('放到云端，释放手机空间')),
+                    if (d.docMedia[doc.id]?.offloaded == true) const PopupMenuItem(value: 'download', child: Text('下载原文件回本机')),
                     const PopupMenuItem(value: 'delete', child: Text('删除')),
                   ],
                 ),
@@ -537,12 +606,18 @@ class _ProjectPageState extends State<ProjectPage> {
   Future<void> _itemMenu(Object item) async {
     final c = item is Flashcard ? item : null, q = item is Question ? item : null;
     final suspended = c?.suspended ?? q!.suspended;
+    final fav = await s.repo.isFavorite(c != null ? 'card' : 'question', c?.id ?? q!.id);
+    if (!mounted) return;
     final v = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: M.sheet,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('编辑'), onTap: () => Navigator.pop(ctx, 'edit')),
+          ListTile(
+              leading: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded),
+              title: Text(fav ? '取消收藏' : '收藏'),
+              onTap: () => Navigator.pop(ctx, 'fav')),
           ListTile(
               leading: const Icon(Icons.flag_outlined),
               title: Text(c != null ? '这张有问题' : '这道题有问题'),
@@ -560,6 +635,10 @@ class _ProjectPageState extends State<ProjectPage> {
         if (it is Flashcard) await s.repo.saveCards([it]);
         if (it is Question) await s.repo.saveQuestions([it]);
       });
+    } else if (v == 'fav') {
+      final on = await s.repo.toggleFavorite(FavoriteItem(
+          projectId: c?.projectId ?? q!.projectId, kind: c != null ? 'card' : 'question', targetId: c?.id ?? q!.id, title: c?.front ?? q!.stem));
+      if (mounted) toast(context, on ? '已收藏' : '已取消收藏');
     } else if (v == 'flag') {
       await showFeedbackSheet(context, card: c, question: q);
     } else {

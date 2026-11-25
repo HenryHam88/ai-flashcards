@@ -1,24 +1,34 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path/path.dart' as pth;
 import 'package:path_provider/path_provider.dart';
 
 import 'data/repository.dart';
 import 'models.dart';
+import 'services/attachments.dart';
 import 'services/backup.dart';
 import 'services/chapters.dart';
+import 'services/cloud_storage.dart';
+import 'services/doc_files.dart';
 import 'services/fsrs.dart';
 import 'services/json_utils.dart';
 import 'services/latex.dart';
 import 'services/llm.dart';
+import 'services/pdf_export.dart';
 import 'services/pipeline.dart';
 import 'services/prompts.dart';
 import 'services/quality.dart';
 import 'services/settings.dart';
 import 'theme/rich_text.dart' show stripMetaPreamble;
+import 'services/review_history.dart';
+import 'services/study.dart';
 import 'services/study_queue.dart';
 import 'services/chapter_reparse.dart';
 import 'services/concurrency.dart';
+import 'ui/math_raster.dart';
 
 /// 全局状态：持有仓库与设置，提供业务操作。UI 通过 Provider 读取。
 /// 单个 PDF 的解析任务状态（用于多文件队列的逐个进度显示）。
@@ -35,8 +45,81 @@ class AppState extends ChangeNotifier {
   final Repository repo;
   final Settings settings;
   final LlmClient Function(AppState s, String key)? llmFactory; // 测试可注入
-  AppState(this.repo, this.settings, {this.llmFactory}) {
+  AppState(this.repo, this.settings, {this.llmFactory, this.webLlmFactory}) {
     requestLimiter.max = settings.concurrency; // 全局请求限流 = 「并发数」
+    // 读资料原文件前先确认它在本机（放到云端的会自动下载回来）
+    DocFiles.resolver = (d) async => (await cloud()).ensureDocLocal(d);
+  }
+
+  /// 测试可注入云端客户端（模拟 HTTP）。
+  S3Client Function(CloudConfig c)? cloudClientFactory;
+
+  /// PDF 导出：内置中文字体子集 + 公式栅格化（测试里可以替换）。
+  Future<PdfExportService> Function()? pdfExporterOverride;
+  Future<PdfExportService> pdfExporter() async {
+    if (pdfExporterOverride != null) return pdfExporterOverride!();
+    final font = await rootBundle.load('assets/fonts/NotoSansSC-Regular-subset.ttf');
+    return PdfExportService(font.buffer.asUint8List(), math: FlutterMathRasterizer());
+  }
+
+  /// 把导出的 PDF 存进应用目录并登记（可以在「释放空间」里放到云端）。
+  Future<File> saveExport(String projectId, String fileName, Uint8List bytes) async {
+    final dir = Directory(pth.join((await appDir()).path, 'exports'))..createSync(recursive: true);
+    final id = 'export_${DateTime.now().microsecondsSinceEpoch}';
+    final f = File(pth.join(dir.path, '${id}_$fileName'));
+    await f.writeAsBytes(bytes);
+    await repo.saveMedia(MediaAsset(id: id, projectId: projectId, kind: 'export', ownerId: '', localPath: f.path, fileName: fileName, size: bytes.length));
+    return f;
+  }
+
+  Future<Directory> appDir() async {
+    if (appDirOverride != null) return appDirOverride!;
+    try {
+      return await getApplicationDocumentsDirectory();
+    } catch (_) {
+      return Directory.systemTemp;
+    }
+  }
+
+  /// 云端存储（省手机空间）。没配置时各入口自动隐藏，不影响任何功能。
+  Future<CloudStorageService> cloud() async =>
+      CloudStorageService(repo: repo, settings: settings, appDir: await appDir(), clientFactory: cloudClientFactory);
+
+  /// 删除资料：本机文件、云端那份（[remote]）和全部解析结果。
+  Future<void> deleteDocEverywhere(PdfDoc d, {bool remote = false}) async {
+    final m = await repo.mediaAsset(MediaAsset.docId(d.id));
+    if (m != null) {
+      await (await cloud()).deleteAsset(m, remote: remote);
+    }
+    try {
+      final f = File(d.path);
+      if (d.path.isNotEmpty && await f.exists()) await f.delete();
+    } catch (_) {}
+    await repo.deleteDoc(d);
+  }
+
+  /// 这些资料 / 项目在云端有没有文件（删除时询问要不要一起删）。
+  Future<int> cloudFileCount({String? projectId, String? docId}) async => (await repo.media(projectId: projectId))
+      .where((m) => m.inCloud && (docId == null || m.id == MediaAsset.docId(docId)))
+      .length;
+
+  /// 删除项目：本机原文件、照片、导出文件，可选删除云端文件，再删数据。
+  Future<void> deleteProjectEverywhere(String projectId, {bool remote = false}) async {
+    final c = await cloud();
+    for (final m in await repo.media(projectId: projectId)) {
+      try {
+        await c.deleteAsset(m, remote: remote);
+      } catch (_) {
+        if (remote) rethrow;
+      }
+    }
+    for (final d in await repo.docs(projectId)) {
+      try {
+        final f = File(d.path);
+        if (d.path.isNotEmpty && await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+    await repo.deleteProject(projectId);
   }
 
   /// 应用版本号（main 里从安装包读取）。
@@ -71,9 +154,14 @@ class AppState extends ChangeNotifier {
 
   Future<LlmClient> llm() async {
     final key = await settings.llmKey();
-    return llmFactory?.call(this, key) ??
-        LlmClient(baseUrl: settings.llmBaseUrl, apiKey: key, model: settings.llmModel);
+    final main = llmFactory?.call(this, key) ?? LlmClient(baseUrl: settings.llmBaseUrl, apiKey: key, model: settings.llmModel);
+    if (!settings.webRelay) return main;
+    // 出题模型不能直接联网：联网的调用先借联网模型（DeepSeek）检索，再交给出题模型回答
+    final wk = await settings.webKey();
+    return WebRelayLlm(main, webLlmFactory?.call(this, wk) ?? LlmClient(baseUrl: Settings.webBaseUrl, apiKey: wk, model: settings.webModel));
   }
+
+  final LlmClient Function(AppState s, String key)? webLlmFactory; // 测试可注入
 
   ParseService get parser => ParseService(repo, settings, chapters: chapterService);
 
@@ -271,6 +359,38 @@ class AppState extends ChangeNotifier {
   /// 全部学习的队列（旧接口，保留给已有的调用方）。
   Future<List<Flashcard>> dueCards({String? projectId}) => studyQueue(projectId: projectId);
 
+  /// 四档评分（1 没记住 / 2 模糊 / 3 记住了 / 4 很简单），返回本轮的评分记录（含评分前快照），用于回看时修改评分。
+  Future<ReviewEntry> rateCard(Flashcard c, int grade, {DateTime? now}) async {
+    final t = now ?? DateTime.now();
+    final snapshot = c.toJson();
+    fsrs.review(c, grade, now: t);
+    await repo.saveCards([c]);
+    final logId = newId();
+    await repo.log(LogEntry(
+        id: logId, projectId: c.projectId, kind: 'card', correct: grade > Grade.again, grade: grade, at: t, isNew: snapshot['reps'] == 0));
+    changed();
+    return ReviewEntry(cardId: c.id, pre: snapshot, grade: grade, at: t, logId: logId);
+  }
+
+  /// 修改本轮第 [i] 次评分：从评分前的快照按原时间重新计算 FSRS（同一张卡后面的评分依次重放），
+  /// 并原地更新对应的复习记录（不新增记录）。返回更新后的卡片。
+  Future<Flashcard> changeRating(List<ReviewEntry> entries, int i, int grade) async {
+    final id = entries[i].cardId;
+    final current = await repo.card(id) ?? Flashcard.fromJson(entries[i].pre);
+    final c = replayFrom(entries, i, grade, current, fsrs);
+    await repo.saveCards([c]);
+    for (final e in entries.where((e) => e.cardId == id)) {
+      final log = await repo.logEntry(e.logId);
+      if (log == null) continue;
+      log
+        ..correct = e.grade > Grade.again
+        ..grade = e.grade;
+      await repo.log(log);
+    }
+    changed();
+    return c;
+  }
+
   /// 评分并返回撤销记录（评分前的卡片快照 + 写入的日志 id），用于「上一张」。
   Future<Map<String, dynamic>> reviewCard(Flashcard c, bool remembered) async {
     final snapshot = c.toJson();
@@ -378,32 +498,65 @@ class AppState extends ChangeNotifier {
       required String docId,
       required int page,
       String kind = '',
-      String title = ''}) async {
+      String title = '',
+      AiIo? io}) async {
     final cached = await repo.explain(itemId);
     if (cached != null && cached.messages.isNotEmpty) return cached;
     final src = await sourceText(docId, page);
     final prompt = Prompts.fill(settings.prompt('explain'),
         {'item': itemText, 'page': '$page', 'source': src.isEmpty ? '（无原文）' : src});
     final client = await llm();
-    var answer = await client.chat([{'role': 'user', 'content': prompt}]);
-    answer = await _ensureLatex(client, [{'role': 'user', 'content': prompt}], answer);
+    final msgs = [{'role': 'user', 'content': prompt}];
+    final r = await _answer(client, msgs, web: settings.web(), io: io);
     final c = ExplainCache(id: itemId, projectId: projectId, kind: kind, title: title, messages: [
       {'role': 'user', 'content': prompt},
-      {'role': 'assistant', 'content': answer},
+      {'role': 'assistant', 'content': r.content, ...r.extras()},
     ]);
     await repo.saveExplain(c);
     return c;
   }
 
-  Future<ExplainCache> followUp(ExplainCache c, String question) async {
+  Future<ExplainCache> followUp(ExplainCache c, String question, {AiIo? io}) async {
     final msgs = [...c.messages, {'role': 'user', 'content': '$question\n（${Prompts.answerStyle}）'}];
     final client = await llm();
-    var answer = await client.chat(msgs);
-    answer = await _ensureLatex(client, msgs, answer);
-    c.messages = [...c.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': answer}];
+    final r = await _answer(client, msgs, web: settings.web(), io: io);
+    c.messages = [...c.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': r.content, ...r.extras()}];
     c.updatedAt = DateTime.now();
     await repo.saveExplain(c);
     return c;
+  }
+
+  /// 联网时在系统提示里说明「教材为准、网页补充」。
+  static List<Map<String, String>> withWebGuide(List<Map<String, String>> msgs, WebMode web) {
+    if (web == WebMode.off) return msgs;
+    if (msgs.isNotEmpty && msgs.first['role'] == 'system') {
+      return [{...msgs.first, 'content': '${msgs.first['content']}\n\n${Prompts.webGuide}'}, ...msgs.skip(1)];
+    }
+    return [{'role': 'system', 'content': Prompts.webGuide}, ...msgs];
+  }
+
+  /// 一次可联网、可流式、可停止的回答。停止时保留已经收到的部分；什么都还没收到就抛 [LlmCancelled]。
+  Future<LlmReply> _answer(LlmClient client, List<Map<String, String>> msgs, {required WebMode web, AiIo? io}) async {
+    var partial = '';
+    final onDelta = io?.onDelta;
+    try {
+      final r = await client.ask(withWebGuide(msgs, web),
+          web: web,
+          onDelta: onDelta == null
+              ? null
+              : (t) {
+                  partial = t;
+                  onDelta(t);
+                },
+          onStatus: io?.onStatus,
+          cancel: io?.cancel);
+      final fixed = await _ensureLatex(client, msgs, r.content);
+      return LlmReply(r.truncated ? '$fixed\n\n（回答太长，被截断了，可以追问「接着讲」）' : fixed,
+          sources: r.sources, serverToolCalls: r.serverToolCalls, reasoning: r.reasoning);
+    } on LlmCancelled {
+      if (partial.trim().isEmpty) rethrow;
+      return LlmReply('${stripMetaPreamble(LatexUtil.autoFix(partial))}\n\n（已停止生成）');
+    }
   }
 
   /// LaTeX 校验失败时让模型修正一次，仍失败则做本地修复。
@@ -412,7 +565,7 @@ class AppState extends ChangeNotifier {
     final problems = LatexUtil.validate(fixed);
     if (problems.isEmpty) return fixed;
     final again = await client.chat([
-      ...msgs,
+      for (final m in msgs) {'role': m['role'] ?? 'user', 'content': m['content'] ?? ''},
       {'role': 'assistant', 'content': answer},
       {
         'role': 'user',
@@ -423,14 +576,253 @@ class AppState extends ChangeNotifier {
     return stripMetaPreamble(LatexUtil.autoFix(again));
   }
 
+  // ---------- 学习板块 ----------
+  StudyService get study => StudyService(repo, settings);
+
+  /// 按需生成一章的思维导图（用户点按钮才调用）。
+  Future<ChapterMindMap> generateMindMap(StudyChapter c) async {
+    final m = await study.generateMindMap(await llm(), c, web: settings.web());
+    changed();
+    return m;
+  }
+
+  /// 伴学这次要发的消息：选中资料原文进系统提示；附件按模型上下文长度动态分配，放不下时先丢最早的对话，再截断附件。
+  Future<(List<Map<String, String>>, WebMode)> _studyPrompt(StudyChat chat, String question) async {
+    final st = study;
+    final mat = await st.material(chat.projectId, chat.scope);
+    final scope = chat.scope.isEmpty ? '（未选择资料）' : await st.scopeLabel(chat.projectId, chat.scope);
+    final web = settings.web(chatOn: chat.web, chatMode: chat.webMode == null ? null : (chat.webMode == 'normal' ? WebMode.normal : WebMode.deep));
+    final system = Prompts.fill(settings.prompt('study'), {
+      'scope': mat.truncated ? '$scope（原文较长，只附上了前 ${mat.used} 字，约占所选范围的 ${mat.percent}%）' : scope,
+      'material': mat.text.isEmpty
+          ? (web == WebMode.off ? '（没有选择资料，请按一般教材知识回答，并提醒学生选择资料）' : '（没有选择资料，可以联网查资料回答，并提醒学生选择资料）')
+          : mat.text,
+    });
+    // 附件：文档文字拼进系统提示，图片随这次提问一起发给模型看
+    final docs = [
+      for (final a in chat.attachments.where((a) => !a.isImage)) (name: a.name, text: await attachmentText(a), truncated: false),
+    ];
+    final images = <String>[];
+    for (final a in chat.attachments.where((a) => a.isImage)) {
+      final f = await chatFile(a.id);
+      if (f == null) continue;
+      images.add('data:${AttachmentService.mimeOf(a.name)};base64,${base64Encode(await f.readAsBytes())}');
+    }
+    final names = [for (final a in chat.attachments) a.name].join('、');
+    final head = '$system\n\n学生上传了附件（$names），回答时可以引用附件名。${images.isEmpty ? '' : '图片附在学生的提问里。'}\n';
+    final plan = AttachmentService.plan(
+      context: settings.contextTokens,
+      fixedChars: head.length + question.length + docs.fold<int>(0, (a, d) => a + d.name.length + 24),
+      history: [for (final m in chat.messages) (m['content'] ?? '').length],
+      attachChars: docs.fold<int>(0, (a, d) => a + d.text.length),
+      web: web != WebMode.off,
+      images: images.length,
+    );
+    chat.plan = chat.attachments.isEmpty ? null : plan;
+    final (block, _) = AttachmentService.promptBlock(docs, budget: plan.attachSent);
+    final msgs = [
+      {'role': 'system', 'content': block.isEmpty && images.isEmpty ? system : '$head$block'.trim()},
+      ...chat.messages.skip(plan.historyDropped),
+      {'role': 'user', 'content': question, if (images.isNotEmpty) 'images': jsonEncode(images)},
+    ];
+    return (msgs, web);
+  }
+
+  /// 重新计算附件能发多少（添加 / 删除附件、换资料后刷新提示）。
+  Future<ContextPlan?> refreshStudyPlan(StudyChat chat) async {
+    if (chat.attachments.isEmpty) return chat.plan = null;
+    await _studyPrompt(chat, '');
+    return chat.plan;
+  }
+
+  /// AI 伴学：每次都把选中资料的原文放进系统提示，对话本身只存可见内容。
+  Future<StudyChat> studyAsk(StudyChat chat, String question, {AiIo? io}) async {
+    final (msgs, web) = await _studyPrompt(chat, question);
+    final r = await _answer(await llm(), msgs, web: web, io: io);
+    chat.messages = [...chat.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': r.content, ...r.extras()}];
+    if (chat.title.isEmpty) chat.title = question.length > 24 ? '${question.substring(0, 24)}…' : question;
+    chat.updatedAt = DateTime.now();
+    await repo.saveStudyChat(chat);
+    return chat;
+  }
+
+  // ---------- 伴学附件 ----------
+  AttachmentService get attachments => AttachmentService(settings, parser);
+
+  /// 添加附件：检查格式和大小，存进 media 目录（可释放到云端、会进备份），抽出文字随对话保存。
+  Future<ChatAttachment> addChatAttachment(StudyChat chat, String name, Uint8List bytes, {void Function(String)? onStatus}) async {
+    final err = AttachmentService.check(name, bytes.length, chat.attachments.length);
+    if (err != null) throw AttachmentException(err);
+    final kind = AttachmentService.kindOf(name)!;
+    if (kind == 'image') {
+      final why = LlmClient.visionUnavailableReason(settings.llmBaseUrl, settings.llmModel);
+      if (why != null) throw AttachmentException(why);
+    }
+    var text = '';
+    var pages = 0;
+    if (kind != 'image') {
+      (text, pages) = await attachments.extract(name, bytes, onStatus: onStatus);
+      if (text.trim().isEmpty) throw AttachmentException('没有从「$name」里读到文字');
+    }
+    final dir = Directory(pth.join((await appDir()).path, 'media'))..createSync(recursive: true);
+    final id = 'chatfile_${newId()}';
+    final f = File(pth.join(dir.path, '$id.${AttachmentService.ext(name)}'));
+    await f.writeAsBytes(bytes);
+    await repo.saveMedia(MediaAsset(id: id, projectId: chat.projectId, kind: 'chat_file', ownerId: chat.id, localPath: f.path, fileName: name, size: bytes.length));
+    final a = ChatAttachment(
+        id: id,
+        name: name,
+        kind: kind,
+        size: bytes.length,
+        text: text.length > AttachmentService.storeChars ? text.substring(0, AttachmentService.storeChars) : text,
+        chars: text.length,
+        pages: pages);
+    if (a.truncated) {
+      // 全文另存一份（也登记为附件文件：会进备份、可释放到云端），数据库里只放预览
+      final tf = File(pth.join(dir.path, '${id}_text.txt'));
+      await tf.writeAsString(text);
+      await repo.saveMedia(MediaAsset(
+          id: '${id}_text', projectId: chat.projectId, kind: 'chat_file', ownerId: chat.id, localPath: tf.path, fileName: '$name.txt', size: await tf.length()));
+    }
+    chat.attachments = [...chat.attachments, a];
+    chat.updatedAt = DateTime.now();
+    await repo.saveStudyChat(chat);
+    await refreshStudyPlan(chat);
+    return a;
+  }
+
+  /// 附件文件：放到云端的会自动下载回来。
+  Future<File?> chatFile(String id) async {
+    final m = await repo.mediaAsset(id);
+    if (m == null) return null;
+    try {
+      return await (await cloud()).ensureLocal(m);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 附件全文：短的就在对话里，长的从另存的全文文件读（读不到时用预览）。
+  Future<String> attachmentText(ChatAttachment a) async {
+    if (!a.truncated) return a.text;
+    final f = await chatFile('${a.id}_text');
+    if (f == null) return a.text;
+    try {
+      return await f.readAsString();
+    } catch (_) {
+      return a.text;
+    }
+  }
+
+  Future<void> _deleteAttachmentFiles(String id) async {
+    for (final mid in [id, '${id}_text']) {
+      final m = await repo.mediaAsset(mid);
+      if (m != null) await (await cloud()).deleteAsset(m);
+    }
+  }
+
+  Future<void> removeChatAttachment(StudyChat chat, String id) async {
+    await _deleteAttachmentFiles(id);
+    chat.attachments = chat.attachments.where((a) => a.id != id).toList();
+    await repo.saveStudyChat(chat);
+    await refreshStudyPlan(chat);
+  }
+
+  /// 删除对话，连同它的附件（本机和云端）。
+  Future<void> deleteStudyChat(StudyChat chat) async {
+    for (final a in chat.attachments) {
+      await _deleteAttachmentFiles(a.id);
+    }
+    await repo.deleteStudyChat(chat.id);
+  }
+
+  // ---------- 笔记 ----------
+  /// 打开某个知识点的笔记：已有就返回（不保存空笔记），没有就新建一条（未保存）。
+  Future<StudyNote> noteFor({required String projectId, String kpId = '', String title = '', String chapter = ''}) async {
+    if (kpId.isNotEmpty) {
+      final old = (await repo.notes(projectId: projectId)).where((n) => n.kpId == kpId).firstOrNull;
+      if (old != null) return old;
+      final kp = await repo.kp(kpId);
+      if (kp != null) {
+        title = title.isEmpty ? kp.title : title;
+        chapter = chapter.isEmpty ? kp.chapter : chapter;
+      }
+    }
+    return StudyNote(id: newId(), projectId: projectId, kpId: kpId, title: title, chapter: chapter);
+  }
+
+  Future<void> saveNote(StudyNote n) async {
+    n.updatedAt = DateTime.now();
+    await repo.saveNote(n);
+    changed();
+  }
+
+  /// 把（已压缩的）照片存进应用目录并登记，返回 MediaAsset id。
+  Future<String> addNotePhoto(StudyNote n, List<int> bytes, {String ext = 'jpg'}) async {
+    final dir = Directory(pth.join((await appDir()).path, 'media'))..createSync(recursive: true);
+    final id = 'photo_${newId()}';
+    final f = File(pth.join(dir.path, '$id.$ext'));
+    await f.writeAsBytes(bytes);
+    await repo.saveMedia(MediaAsset(
+        id: id, projectId: n.projectId, kind: 'photo', ownerId: n.id, localPath: f.path, fileName: '${n.title.isEmpty ? '笔记照片' : n.title}.$ext', size: bytes.length));
+    n.photoIds = [...n.photoIds, id];
+    await saveNote(n);
+    return id;
+  }
+
+  /// 照片文件：在本机直接用，放到云端的会自动下载。找不到时返回 null。
+  Future<File?> notePhoto(String id) async {
+    final m = await repo.mediaAsset(id);
+    if (m == null) return null;
+    try {
+      return await (await cloud()).ensureLocal(m);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> removeNotePhoto(StudyNote n, String id, {bool remote = true}) async {
+    final m = await repo.mediaAsset(id);
+    if (m != null) await (await cloud()).deleteAsset(m, remote: remote);
+    n.photoIds = n.photoIds.where((e) => e != id).toList();
+    await saveNote(n);
+  }
+
+  Future<void> deleteNoteEverywhere(StudyNote n, {bool remote = true}) async {
+    final c = await cloud();
+    for (final id in n.photoIds) {
+      final m = await repo.mediaAsset(id);
+      if (m != null) await c.deleteAsset(m, remote: remote);
+    }
+    await repo.deleteNote(n.id);
+    changed();
+  }
+
+  /// AI 讲解知识点：和「AI 解释」同一个提示词，带上知识点内容和教材原文。
+  Future<LlmReply> noteExplain(StudyNote n, {AiIo? io}) async {
+    final kp = n.kpId.isEmpty ? null : await repo.kp(n.kpId);
+    final item = [n.title, if (kp != null && kp.content.isNotEmpty) kp.content, if (n.own.trim().isNotEmpty) '我的理解：${n.own}'].join('\n');
+    final docId = kp?.docId ?? (n.quotes.isEmpty ? '' : n.quotes.first.docId);
+    final page = kp?.page ?? (n.quotes.isEmpty ? 0 : n.quotes.first.page);
+    final src = await sourceText(docId, page);
+    final quotes = n.quotes.map((q) => q.text).join('\n');
+    final prompt = Prompts.fill(settings.prompt('explain'),
+        {'item': item, 'page': '$page', 'source': [src, quotes].where((e) => e.trim().isNotEmpty).join('\n\n').ifEmpty('（无原文）')});
+    return _answer(await llm(), [{'role': 'user', 'content': prompt}], web: settings.web(), io: io);
+  }
+
   /// 主观题 AI 批改，返回 (得分 0-10, 点评)。
   Future<(int, String)> gradeSubjective(Question q, String userAnswer) async {
     final prompt = Prompts.fill(settings.prompt('grade'), {'stem': q.stem, 'answer': q.answer, 'user_answer': userAnswer});
-    final j = await (await llm()).chatJson(prompt);
+    final j = await (await llm()).askJson(prompt, web: settings.web());
     return (asInt(j['score']).clamp(0, 10), LatexUtil.autoFix('${j['comment'] ?? ''}'));
   }
 }
 
+
+extension _IfEmpty on String {
+  String ifEmpty(String d) => isEmpty ? d : this;
+}
 
 class SessionTimer {
   final void Function(int seconds, DateTime start) onEnd;

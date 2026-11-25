@@ -23,7 +23,9 @@ abstract class DocStore {
   /// 所有集合名。
   static const allCollections = [
     'projects', 'docs', 'pages', 'chunks', 'kps', 'cards', 'questions', 'wrong', 'logs', 'explain', 'chapters',
-    'feedback', 'sessions', 'inbox_cards', 'inbox_questions', 'reparse'
+    'feedback', 'sessions', 'inbox_cards', 'inbox_questions', 'reparse',
+    // v7：收藏、章节思维导图、学习对话、笔记、可放到云端的大文件
+    'favorites', 'mindmaps', 'study_chats', 'notes', 'media',
   ];
 }
 
@@ -94,7 +96,7 @@ class MemoryDocStore implements DocStore {
 
 class SqliteDocStore implements DocStore {
   /// 数据库结构版本；备份文件里也写这个数，用来判断能否导入。
-  static const schemaVersion = 6; // v5：反馈、学习时长、待审核；v6：按章重新解析的快照
+  static const schemaVersion = 7; // v5：反馈、学习时长、待审核；v6：按章重新解析的快照；v7：收藏 / 导图 / 学习对话 / 笔记 / 云端文件
   static const collections = DocStore.allCollections;
   final Database db;
   SqliteDocStore._(this.db);
@@ -121,6 +123,7 @@ class SqliteDocStore implements DocStore {
         await db.execute('CREATE INDEX IF NOT EXISTS idx_${c}_p ON $c(project_id)');
       }
       // v5：新增 feedback / sessions / inbox_* 集合，由上面的循环自动建表
+      // v7：新增 favorites / mindmaps / study_chats / notes / media，同样由上面的循环建表，旧数据不需要改动
       // v4：解释缓存变成「解释历史」，补上时间字段
       if (from < 4) {
         final now = DateTime.now().toIso8601String();

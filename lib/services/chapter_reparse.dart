@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 
 import '../data/repository.dart';
 import '../models.dart';
+import 'doc_files.dart';
 import 'latex.dart';
 import 'ocr.dart';
 import 'pdf_tools.dart';
@@ -242,7 +243,12 @@ class ChapterReparseService {
 
   Future<Uint8List> _bytes(PdfDoc doc) async {
     if (bytesOverride != null) return bytesOverride!;
-    final f = File(doc.path);
+    final File f;
+    try {
+      f = await DocFiles.file(doc); // 原文件放到云端时会先下载回来
+    } catch (e) {
+      throw ReparseException('$e');
+    }
     if (doc.path.isEmpty || !await f.exists()) throw ReparseException('找不到原文件，可能已被删除，请重新上传这份资料');
     return f.readAsBytes();
   }

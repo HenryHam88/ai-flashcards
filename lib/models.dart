@@ -415,17 +415,26 @@ class LogEntry {
   bool correct;
   DateTime at;
   bool isNew; // 闪卡：这次是否是第一次学（用于每日新卡上限）
-  LogEntry({required this.id, required this.projectId, required this.kind, required this.correct, DateTime? at, this.isNew = false})
+  int grade; // 闪卡：FSRS 评分 1–4（旧记录为 0）
+  LogEntry({required this.id, required this.projectId, required this.kind, required this.correct, DateTime? at, this.isNew = false, this.grade = 0})
       : at = at ?? DateTime.now();
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'projectId': projectId, 'kind': kind, 'correct': correct, 'at': at.toIso8601String(), if (isNew) 'isNew': true};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'kind': kind,
+        'correct': correct,
+        'at': at.toIso8601String(),
+        if (isNew) 'isNew': true,
+        if (grade > 0) 'grade': grade,
+      };
   factory LogEntry.fromJson(Map<String, dynamic> j) => LogEntry(
       id: j['id'],
       projectId: j['projectId'] ?? '',
       kind: j['kind'] ?? 'card',
       correct: j['correct'] == true,
       at: DateTime.tryParse(j['at'] ?? ''),
-      isNew: j['isNew'] == true);
+      isNew: j['isNew'] == true,
+      grade: j['grade'] ?? 0);
 }
 
 /// AI 解释缓存（含追问对话）。
@@ -649,4 +658,371 @@ class StudySession {
       kind: j['kind'] ?? 'review',
       start: DateTime.tryParse(j['start'] ?? '') ?? DateTime.now(),
       seconds: (j['seconds'] as num?)?.toInt() ?? 0);
+}
+
+// ============================================================ v7：收藏 / 导图 / 学习对话 / 笔记 / 云端文件
+
+/// 收藏：知识点、闪卡、题目。id = kind_targetId，同一对象只收藏一次。
+class FavoriteItem {
+  String projectId;
+  String kind; // kp / card / question
+  String targetId;
+  String title; // 收藏时的标题快照（对象被删后仍能显示）
+  DateTime createdAt;
+  FavoriteItem({required this.projectId, required this.kind, required this.targetId, this.title = '', DateTime? createdAt})
+      : createdAt = createdAt ?? DateTime.now();
+  String get id => idFor(kind, targetId);
+  static String idFor(String kind, String targetId) => '${kind}_$targetId';
+  static const kinds = ['kp', 'card', 'question'];
+  static const kindNames = {'kp': '知识点', 'card': '闪卡', 'question': '题目'};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'kind': kind,
+        'targetId': targetId,
+        'title': title,
+        'createdAt': createdAt.toIso8601String(),
+      };
+  factory FavoriteItem.fromJson(Map<String, dynamic> j) => FavoriteItem(
+        projectId: j['projectId'] ?? '',
+        kind: j['kind'] ?? 'kp',
+        targetId: j['targetId'] ?? '',
+        title: j['title'] ?? '',
+        createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
+      );
+}
+
+/// 思维导图节点（树）。text 支持 $...$ 公式。
+class MindNode {
+  String id;
+  String text; // 短标题，可含 $...$ 公式
+  String note; // 详细说明（点节点时显示）
+  int page; // 教材页码（0 = 未知）
+  String kpId; // 对应的知识点
+  List<MindNode> children;
+  MindNode({String? id, required this.text, this.note = '', this.page = 0, this.kpId = '', List<MindNode>? children})
+      : id = id ?? newId(),
+        children = children ?? [];
+  int get count => 1 + children.fold(0, (a, c) => a + c.count);
+  int get depth => 1 + children.fold(0, (a, c) => a > c.depth ? a : c.depth);
+  MindNode? find(String nodeId) {
+    if (id == nodeId) return this;
+    for (final c in children) {
+      final r = c.find(nodeId);
+      if (r != null) return r;
+    }
+    return null;
+  }
+
+  MindNode? parentOf(String nodeId) {
+    for (final c in children) {
+      if (c.id == nodeId) return this;
+      final r = c.parentOf(nodeId);
+      if (r != null) return r;
+    }
+    return null;
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'text': text,
+        if (note.isNotEmpty) 'note': note,
+        if (page > 0) 'page': page,
+        if (kpId.isNotEmpty) 'kpId': kpId,
+        if (children.isNotEmpty) 'children': [for (final c in children) c.toJson()],
+      };
+  factory MindNode.fromJson(Map<String, dynamic> j) => MindNode(
+        id: j['id']?.toString(),
+        text: '${j['text'] ?? j['title'] ?? ''}',
+        note: '${j['note'] ?? ''}',
+        page: j['page'] is int ? j['page'] : int.tryParse('${j['page'] ?? ''}') ?? 0,
+        kpId: '${j['kpId'] ?? j['kp_id'] ?? ''}',
+        children: [for (final c in (j['children'] as List?) ?? const []) if (c is Map) MindNode.fromJson(c.cast<String, dynamic>())],
+      );
+}
+
+/// 一章的思维导图（按需生成，可手动编辑）。id = docId|章节名。
+class ChapterMindMap {
+  String projectId;
+  String docId;
+  String chapter;
+  MindNode root;
+  DateTime updatedAt;
+  bool edited; // 生成后是否手动改过
+  ChapterMindMap({required this.projectId, required this.docId, required this.chapter, required this.root, DateTime? updatedAt, this.edited = false})
+      : updatedAt = updatedAt ?? DateTime.now();
+  String get id => idFor(docId, chapter);
+  static String idFor(String docId, String chapter) => '$docId|$chapter';
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'docId': docId,
+        'chapter': chapter,
+        'root': root.toJson(),
+        'updatedAt': updatedAt.toIso8601String(),
+        if (edited) 'edited': true,
+      };
+  factory ChapterMindMap.fromJson(Map<String, dynamic> j) => ChapterMindMap(
+        projectId: j['projectId'] ?? '',
+        docId: j['docId'] ?? '',
+        chapter: j['chapter'] ?? '',
+        root: MindNode.fromJson(((j['root'] as Map?) ?? {'text': j['chapter'] ?? ''}).cast<String, dynamic>()),
+        updatedAt: DateTime.tryParse(j['updatedAt'] ?? ''),
+        edited: j['edited'] == true,
+      );
+}
+
+/// 学习对话里选中的一段已解析资料：某份资料的某一章，或一段页码。
+class MaterialRef {
+  String docId;
+  String chapter; // 非空 = 按章
+  int pageFrom;
+  int pageTo;
+  MaterialRef({required this.docId, this.chapter = '', this.pageFrom = 0, this.pageTo = 0});
+  Map<String, dynamic> toJson() => {'docId': docId, if (chapter.isNotEmpty) 'chapter': chapter, 'pageFrom': pageFrom, 'pageTo': pageTo};
+  factory MaterialRef.fromJson(Map<String, dynamic> j) =>
+      MaterialRef(docId: j['docId'] ?? '', chapter: j['chapter'] ?? '', pageFrom: j['pageFrom'] ?? 0, pageTo: j['pageTo'] ?? 0);
+}
+
+/// 伴学对话里用户上传的附件（文件本身登记为 MediaAsset，kind = chat_file）。
+/// 文档抽出的文字随对话保存，之后每轮不用重新解析；图片每轮直接发给模型看。
+class ChatAttachment {
+  String id; // MediaAsset id
+  String name;
+  String kind; // pdf / word / txt / image
+  int size;
+  String text; // 抽出的文字（已截到上限）
+  int chars; // 原文总字数
+  int pages; // PDF 页数（其他为 0）
+  ChatAttachment({required this.id, required this.name, required this.kind, this.size = 0, this.text = '', this.chars = 0, this.pages = 0});
+  bool get isImage => kind == 'image';
+  bool get truncated => !isImage && chars > text.length;
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'name': name, 'kind': kind, 'size': size, if (text.isNotEmpty) 'text': text, 'chars': chars, if (pages > 0) 'pages': pages};
+  factory ChatAttachment.fromJson(Map<String, dynamic> j) => ChatAttachment(
+      id: j['id'] ?? '',
+      name: j['name'] ?? '',
+      kind: j['kind'] ?? 'txt',
+      size: j['size'] ?? 0,
+      text: j['text'] ?? '',
+      chars: j['chars'] ?? 0,
+      pages: j['pages'] ?? 0);
+}
+
+/// 学习板块的 AI 对话（基于用户选定的资料范围）。
+class StudyChat {
+  String id;
+  String projectId;
+  String title;
+  List<MaterialRef> scope;
+  List<Map<String, String>> messages; // 只存可见对话（user / assistant），资料原文每次发送时拼进系统提示
+  /// 这个对话的联网设置：null = 跟随「我的 → 出题模型」里的全局设置。
+  bool? web;
+  String? webMode; // 'deep' / 'normal'
+  List<ChatAttachment> attachments;
+  /// 最近一次计算的上下文分配（不保存）：附件实际发送了多少字、丢掉了几条较早的对话。
+  ContextPlan? plan;
+  DateTime createdAt;
+  DateTime updatedAt;
+  StudyChat(
+      {required this.id,
+      required this.projectId,
+      this.title = '',
+      List<MaterialRef>? scope,
+      List<Map<String, String>>? messages,
+      this.web,
+      this.webMode,
+      List<ChatAttachment>? attachments,
+      DateTime? createdAt,
+      DateTime? updatedAt})
+      : scope = scope ?? [],
+        attachments = attachments ?? [],
+        messages = messages ?? [],
+        createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? createdAt ?? DateTime.now();
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'title': title,
+        'scope': [for (final r in scope) r.toJson()],
+        'messages': messages,
+        if (web != null) 'web': web,
+        if (webMode != null) 'webMode': webMode,
+        if (attachments.isNotEmpty) 'attachments': [for (final a in attachments) a.toJson()],
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+      };
+  factory StudyChat.fromJson(Map<String, dynamic> j) => StudyChat(
+        id: j['id'],
+        projectId: j['projectId'] ?? '',
+        title: j['title'] ?? '',
+        scope: [for (final r in (j['scope'] as List?) ?? const []) MaterialRef.fromJson((r as Map).cast<String, dynamic>())],
+        messages: [for (final m in (j['messages'] as List?) ?? const []) (m as Map).map((k, v) => MapEntry('$k', '$v'))],
+        web: j['web'] is bool ? j['web'] : null,
+        webMode: j['webMode'] is String ? j['webMode'] : null,
+        attachments: [for (final a in (j['attachments'] as List?) ?? const []) ChatAttachment.fromJson((a as Map).cast<String, dynamic>())],
+        createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
+        updatedAt: DateTime.tryParse(j['updatedAt'] ?? ''),
+      );
+}
+
+/// 笔记里引用的一段已解析原文。
+class NoteQuote {
+  String docId;
+  int page;
+  String text;
+  NoteQuote({required this.docId, this.page = 0, required this.text});
+  Map<String, dynamic> toJson() => {'docId': docId, 'page': page, 'text': text};
+  factory NoteQuote.fromJson(Map<String, dynamic> j) => NoteQuote(docId: j['docId'] ?? '', page: j['page'] ?? 0, text: j['text'] ?? '');
+}
+
+/// 笔记：挂在一个知识点下（kpId 可为空 = 未关联知识点）。
+class StudyNote {
+  String id;
+  String projectId;
+  String kpId;
+  String chapter;
+  String title;
+  String own; // 自己的理解（Markdown + 公式）
+  String ai; // AI 解释
+  String aiSources; // AI 讲解引用的网页（WebSource.encode）
+  List<NoteQuote> quotes;
+  List<String> questionIds;
+  List<String> photoIds; // MediaAsset id
+  DateTime createdAt;
+  DateTime updatedAt;
+  StudyNote({
+    required this.id,
+    required this.projectId,
+    this.kpId = '',
+    this.chapter = '',
+    this.title = '',
+    this.own = '',
+    this.ai = '',
+    this.aiSources = '',
+    List<NoteQuote>? quotes,
+    List<String>? questionIds,
+    List<String>? photoIds,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  })  : quotes = quotes ?? [],
+        questionIds = questionIds ?? [],
+        photoIds = photoIds ?? [],
+        createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? createdAt ?? DateTime.now();
+  bool get isEmpty => own.trim().isEmpty && ai.trim().isEmpty && quotes.isEmpty && questionIds.isEmpty && photoIds.isEmpty;
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'kpId': kpId,
+        'chapter': chapter,
+        'title': title,
+        'own': own,
+        'ai': ai,
+        if (aiSources.isNotEmpty) 'aiSources': aiSources,
+        'quotes': [for (final q in quotes) q.toJson()],
+        'questionIds': questionIds,
+        'photoIds': photoIds,
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+      };
+  factory StudyNote.fromJson(Map<String, dynamic> j) => StudyNote(
+        id: j['id'],
+        projectId: j['projectId'] ?? '',
+        kpId: j['kpId'] ?? '',
+        chapter: j['chapter'] ?? '',
+        title: j['title'] ?? '',
+        own: j['own'] ?? '',
+        ai: j['ai'] ?? '',
+        aiSources: j['aiSources'] ?? '',
+        quotes: [for (final q in (j['quotes'] as List?) ?? const []) NoteQuote.fromJson((q as Map).cast<String, dynamic>())],
+        questionIds: [for (final x in (j['questionIds'] as List?) ?? const []) '$x'],
+        photoIds: [for (final x in (j['photoIds'] as List?) ?? const []) '$x'],
+        createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
+        updatedAt: DateTime.tryParse(j['updatedAt'] ?? ''),
+      );
+}
+
+/// 可以放到云端省空间的大文件（原始资料、笔记照片、导出的 PDF、备份）。
+/// 资料文件的 id = `doc_<docId>`；本地路径就是原来的位置，释放空间后删除本地文件，用到时再下载回同一位置。
+class MediaAsset {
+  String id;
+  String projectId;
+  String kind; // doc / photo / export / backup
+  String ownerId; // 资料 id、笔记 id……
+  String localPath;
+  String fileName;
+  int size;
+  String sha256;
+  String cloudKey; // 非空 = 云端已有一份
+  bool offloaded; // true = 本地文件已删除，只在云端
+  bool cached; // true = 从云端下载回来的临时副本，超过缓存上限时可以自动删掉（云端仍保留）
+  String thumbPath; // 照片的本机小缩略图（原图放到云端后仍可预览）
+  DateTime createdAt;
+  DateTime lastAccess;
+  MediaAsset({
+    required this.id,
+    required this.projectId,
+    required this.kind,
+    this.ownerId = '',
+    required this.localPath,
+    this.fileName = '',
+    this.size = 0,
+    this.sha256 = '',
+    this.cloudKey = '',
+    this.offloaded = false,
+    this.cached = false,
+    this.thumbPath = '',
+    DateTime? createdAt,
+    DateTime? lastAccess,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        lastAccess = lastAccess ?? createdAt ?? DateTime.now();
+  static String docId(String id) => 'doc_$id';
+  bool get inCloud => cloudKey.isNotEmpty;
+
+  /// 状态文字：仅本机 / 本机 + 云端 / 仅云端。
+  String get stateLabel => offloaded ? '仅云端' : (inCloud ? '本机 + 云端' : '仅本机');
+  static const kindNames = {'doc': '原始资料', 'photo': '笔记照片', 'chat_file': '伴学附件', 'export': '导出的 PDF', 'backup': '备份'};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'kind': kind,
+        'ownerId': ownerId,
+        'localPath': localPath,
+        'fileName': fileName,
+        'size': size,
+        'sha256': sha256,
+        'cloudKey': cloudKey,
+        'offloaded': offloaded,
+        if (cached) 'cached': true,
+        if (thumbPath.isNotEmpty) 'thumbPath': thumbPath,
+        'createdAt': createdAt.toIso8601String(),
+        'lastAccess': lastAccess.toIso8601String(),
+      };
+  factory MediaAsset.fromJson(Map<String, dynamic> j) => MediaAsset(
+        id: j['id'],
+        projectId: j['projectId'] ?? '',
+        kind: j['kind'] ?? 'doc',
+        ownerId: j['ownerId'] ?? '',
+        localPath: j['localPath'] ?? '',
+        fileName: j['fileName'] ?? '',
+        size: j['size'] ?? 0,
+        sha256: j['sha256'] ?? '',
+        cloudKey: j['cloudKey'] ?? '',
+        offloaded: j['offloaded'] == true,
+        cached: j['cached'] == true,
+        thumbPath: j['thumbPath'] ?? '',
+        createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
+        lastAccess: DateTime.tryParse(j['lastAccess'] ?? ''),
+      );
+}
+
+/// 一次提问的上下文分配：按模型上下文长度扣掉系统提示、资料、对话、回答预留和安全余量后，剩下的给附件。
+class ContextPlan {
+  final int context; // 模型上下文长度（token）
+  final int attachChars; // 附件文字总字数
+  final int attachSent; // 这次实际发送的附件字数
+  final int historyDropped; // 为了腾地方没有发送的较早消息条数
+  const ContextPlan({required this.context, required this.attachChars, required this.attachSent, this.historyDropped = 0});
+  bool get attachCut => attachSent < attachChars;
 }

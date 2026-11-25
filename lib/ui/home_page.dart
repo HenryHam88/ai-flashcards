@@ -5,9 +5,12 @@ import '../app_state.dart';
 import '../models.dart';
 import '../services/study_queue.dart';
 import '../theme/glass.dart';
+import 'favorites_page.dart';
+import 'notes_page.dart';
 import 'project_page.dart';
 import 'review_page.dart';
 import 'study_counts.dart';
+import 'study_page.dart';
 
 class HomeData {
   final int due;
@@ -140,6 +143,8 @@ class HomePage extends StatelessWidget {
               padding: EdgeInsets.only(left: 4, top: 6),
               child: Text('支持 PDF / Word / TXT 自动解析与生成卡片', style: TextStyle(color: M.sub, fontSize: 12)),
             ),
+            const SizedBox(height: 12),
+            _sectionsRow(context, d?.projects.map((e) => e.$1).toList() ?? const []),
             SectionTitle('我的项目',
                 trailing: Text('共 ${d?.projects.length ?? 0} 个', style: TextStyle(color: M.sub, fontSize: 13))),
             if (d != null && d.projects.isEmpty)
@@ -177,5 +182,61 @@ class HomePage extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// 跨项目入口：学习板块和笔记要先选项目（只有一个项目时直接打开），收藏显示全部项目。
+  Widget _sectionsRow(BuildContext context, List<Project> projects) {
+    void open(Widget page) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    Future<void> pick(String what, Widget Function(String id) page) async {
+      if (projects.isEmpty) {
+        await createProjectDialog(context);
+        return;
+      }
+      if (projects.length == 1) return open(page(projects.first.id));
+      final id = await showGlassSheet<String>(
+        context,
+        (ctx, sc) => ListView(controller: sc, padding: const EdgeInsets.fromLTRB(20, 8, 20, 30), children: [
+          Text('打开哪个项目的$what', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          for (final p in projects)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Glass(
+                radius: 16,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                onTap: () => Navigator.pop(ctx, p.id),
+                child: Row(children: [
+                  Icon(Icons.menu_book_rounded, color: M.sageDark, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(p.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+                  Icon(Icons.chevron_right_rounded, color: M.sub),
+                ]),
+              ),
+            ),
+        ]),
+        initial: 0.5,
+      );
+      if (id != null && context.mounted) open(page(id));
+    }
+
+    Widget entry(IconData icon, String label, VoidCallback onTap) => Expanded(
+          child: Glass(
+            radius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+            onTap: onTap,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(icon, size: 18, color: M.sageDark),
+              const SizedBox(width: 6),
+              Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+            ]),
+          ),
+        );
+    return Row(children: [
+      entry(Icons.account_tree_outlined, '学习板块', () => pick('学习板块', (id) => StudyPage(projectId: id))),
+      const SizedBox(width: 8),
+      entry(Icons.edit_note_rounded, '笔记', () => pick('笔记', (id) => NotesPage(projectId: id))),
+      const SizedBox(width: 8),
+      entry(Icons.star_outline_rounded, '收藏', () => open(const FavoritesPage())),
+    ]);
   }
 }

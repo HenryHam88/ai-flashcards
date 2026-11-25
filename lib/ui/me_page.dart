@@ -3,12 +3,17 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
+import '../services/cloud_storage.dart' show CloudProvider;
 import '../services/concurrency.dart';
+import '../services/llm.dart';
 import '../services/prompts.dart';
 import '../services/settings.dart';
 import '../theme/glass.dart';
 import '../help/help_articles.dart' show HelpIds;
+import 'ai_widgets.dart';
+import 'cloud_settings_page.dart';
 import 'explain_history_page.dart';
+import 'favorites_page.dart';
 import 'help_page.dart';
 import 'number_input.dart';
 import 'settings_pages.dart';
@@ -30,6 +35,8 @@ class MePage extends StatelessWidget {
         const SizedBox(height: 4),
         SettingsGroup(title: '学习', children: [
           SettingsTile(icon: Icons.bookmark_border_rounded, title: '错题本', subtitle: '全部项目的错题', onTap: () => go(const WrongBookPage())),
+          SettingsTile(
+              icon: Icons.star_outline_rounded, title: '收藏', subtitle: '全部项目收藏的知识点、闪卡和题目', onTap: () => go(const FavoritesPage())),
           SettingsTile(
               icon: Icons.history_edu_rounded,
               title: '解释历史',
@@ -71,6 +78,13 @@ class MePage extends StatelessWidget {
               title: '导出 / 导入数据',
               subtitle: st.autoBackup ? '备份、换手机迁移 · 已开启每周自动备份' : '备份、换手机迁移、分享项目',
               onTap: () => go(const DataPage())),
+          SettingsTile(
+              icon: Icons.cloud_outlined,
+              title: '云端存储',
+              subtitle: st.cloudBucket.isEmpty
+                  ? '未配置 · 用自己的阿里云 OSS / 腾讯云 COS 存放大文件，省手机空间'
+                  : '${CloudProvider.of(st.cloudProvider).name} · ${st.cloudBucket}',
+              onTap: () => go(const CloudSettingsPage())),
         ]),
         SettingsGroup(title: '帮助与关于', children: [
           SettingsTile(
@@ -85,23 +99,24 @@ class MePage extends StatelessWidget {
               onTap: () => go(const AboutPage())),
         ]),
         const SizedBox(height: 16),
-        Text('所有数据只保存在本机；API 密钥保存在系统安全存储中，不会上传到任何地方。',
+        Text('所有数据只保存在本机（配置云端存储后，只有你选择释放的大文件会放到你自己的存储桶）；密钥保存在系统安全存储中。',
             textAlign: TextAlign.center, style: TextStyle(color: M.sub, fontSize: 12, height: 1.6)),
       ]),
     );
   }
 }
 
-class _KeyField extends StatefulWidget {
+class KeyField extends StatefulWidget {
   final String label;
   final Future<String> Function() load;
   final Future<void> Function(String) save;
-  const _KeyField({required this.label, required this.load, required this.save});
+  final String hint;
+  const KeyField({super.key, required this.label, required this.load, required this.save, this.hint = 'sk-...'});
   @override
-  State<_KeyField> createState() => _KeyFieldState();
+  State<KeyField> createState() => KeyFieldState();
 }
 
-class _KeyFieldState extends State<_KeyField> {
+class KeyFieldState extends State<KeyField> {
   final c = TextEditingController();
   bool obscure = true;
   @override
@@ -119,7 +134,7 @@ class _KeyFieldState extends State<_KeyField> {
           onChanged: widget.save,
           decoration: InputDecoration(
             labelText: widget.label,
-            hintText: 'sk-...',
+            hintText: widget.hint,
             suffixIcon: IconButton(
                 icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                 onPressed: () => setState(() => obscure = !obscure)),
@@ -128,7 +143,7 @@ class _KeyFieldState extends State<_KeyField> {
       );
 }
 
-Widget _textField(String label, String value, void Function(String) onChanged, {String? hint}) => Padding(
+Widget settingsTextField(String label, String value, void Function(String) onChanged, {String? hint}) => Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
           initialValue: value, onChanged: onChanged, decoration: InputDecoration(labelText: label, hintText: hint)),
@@ -142,6 +157,93 @@ class LlmSettingsPage extends StatefulWidget {
 
 class _LlmSettingsPageState extends State<LlmSettingsPage> {
   String? testResult;
+  final tick = ValueNotifier(0); // 接口地址 / 模型变了，联网是否可用要跟着变
+
+  @override
+  void dispose() {
+    tick.dispose();
+    super.dispose();
+  }
+
+  Widget _webGroup(Settings st) => ValueListenableBuilder(
+        valueListenable: tick,
+        builder: (context, _, _) {
+          final reason = st.webUnavailable;
+          final on = st.webSearch && reason == null;
+          Widget mode(WebMode m) => Expanded(
+                child: Glass(
+                  radius: 14,
+                  tint: on && st.webMode == m ? M.sage : null,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  onTap: on
+                      ? () {
+                          st.webMode = m;
+                          tick.value++;
+                        }
+                      : null,
+                  child: Column(children: [
+                    Text(webModeNames[m]!, style: TextStyle(fontWeight: FontWeight.w700, color: on && st.webMode == m ? Colors.white : M.text)),
+                    const SizedBox(height: 2),
+                    Text(m == WebMode.deep ? '更准，较慢' : '更快、更省',
+                        style: TextStyle(fontSize: 11, color: on && st.webMode == m ? Colors.white : M.sub)),
+                  ]),
+                ),
+              );
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SettingsGroup(title: 'AI 联网', children: [
+              SwitchTile(
+                icon: Icons.public_rounded,
+                title: 'AI 联网搜索',
+                subtitle: reason ?? 'AI 解释、伴学、笔记讲解、思维导图和主观题批改会在需要时上网查资料。出闪卡和出题不联网，只依据你的资料。',
+                value: on,
+                onChanged: (v) {
+                  if (reason != null) {
+                    toast(context, reason);
+                    return;
+                  }
+                  st.webSearch = v;
+                  tick.value++;
+                },
+              ),
+            ]),
+            const SizedBox(height: 10),
+            Opacity(
+              opacity: on ? 1 : 0.5,
+              child: Row(children: [mode(WebMode.deep), const SizedBox(width: 10), mode(WebMode.normal)]),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                  '${webModeNames[WebMode.deep]}：${webModeHints[WebMode.deep]}。\n${webModeNames[WebMode.normal]}：${webModeHints[WebMode.normal]}。\n'
+                  '搜索和读网页本身不收费，搜到的内容按模型 Token 计费。AI 伴学里每个对话还能单独切换。',
+                  style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
+            ),
+            const SizedBox(height: 12),
+            Glass(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('联网模型', style: const TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                    st.webNative
+                        ? '出题模型是 ${st.llmModel}，可以直接联网。换成其他模型时，会先用下面的联网模型通过 DeepSeek 搜索整理，再交给出题模型回答。'
+                        : st.webRelay
+                            ? '出题模型「${st.llmModel}」不能直接联网：会先用联网模型通过 DeepSeek 搜索整理，再把结果交给它回答（多一次调用，按联网模型的 Token 计费）。'
+                            : '联网只支持 DeepSeek 的 deepseek-flash，请把联网模型改为 deepseek-flash。',
+                    style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
+                const SizedBox(height: 12),
+                settingsTextField('联网模型名称', st.webModel, (v) {
+                  st.webModel = v;
+                  tick.value++;
+                }, hint: 'deepseek-flash'),
+                KeyField(label: '联网 API 密钥（DeepSeek）', load: st.webKeyRaw, save: st.setWebKey, hint: '留空则用出题模型或 DeepSeek OCR 的密钥'),
+                Text('接口固定为 ${Settings.webBaseUrl}。', style: TextStyle(color: M.sub, fontSize: 12)),
+              ]),
+            ),
+          ]);
+        },
+      );
+
   @override
   Widget build(BuildContext context) {
     final s = context.read<AppState>();
@@ -154,23 +256,35 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('兼容 OpenAI 格式的服务都能用（DeepSeek、通义千问、Kimi 等）。', style: TextStyle(color: M.sub, fontSize: 13)),
             const SizedBox(height: 12),
-            _textField('接口地址', st.llmBaseUrl, (v) => st.llmBaseUrl = v, hint: 'https://api.deepseek.com'),
-            _KeyField(label: 'API 密钥', load: st.llmKey, save: st.setLlmKey),
-            _textField('模型名称', st.llmModel, (v) => st.llmModel = v, hint: 'deepseek-flash'),
+            settingsTextField('接口地址', st.llmBaseUrl, (v) {
+              st.llmBaseUrl = v;
+              tick.value++;
+            }, hint: 'https://api.deepseek.com'),
+            KeyField(label: 'API 密钥', load: st.llmKey, save: st.setLlmKey),
+            settingsTextField('模型名称', st.llmModel, (v) {
+              st.llmModel = v;
+              tick.value++;
+            }, hint: 'deepseek-flash'),
             Wrap(spacing: 8, children: [
               for (final m in ['deepseek-flash', 'deepseek-v4-pro'])
                 ActionChip(
                     label: Text(m),
                     onPressed: () {
                       st.llmModel = m;
+                      tick.value++;
                       setState(() {});
                       toast(context, '已切换为 $m（重新进入页面可见）');
                     }),
             ]),
             const SizedBox(height: 8),
             Text('提示：日常用 deepseek-flash 便宜；难题可切到 deepseek-v4-pro。', style: TextStyle(color: M.sub, fontSize: 12)),
+            const SizedBox(height: 12),
+            settingsTextField('上下文长度（千 token）', st.llmContextK == 0 ? '' : '${st.llmContextK}', (v) => st.llmContextK = int.tryParse(v.trim()) ?? 0,
+                hint: '留空 = 自动（DeepSeek 1000，其他 128）'),
+            Text('AI 伴学按这个长度决定附件能发多少字。用其他服务时可按它的说明填写。', style: TextStyle(color: M.sub, fontSize: 12)),
           ]),
         ),
+        _webGroup(st),
         const SizedBox(height: 14),
         GlassButton(
           label: '测试连接',
@@ -275,8 +389,8 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
                 style: TextStyle(color: M.sageDark, fontSize: 12, height: 1.5),
               ),
               const SizedBox(height: 12),
-              _textField('接口地址', st.ocrBaseUrl, (v) => st.ocrBaseUrl = v),
-              _KeyField(label: 'OCR 密钥（留空则使用出题模型的密钥）', load: st.ocrKeyRaw, save: st.setOcrKey),
+              settingsTextField('接口地址', st.ocrBaseUrl, (v) => st.ocrBaseUrl = v),
+              KeyField(label: 'OCR 密钥（留空则使用出题模型的密钥）', load: st.ocrKeyRaw, save: st.setOcrKey),
             ]),
           ),
         if (st.ocrProvider == OcrProvider.kimi)
@@ -286,8 +400,8 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
               const SizedBox(height: 4),
               Text('上传后由 Kimi 抽取文字（目前免费），支持 PDF 和 Word。PDF 每批的文字会记在该批首页；Word 按标题切成小节。', style: TextStyle(color: M.sub, fontSize: 12)),
               const SizedBox(height: 12),
-              _textField('接口地址', st.kimiBaseUrl, (v) => st.kimiBaseUrl = v),
-              _KeyField(label: 'Kimi API 密钥', load: st.kimiKey, save: st.setKimiKey),
+              settingsTextField('接口地址', st.kimiBaseUrl, (v) => st.kimiBaseUrl = v),
+              KeyField(label: 'Kimi API 密钥', load: st.kimiKey, save: st.setKimiKey),
             ]),
           ),
         if (st.ocrProvider == OcrProvider.local)

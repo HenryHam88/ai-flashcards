@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'concurrency.dart';
+import 'llm.dart';
 import 'prompts.dart';
 
 /// 密钥存储抽象（正式环境用 flutter_secure_storage，测试用内存）。
@@ -49,6 +50,53 @@ class Settings {
   set llmModel(String v) => prefs.setString('llm_model', v.trim());
   Future<String> llmKey() async => await secrets.read('llm_key') ?? '';
   Future<void> setLlmKey(String v) => secrets.write('llm_key', v.trim());
+
+  // AI 联网（DeepSeek 服务端联网工具）。默认开启、默认深度搜索；出闪卡 / 出题永远不联网。
+  bool get webSearch => prefs.getBool('web_search') ?? true;
+  set webSearch(bool v) => prefs.setBool('web_search', v);
+  WebMode get webMode => prefs.getString('web_mode') == 'normal' ? WebMode.normal : WebMode.deep;
+  set webMode(WebMode v) => prefs.setString('web_mode', v == WebMode.normal ? 'normal' : 'deep');
+
+  /// 上下文长度（千 token），0 = 自动（按模型名：DeepSeek 1M，其他 128K）。
+  int get llmContextK => prefs.getInt('llm_context_k') ?? 0;
+  set llmContextK(int v) => prefs.setInt('llm_context_k', v < 0 ? 0 : v);
+  int get contextTokens => llmContextK > 0 ? llmContextK * 1000 : LlmClient.contextTokens(llmModel);
+
+  // 联网模型：联网只能走 DeepSeek 的服务端工具。出题模型不是 deepseek-flash 时，
+  // 先用这个模型（DeepSeek 接口）联网检索整理，再把结果交给出题模型回答。
+  static const webBaseUrl = 'https://api.deepseek.com';
+  String get webModel => prefs.getString('web_model') ?? 'deepseek-flash';
+  set webModel(String v) => prefs.setString('web_model', v.trim());
+  Future<String> webKeyRaw() async => await secrets.read('web_key') ?? '';
+  Future<void> setWebKey(String v) => secrets.write('web_key', v.trim());
+
+  /// 联网模型用的密钥：单独填的优先；没填时用出题模型（接口是 DeepSeek 时）或 DeepSeek OCR 的密钥。
+  Future<String> webKey() async {
+    final k = await webKeyRaw();
+    if (k.isNotEmpty) return k;
+    if (Uri.tryParse(llmBaseUrl.trim())?.host == 'api.deepseek.com') return llmKey();
+    if (Uri.tryParse(ocrBaseUrl.trim())?.host == 'api.deepseek.com') return await secrets.read('ocr_key') ?? '';
+    return '';
+  }
+
+  /// 出题模型自己就能联网（DeepSeek 接口 + deepseek-flash）。
+  bool get webNative => LlmClient.webUnavailableReason(llmBaseUrl, llmModel) == null;
+
+  /// 要借联网模型检索（出题模型不能直接联网，但联网模型可用）。
+  bool get webRelay => !webNative && LlmClient.webModels.contains(webModel.trim());
+
+  /// 不能联网的原因；null = 可以联网（直接联网或借联网模型）。
+  String? get webUnavailable {
+    if (webNative || webRelay) return null;
+    return '联网模型「${webModel.trim().isEmpty ? '未填写' : webModel.trim()}」不支持 DeepSeek 联网工具，请把联网模型改为 deepseek-flash';
+  }
+
+  /// 实际使用的联网方式：[chatOn] / [chatMode] 是单个对话的设置（null = 跟随全局）。
+  WebMode web({bool? chatOn, WebMode? chatMode}) {
+    if (webUnavailable != null) return WebMode.off;
+    if (!(chatOn ?? webSearch)) return WebMode.off;
+    return chatMode ?? webMode;
+  }
 
   // PDF 解析
   OcrProvider get ocrProvider =>
@@ -167,18 +215,49 @@ class Settings {
     requestLimiter.max = n;
   }
 
+  // ---------- 云端存储（省手机空间） ----------
+  // 只存连接信息；AccessKey 存在系统安全存储里，并且不进入任何备份（见 [cloudKeyId] / [cloudSecret]）。
+  String get cloudProvider => prefs.getString('cloud_provider') ?? 'aliyun'; // aliyun / tencent / s3
+  set cloudProvider(String v) => prefs.setString('cloud_provider', v);
+  String get cloudRegion => prefs.getString('cloud_region') ?? '';
+  set cloudRegion(String v) => prefs.setString('cloud_region', v.trim());
+  String get cloudBucket => prefs.getString('cloud_bucket') ?? '';
+  set cloudBucket(String v) => prefs.setString('cloud_bucket', v.trim());
+  /// 自定义 S3 兼容服务的地址（阿里云 / 腾讯云按地域自动生成，留空即可）。
+  String get cloudEndpoint => prefs.getString('cloud_endpoint') ?? '';
+  set cloudEndpoint(String v) => prefs.setString('cloud_endpoint', v.trim());
+  /// 对象路径前缀，默认 ai-flashcards/。
+  String get cloudPrefix => prefs.getString('cloud_prefix') ?? 'ai-flashcards/';
+  set cloudPrefix(String v) => prefs.setString('cloud_prefix', v.trim());
+  /// 从云端下载回来的文件在本机最多占多少 MB，超过后自动删除最久没用的（云端仍保留）。
+  int get cloudCacheMb => prefs.getInt('cloud_cache_mb') ?? 300;
+  set cloudCacheMb(int v) => prefs.setInt('cloud_cache_mb', v.clamp(50, 5000));
+  Future<String> cloudKeyId() async => await secrets.read('cloud_ak') ?? '';
+  Future<void> setCloudKeyId(String v) => secrets.write('cloud_ak', v.trim());
+  Future<String> cloudSecret() async => await secrets.read('cloud_sk') ?? '';
+  Future<void> setCloudSecret(String v) => secrets.write('cloud_sk', v.trim());
+
+  /// 云端存储是否填写完整（没买 / 没填时整个功能自动隐藏，不影响使用）。
+  Future<bool> cloudConfigured() async =>
+      cloudBucket.isNotEmpty &&
+      (cloudRegion.isNotEmpty || cloudEndpoint.isNotEmpty) &&
+      (await cloudKeyId()).isNotEmpty &&
+      (await cloudSecret()).isNotEmpty;
+
   // ---------- 首次启动 ----------
   bool get onboarded => prefs.getBool('onboarded') ?? false;
   set onboarded(bool v) => prefs.setBool('onboarded', v);
 
   /// 不含任何密钥的设置项，用于备份。
   static const backupKeys = [
-    'llm_base', 'llm_model', 'ocr_provider', 'ocr_modes', 'ocr_base', 'ocr_batch', 'kimi_base', 'gen_templates',
+    'llm_base', 'llm_model', 'llm_context_k', 'web_search', 'web_mode', 'web_model', 'ocr_provider', 'ocr_modes', 'ocr_base', 'ocr_batch', 'kimi_base', 'gen_templates',
     'daily_new_limit', 'daily_review_limit', 'desired_retention', 'day_start_hour', 'theme_mode', 'text_scale',
     'math_scale', 'reduce_motion', 'haptics', 'reminder_on', 'reminder_minutes', 'auto_backup', 'review_before_add',
     'auto_cap', 'concurrency',
   ];
-  static const secretKeys = ['llm_key', 'ocr_key', 'kimi_key'];
+  /// 可以随备份导出的密钥（用户勾选「包含 API 密钥」时）。
+  /// 云端存储的 AccessKey（cloud_ak / cloud_sk）故意不在这里：备份文件本身可能被上传到云端，绝不能带着钥匙。
+  static const secretKeys = ['llm_key', 'ocr_key', 'kimi_key', 'web_key'];
 
   Map<String, dynamic> exportPrefs() {
     final out = <String, dynamic>{};
