@@ -58,12 +58,17 @@ class MdMath {
   static MdDoc parse(String input) {
     final math = <TexSegment>[];
     final b = StringBuffer();
-    for (final seg in LatexUtil.split(input.replaceAll('\r\n', '\n'))) {
+    // 代码先保护起来：行首成对的 ``` 代码块和同一行内成对的 `行内代码` 里的 \( \[ $ 不当公式
+    final codes = <String>[];
+    final src = protectCode(input.replaceAll('\r\n', '\n').replaceAll(codeTok, ''), codes);
+    for (final seg in LatexUtil.split(src)) {
       if (!seg.isMath) {
-        b.write(seg.text.replaceAll(ph, ''));
+        b.write(restoreCode(seg.text.replaceAll(ph, ''), codes));
         continue;
       }
-      math.add(seg.text.contains('&') ? TexSegment(decodeMathEntities(seg.text), isMath: true, display: seg.display) : seg);
+      var mt = restoreCode(seg.text, codes);
+      if (mt.contains('&')) mt = decodeMathEntities(mt);
+      math.add(mt == seg.text ? seg : TexSegment(mt, isMath: true, display: seg.display));
       final tok = '$ph${math.length - 1}$ph';
       b.write(seg.display ? '\n$tok\n' : tok);
     }
@@ -155,6 +160,30 @@ class MdMath {
     flushPara();
     return MdDoc(blocks, math, tables, codeBlocks);
   }
+
+  /// 代码保护用的占位符（独占私用字符，不含 $ 和 \）。
+  static const codeTok = '\u0006';
+  static final _fenceRe = RegExp(r'^[ \t]*(```+|~~~+)[^\n`]*\n[\s\S]*?\n[ \t]*\1[ \t]*$', multiLine: true);
+  static final _inlineCodeRe = RegExp(r'`[^`\n]+`');
+
+  /// 把代码块和行内代码换成占位符，原文放进 [codes]。
+  static String protectCode(String s, List<String> codes) {
+    if (!s.contains('`') && !s.contains('~~~')) return s;
+    String keep(Match m) {
+      codes.add(m[0]!);
+      return '$codeTok${codes.length - 1}$codeTok';
+    }
+
+    return s.replaceAllMapped(_fenceRe, keep).replaceAllMapped(_inlineCodeRe, keep);
+  }
+
+  /// 还原 [protectCode] 换掉的代码原文。
+  static String restoreCode(String s, List<String> codes) => codes.isEmpty || !s.contains(codeTok)
+      ? s
+      : s.replaceAllMapped(RegExp('$codeTok(\\d+)$codeTok'), (m) {
+          final i = int.parse(m[1]!);
+          return i < codes.length ? codes[i] : '';
+        });
 
   /// 行内标记：**粗体**、*斜体*、`代码`、公式占位符。
   static final inlineRe = RegExp('\\*\\*(.+?)\\*\\*|__(.+?)__|(?<![\\w*])\\*(?![\\s*])(.+?)(?<!\\s)\\*(?![\\w*])|`([^`\\n]+)`|$ph(\\d+)$ph'

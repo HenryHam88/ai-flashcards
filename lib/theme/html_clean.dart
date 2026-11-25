@@ -220,15 +220,24 @@ final _tableOpen = RegExp(r'<table\b[^<>]*>', caseSensitive: false);
 final _tableAny = RegExp(r'<(/?)table\b[^<>]*>', caseSensitive: false);
 final _attr = RegExp(r'''(colspan|rowspan)\s*=\s*["']?\s*(\d+)''', caseSensitive: false);
 
-/// 找到与 [start] 处 <table> 配对的 </table> 结束位置（不闭合时到文末）。
+final _cellClose = RegExp(r'</(tr|td|th)\s*>', caseSensitive: false);
+
+/// 找到与 [start] 处 <table> 配对的 </table> 结束位置。
+/// 不闭合时（OCR 截断、流式输出）不会吞掉后面的全部内容：到最后一个 </tr> / </td> 之后的空行为止，
+/// 没有空行才到文末。
 int _tableEnd(String s, int start) {
   var depth = 0;
   for (final m in _tableAny.allMatches(s, start)) {
     depth += m[1] == '/' ? -1 : 1;
     if (depth == 0) return m.end;
   }
-  return s.length;
+  final lastCell = _cellClose.allMatches(s, start).lastOrNull?.end ?? start;
+  final blank = s.indexOf('\n\n', lastCell);
+  return blank < 0 ? s.length : blank;
 }
+
+/// 行内代码（`...`）换成等长的空白，用来找表格位置：代码里写的 <table> 只是文字。
+String _maskCode(String s) => !s.contains('`') ? s : s.replaceAllMapped(_code, (m) => ' ' * m[0]!.length);
 
 /// 解析一段 HTML 表格源码（可以不完整）。
 HtmlTable parseHtmlTable(String src) {
@@ -401,24 +410,27 @@ bool hasHtmlLike(String s) => s.contains('<') || s.contains('&') || s.contains('
 String cleanForDisplay(String s, {required String Function(HtmlTable t) table, bool markdown = true}) {
   if (!hasHtmlLike(s)) return s;
   var t = stripOcrMarkup(s);
+  final mask = _maskCode(t);
   final out = StringBuffer();
   var pos = 0;
   while (true) {
-    final m = _tableOpen.firstMatch(t.substring(pos));
+    final m = _tableOpen.firstMatch(mask.substring(pos));
     if (m == null) break;
     final start = pos + m.start;
-    final end = _tableEnd(t, start);
+    final end = _tableEnd(mask, start);
     out.write(htmlInline(t.substring(pos, start), markdown: markdown));
     final tb = parseHtmlTable(t.substring(start, end));
     if (tb.rows.isNotEmpty) out.write('\n\n${table(tb)}\n\n');
     pos = end;
   }
   var rest = t.substring(pos);
+  final restMask = mask.substring(pos);
   // 缺了 <table> 的残缺表格：从第一个 <tr> 到最后一个 </tr>（或 </td>）
-  final tr = RegExp(r'<tr\b[^<>]*>', caseSensitive: false).firstMatch(rest);
+  final tr = RegExp(r'<tr\b[^<>]*>', caseSensitive: false).firstMatch(restMask);
   if (tr != null) {
-    final lastEnd = RegExp(r'</(tr|td|th)\s*>', caseSensitive: false).allMatches(rest).lastOrNull?.end;
-    final end = lastEnd != null && lastEnd > tr.start ? lastEnd : rest.length;
+    final lastEnd = _cellClose.allMatches(restMask).lastOrNull?.end;
+    final blank = restMask.indexOf('\n\n', tr.start);
+    final end = lastEnd != null && lastEnd > tr.start ? lastEnd : (blank < 0 ? rest.length : blank);
     final tb = parseHtmlTable('<table>${rest.substring(tr.start, end)}</table>');
     out.write(htmlInline(rest.substring(0, tr.start), markdown: markdown));
     if (tb.rows.isNotEmpty) out.write('\n\n${table(tb)}\n\n');
