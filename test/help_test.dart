@@ -156,6 +156,8 @@ void main() {
       await t.enterText(find.byType(TextField), '');
       await t.pump();
       await t.scrollUntilVisible(find.text('作者 QQ：2268739822'), 300, scrollable: find.byType(Scrollable).first);
+      await t.ensureVisible(find.text('作者 QQ：2268739822'));
+      await t.pumpAndSettle();
       await t.tap(find.text('作者 QQ：2268739822'));
       await t.pump();
       expect(copied, ['2268739822']);

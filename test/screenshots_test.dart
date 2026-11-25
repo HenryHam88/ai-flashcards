@@ -190,7 +190,7 @@ void main() {
     });
   });
 
-  testWidgets('闪卡上一张：撤销评分并写入会话', (t) async {
+  testWidgets('闪卡上一张：回看上一张的答案和评分，不改动数据', (t) async {
     state.settings.reviewSession = {
       'projectId': 'p1',
       'ids': [for (var i = 0; i < 32; i++) 'c$i'],
@@ -203,20 +203,22 @@ void main() {
           await t.pump(const Duration(milliseconds: 100));
         }
       }
-      expect(find.text('右滑 = 记得，左滑 = 忘了，点按翻面；上一张 / 下一张可回看'), findsOneWidget);
+      expect(find.text('右滑 = 记住了，左滑 = 没记住；上一张可回看、改评分'), findsOneWidget);
       await t.tap(find.text('记住了'));
       await settle();
       await t.tap(find.text('没记住'));
       await settle();
       expect(find.text('3 / 32'), findsOneWidget);
       expect(state.settings.reviewSession!['index'], 2);
-      expect((state.settings.reviewSession!['undo'] as List).length, 2);
+      expect((state.settings.reviewSession!['history'] as List).length, 2);
+      final rated = (await state.repo.card('c1'))!.toJson();
       await t.tap(find.text('上一张'));
       await settle();
       expect(find.text('2 / 32'), findsOneWidget);
       expect(state.settings.reviewSession!['index'], 1);
-      expect((await state.repo.card('c1'))!.reps, 0);
-      expect(find.text('•  点击翻面  •'), findsOneWidget); // 回到正面
+      expect((await state.repo.card('c1'))!.toJson(), rated); // 回看不改数据
+      expect(find.text('本轮已评「没记住」，点其他评分可以修改'), findsOneWidget);
+      expect(find.text('答案'), findsOneWidget); // 直接显示答案
     });
   });
 
@@ -244,7 +246,7 @@ void main() {
     expect((await state.repo.wrong()).length, 1);
   });
 
-  testWidgets('闪卡下一张：退回后原样前进，不重新评分', (t) async {
+  testWidgets('闪卡改评分：退回两张改掉误触，后面已评的卡不受影响', (t) async {
     state.settings.reviewSession = {
       'projectId': 'p1',
       'ids': [for (var i = 0; i < 32; i++) 'c$i'],
@@ -257,36 +259,37 @@ void main() {
           await t.pump(const Duration(milliseconds: 100));
         }
       }
+      await t.tap(find.text('没记住')); // 误触
+      await settle();
       await t.tap(find.text('记住了'));
       await settle();
-      await t.tap(find.text('没记住'));
-      await settle();
-      final rated = (await state.repo.card('c1'))!.toJson();
+      final logsBefore = (await state.repo.logs(projectId: 'p1')).length;
+      final c1 = (await state.repo.card('c1'))!.toJson();
       await t.tap(find.text('上一张'));
       await settle();
       await t.tap(find.text('上一张'));
       await settle();
       expect(find.text('1 / 32'), findsOneWidget);
-      expect((state.settings.reviewSession!['redo'] as List).length, 2);
-      await t.tap(find.text('下一张'));
+      expect(find.text('本轮已评「没记住」，点其他评分可以修改'), findsOneWidget);
+      await t.tap(find.text('模糊'));
       await settle();
+      expect(find.text('2 / 32'), findsOneWidget); // 改完自动到下一张（已评，显示其评分）
+      expect(find.text('本轮已评「记住了」，点其他评分可以修改'), findsOneWidget);
+      final c0 = (await state.repo.card('c0'))!;
+      expect(c0.lapses, 0);
+      expect(c0.reps, 1);
+      expect((await state.repo.card('c1'))!.toJson(), c1); // 后面的卡不变
+      expect((await state.repo.logs(projectId: 'p1')).length, logsBefore); // 不新增记录
       await t.tap(find.text('下一张'));
       await settle();
       expect(find.text('3 / 32'), findsOneWidget);
-      expect((await state.repo.card('c1'))!.toJson(), rated);
-      expect((await state.repo.logs(projectId: 'p1')).where((l) => l.id.startsWith('l')).length, 40);
       await t.tap(find.text('上一张'));
       await settle();
-      expect(find.text('2 / 32'), findsOneWidget);
+      await t.tap(find.text('上一张'));
+      await settle();
     });
-    // 退回后重新评分：替换原结果，重做栈清空
-    expect((state.settings.reviewSession!['redo'] as List).length, 1);
-    await t.tap(find.text('记住了'));
-    for (var i = 0; i < 6; i++) {
-      await t.pump(const Duration(milliseconds: 100));
-    }
-    expect((state.settings.reviewSession!['redo'] as List), isEmpty);
-    expect((await state.repo.card('c1'))!.lapses, 0);
+    final h = state.settings.reviewSession!['history'] as List;
+    expect([for (final e in h) (e as Map)['grade']], [2, 3]);
   });
 
   testWidgets('AI 解释：Markdown 标题 + 公式', (t) async {

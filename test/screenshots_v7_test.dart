@@ -8,6 +8,7 @@ import 'package:ai_flashcards/main.dart';
 import 'package:ai_flashcards/models.dart';
 import 'package:ai_flashcards/services/settings.dart';
 import 'package:ai_flashcards/ui/cloud_settings_page.dart';
+import 'package:ai_flashcards/ui/favorites_page.dart';
 import 'package:ai_flashcards/ui/project_page.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -85,5 +86,23 @@ void main() {
       showReleaseSheet(t.element(find.byType(ProjectPage)), projectId: 'p1');
       await settle(t);
     });
+  });
+
+  Future<void> seedFavorites() async {
+    final r = state.repo;
+    await r.saveKps([
+      KnowledgePoint(id: 'kp1', projectId: 'p1', docId: 'd1', chapter: '第一章 随机事件与概率', title: '条件概率',
+          content: r'$P(A\mid B)=\dfrac{P(AB)}{P(B)}$，其中 $P(B)>0$', page: 12),
+    ]);
+    final c = (await r.card('c3'))!..kpId = 'kp1';
+    await r.saveCards([c]);
+    await r.saveFavorite(FavoriteItem(projectId: 'p1', kind: 'kp', targetId: 'kp1', title: '条件概率'));
+    await r.saveFavorite(FavoriteItem(projectId: 'p1', kind: 'card', targetId: 'c3', title: c.front));
+    await r.saveFavorite(FavoriteItem(projectId: 'p2', kind: 'question', targetId: 'q1', title: ''));
+  }
+
+  testWidgets('收藏页：知识点、闪卡、题目', (t) async {
+    await t.runAsync(seedFavorites);
+    await shoot(t, const FavoritesPage(), '53_favorites');
   });
 }

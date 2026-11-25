@@ -18,6 +18,7 @@ import 'cloud_settings_page.dart' show showReleaseSheet, confirmDeleteWithCloud;
 import '../services/cloud_storage.dart' show formatBytes;
 import 'settings_pages.dart' show showExportSheet;
 import 'explain_sheet.dart';
+import 'favorites_page.dart';
 import 'feedback_sheet.dart';
 import 'auto_count_sheet.dart';
 import 'gen_sheet.dart';
@@ -243,6 +244,29 @@ class _ProjectPageState extends State<ProjectPage> {
     }
   }
 
+  /// 项目里的其他板块入口：都直接用这个项目已经解析好的资料和知识点。
+  Widget _sectionsRow(ProjectData d) {
+    void open(Widget page) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    Widget entry(IconData icon, String label, VoidCallback onTap) => Expanded(
+          child: Glass(
+            radius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+            onTap: onTap,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(icon, size: 18, color: M.sageDark),
+              const SizedBox(width: 6),
+              Flexible(child: Text(label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+            ]),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+      child: Row(children: [
+        entry(Icons.star_outline_rounded, '收藏', () => open(FavoritesPage(projectId: d.project.id))),
+      ]),
+    );
+  }
+
   /// 新学 / 待复习 计数和「学新卡」「复习」「到期」入口（「学习」按钮 = 先复习后新卡）。
   Widget _countsRow(ProjectData d) {
     final c = d.counts!;
@@ -318,6 +342,7 @@ class _ProjectPageState extends State<ProjectPage> {
                 ]),
               ),
               if (d.cards.isNotEmpty && d.counts != null) _countsRow(d),
+              _sectionsRow(d),
               if (progress != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -575,12 +600,18 @@ class _ProjectPageState extends State<ProjectPage> {
   Future<void> _itemMenu(Object item) async {
     final c = item is Flashcard ? item : null, q = item is Question ? item : null;
     final suspended = c?.suspended ?? q!.suspended;
+    final fav = await s.repo.isFavorite(c != null ? 'card' : 'question', c?.id ?? q!.id);
+    if (!mounted) return;
     final v = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: M.sheet,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('编辑'), onTap: () => Navigator.pop(ctx, 'edit')),
+          ListTile(
+              leading: Icon(fav ? Icons.star_rounded : Icons.star_outline_rounded),
+              title: Text(fav ? '取消收藏' : '收藏'),
+              onTap: () => Navigator.pop(ctx, 'fav')),
           ListTile(
               leading: const Icon(Icons.flag_outlined),
               title: Text(c != null ? '这张有问题' : '这道题有问题'),
@@ -598,6 +629,10 @@ class _ProjectPageState extends State<ProjectPage> {
         if (it is Flashcard) await s.repo.saveCards([it]);
         if (it is Question) await s.repo.saveQuestions([it]);
       });
+    } else if (v == 'fav') {
+      final on = await s.repo.toggleFavorite(FavoriteItem(
+          projectId: c?.projectId ?? q!.projectId, kind: c != null ? 'card' : 'question', targetId: c?.id ?? q!.id, title: c?.front ?? q!.stem));
+      if (mounted) toast(context, on ? '已收藏' : '已取消收藏');
     } else if (v == 'flag') {
       await showFeedbackSheet(context, card: c, question: q);
     } else {

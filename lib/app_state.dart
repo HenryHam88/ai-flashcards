@@ -18,6 +18,7 @@ import 'services/prompts.dart';
 import 'services/quality.dart';
 import 'services/settings.dart';
 import 'theme/rich_text.dart' show stripMetaPreamble;
+import 'services/review_history.dart';
 import 'services/study_queue.dart';
 import 'services/chapter_reparse.dart';
 import 'services/concurrency.dart';
@@ -327,6 +328,38 @@ class AppState extends ChangeNotifier {
 
   /// 全部学习的队列（旧接口，保留给已有的调用方）。
   Future<List<Flashcard>> dueCards({String? projectId}) => studyQueue(projectId: projectId);
+
+  /// 四档评分（1 没记住 / 2 模糊 / 3 记住了 / 4 很简单），返回本轮的评分记录（含评分前快照），用于回看时修改评分。
+  Future<ReviewEntry> rateCard(Flashcard c, int grade, {DateTime? now}) async {
+    final t = now ?? DateTime.now();
+    final snapshot = c.toJson();
+    fsrs.review(c, grade, now: t);
+    await repo.saveCards([c]);
+    final logId = newId();
+    await repo.log(LogEntry(
+        id: logId, projectId: c.projectId, kind: 'card', correct: grade > Grade.again, grade: grade, at: t, isNew: snapshot['reps'] == 0));
+    changed();
+    return ReviewEntry(cardId: c.id, pre: snapshot, grade: grade, at: t, logId: logId);
+  }
+
+  /// 修改本轮第 [i] 次评分：从评分前的快照按原时间重新计算 FSRS（同一张卡后面的评分依次重放），
+  /// 并原地更新对应的复习记录（不新增记录）。返回更新后的卡片。
+  Future<Flashcard> changeRating(List<ReviewEntry> entries, int i, int grade) async {
+    final id = entries[i].cardId;
+    final current = await repo.card(id) ?? Flashcard.fromJson(entries[i].pre);
+    final c = replayFrom(entries, i, grade, current, fsrs);
+    await repo.saveCards([c]);
+    for (final e in entries.where((e) => e.cardId == id)) {
+      final log = await repo.logEntry(e.logId);
+      if (log == null) continue;
+      log
+        ..correct = e.grade > Grade.again
+        ..grade = e.grade;
+      await repo.log(log);
+    }
+    changed();
+    return c;
+  }
 
   /// 评分并返回撤销记录（评分前的卡片快照 + 写入的日志 id），用于「上一张」。
   Future<Map<String, dynamic>> reviewCard(Flashcard c, bool remembered) async {

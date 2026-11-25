@@ -11,6 +11,7 @@ import '../theme/glass.dart';
 import '../help/help_articles.dart' show HelpIds;
 import 'cloud_settings_page.dart';
 import 'explain_history_page.dart';
+import 'favorites_page.dart';
 import 'help_page.dart';
 import 'number_input.dart';
 import 'settings_pages.dart';
@@ -32,6 +33,8 @@ class MePage extends StatelessWidget {
         const SizedBox(height: 4),
         SettingsGroup(title: '学习', children: [
           SettingsTile(icon: Icons.bookmark_border_rounded, title: '错题本', subtitle: '全部项目的错题', onTap: () => go(const WrongBookPage())),
+          SettingsTile(
+              icon: Icons.star_outline_rounded, title: '收藏', subtitle: '全部项目收藏的知识点、闪卡和题目', onTap: () => go(const FavoritesPage())),
           SettingsTile(
               icon: Icons.history_edu_rounded,
               title: '解释历史',

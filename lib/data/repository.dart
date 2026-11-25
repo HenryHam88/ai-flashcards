@@ -92,6 +92,11 @@ class Repository {
 
   Future<List<KnowledgePoint>> kps(String projectId) async =>
       (await store.list('kps', projectId: projectId)).map(KnowledgePoint.fromJson).toList();
+  Future<KnowledgePoint?> kp(String id) async {
+    final j = await store.get('kps', id);
+    return j == null ? null : KnowledgePoint.fromJson(j);
+  }
+
   Future<void> saveKps(List<KnowledgePoint> l) =>
       store.putAll('kps', l.map((e) => (e.id, e.projectId, e.toJson())).toList());
   Future<void> deleteKps(List<String> ids) async {

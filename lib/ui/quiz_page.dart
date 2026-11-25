@@ -6,6 +6,7 @@ import '../models.dart';
 import '../services/pipeline.dart';
 import '../theme/glass.dart';
 import 'explain_sheet.dart';
+import 'favorites_page.dart' show FavoriteButton;
 import 'feedback_sheet.dart';
 
 /// 测验页。当前题号和每题作答都持久化，返回/重进不会回到第一题。
@@ -127,6 +128,8 @@ class _QuizPageState extends State<QuizPage> {
       title: loading || done ? '测验' : '测验  ${index + 1}/${qs.length}',
       leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => Navigator.pop(context)),
       actions: [
+        if (!loading && !done)
+          FavoriteButton(kind: 'question', targetId: qs[index].id, projectId: qs[index].projectId, title: qs[index].stem),
         if (!loading && !done)
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_horiz_rounded),

@@ -415,17 +415,26 @@ class LogEntry {
   bool correct;
   DateTime at;
   bool isNew; // 闪卡：这次是否是第一次学（用于每日新卡上限）
-  LogEntry({required this.id, required this.projectId, required this.kind, required this.correct, DateTime? at, this.isNew = false})
+  int grade; // 闪卡：FSRS 评分 1–4（旧记录为 0）
+  LogEntry({required this.id, required this.projectId, required this.kind, required this.correct, DateTime? at, this.isNew = false, this.grade = 0})
       : at = at ?? DateTime.now();
-  Map<String, dynamic> toJson() =>
-      {'id': id, 'projectId': projectId, 'kind': kind, 'correct': correct, 'at': at.toIso8601String(), if (isNew) 'isNew': true};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'kind': kind,
+        'correct': correct,
+        'at': at.toIso8601String(),
+        if (isNew) 'isNew': true,
+        if (grade > 0) 'grade': grade,
+      };
   factory LogEntry.fromJson(Map<String, dynamic> j) => LogEntry(
       id: j['id'],
       projectId: j['projectId'] ?? '',
       kind: j['kind'] ?? 'card',
       correct: j['correct'] == true,
       at: DateTime.tryParse(j['at'] ?? ''),
-      isNew: j['isNew'] == true);
+      isNew: j['isNew'] == true,
+      grade: j['grade'] ?? 0);
 }
 
 /// AI 解释缓存（含追问对话）。
