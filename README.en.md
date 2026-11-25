@@ -102,6 +102,8 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
 - Integrity check before import; choose "Overwrite" (a safety backup is made first) or "Merge" (keeps the more recent progress for each card)
 - Export a single project to share with classmates, with or without your own progress
 - Optional weekly automatic backup, keeping the latest 3
+- Export to Obsidian / Notion: notes, AI study-buddy and explanation chats, favorites, and mistakes as a Markdown zip (mistakes also as a CSV you can import as a Notion database)
+- "Save to folder" opens the system picker so you choose where the file goes
 
 **Experience**
 - Full LaTeX typesetting and Markdown formatting; tables recognized in your material (formulas included) are shown as real, horizontally scrollable tables; LaTeX text commands outside formulas (`\texttt`, `\textbf`, itemize, tabular, …) are displayed as proper formatting
