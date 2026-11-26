@@ -8,6 +8,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../services/review_history.dart';
 import '../services/study_queue.dart';
+import '../desktop/platform.dart';
 import '../theme/glass.dart';
 import 'explain_sheet.dart';
 import 'favorites_page.dart' show FavoriteButton;
@@ -218,11 +219,61 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
     _persist();
   }
 
+  bool _rating = false;
+  Future<void> _rateKey(int g) async {
+    if (_rating) return; // 连按时不会给同一张卡评两次
+    _rating = true;
+    try {
+      await _rate(g);
+    } finally {
+      _rating = false;
+    }
+  }
+
+  void _flip() {
+    setState(() => flipped = !flipped);
+    _persist();
+  }
+
+  /// 键盘：空格 / 回车翻面，翻开后再按一次 = 记住了；翻开后 1–4 评分；← → 上一张 / 下一张；E 打开 AI 解释。
+  Map<ShortcutActivator, VoidCallback> _keys(Flashcard? card) {
+    if (card == null) return const {};
+    void space() => flipped ? _rateKey(Grade.good) : _flip();
+    // 和 Anki 一样，翻开看过答案才能用数字键评分，避免误按。
+    void rate(int g) {
+      if (flipped) _rateKey(g);
+    }
+
+    return {
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.space): space,
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.enter): space,
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.digit1): () => rate(Grade.again),
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.digit2): () => rate(Grade.hard),
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.digit3): () => rate(Grade.good),
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.digit4): () => rate(Grade.easy),
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.numpad1): () => rate(Grade.again),
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.numpad2): () => rate(Grade.hard),
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.numpad3): () => rate(Grade.good),
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.numpad4): () => rate(Grade.easy),
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.arrowLeft): _back,
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.arrowRight): _forward,
+      const SingleActivator(includeRepeats: false, LogicalKeyboardKey.keyE): () => showExplainSheet(context, card: card),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final done = !loading && index >= cards.length;
     final card = done || loading ? null : cards[index];
+    return CallbackShortcuts(
+      bindings: _keys(card),
+      child: Focus(autofocus: true, child: _scaffold(done, card)),
+    );
+  }
+
+  Widget _scaffold(bool done, Flashcard? card) {
     return GlassScaffold(
+      deskMax: 780,
       titleWidget: Text(
         loading ? '' : (done ? '完成' : '${index + 1} / ${cards.length}'),
         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
@@ -282,7 +333,15 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
                           const SizedBox(height: 12),
                           Expanded(child: _cardView(card)),
                           const SizedBox(height: 14),
-                          if (!hintSeen)
+                          if (Desk.platform)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                '空格 翻面 / 记住了 · 翻面后 1 没记住 · 2 模糊 · 3 记住了 · 4 很简单 · ← → 上一张 / 下一张 · E AI 解释',
+                                style: TextStyle(color: M.sub, fontSize: 12),
+                              ),
+                            )
+                          else if (!hintSeen)
                             Padding(
                               padding: EdgeInsets.only(bottom: 8),
                               child: Text(
@@ -333,10 +392,7 @@ class _ReviewPageState extends State<ReviewPage> with WidgetsBindingObserver {
 
   Widget _cardView(Flashcard card) {
     return GestureDetector(
-      onTap: () {
-        setState(() => flipped = !flipped);
-        _persist();
-      },
+      onTap: _flip,
       onHorizontalDragUpdate: (d) => setState(() => dx += d.delta.dx),
       onHorizontalDragEnd: (d) {
         if (dx > 110) {

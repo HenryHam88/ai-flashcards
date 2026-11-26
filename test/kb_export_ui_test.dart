@@ -117,7 +117,7 @@ void main() {
     addTearDown(t.view.reset);
     await t.pumpWidget(StudyApp(state: state, fontFamily: 'NotoSansSC', home: const ChangelogPage()));
     await settle(t);
-    expect(find.textContaining('v1.4.1'), findsOneWidget);
+    expect(find.textContaining('v1.5.0'), findsOneWidget);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/62_changelog.png'));
     // 滚到较早的版本（之前显示错乱的位置）
     await t.dragUntilVisible(find.textContaining('v1.3.4'), find.byType(ListView), const Offset(0, -300));

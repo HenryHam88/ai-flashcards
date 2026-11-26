@@ -46,7 +46,7 @@ class HelpIds {
   static const byName = {
     'quickStart': quickStart, 'keys': keys, 'upload': upload, 'chapters': chapters, 'generate': generate,
     'quality': quality, 'review': review, 'quiz': quiz, 'explain': explain, 'stats': stats, 'backup': backup,
-    'appearance': appearance, 'faq': faq, 'favorites': favorites, 'cloud': cloud, 'study': study, 'notes': notes, 'web': web,
+    'appearance': appearance, 'faq': faq, 'favorites': favorites, 'cloud': cloud, 'study': study, 'notes': notes, 'web': web, 'desktop': desktop,
   };
   static const quickStart = 'quick_start';
   static const keys = 'keys';
@@ -66,6 +66,7 @@ class HelpIds {
   static const study = 'study';
   static const notes = 'notes';
   static const web = 'web_search';
+  static const desktop = 'desktop';
 }
 
 const helpArticles = <HelpArticle>[
@@ -705,6 +706,39 @@ AI 解释和追问、AI 伴学、笔记的 AI 讲解、思维导图、简答题�
 1. 打开「每日复习提醒」。Android 13 及以上会请求通知权限，请选择允许。
 2. 点「提醒时间」选一个时间。
 3. 提醒完全在本机生成，不需要联网。有些手机的省电策略会延迟通知，可在系统设置里把本应用的电池使用设为「不限制」。
+''',
+  ),
+
+  HelpArticle(
+    id: HelpIds.desktop,
+    category: 'start',
+    title: '电脑版（Windows / macOS / Linux）',
+    summary: '左侧栏、键盘复习、快捷键、保存文件、提醒、和手机互相迁移',
+    keywords: ['电脑', '桌面', 'Windows', 'Mac', 'macOS', 'Linux', '快捷键', '键盘', '空格', 'Ctrl', '搜索'],
+    body: r'''
+电脑版和手机版功能相同，数据格式通用。窗口拉窄时会自动换成手机布局。
+
+### 左侧栏
+「今日」「复习」「学习板块」「笔记」「统计」「错题」「收藏」都在左侧栏，下面是你的项目，最底下是「数据」和「设置」。再点一次当前所在的板块，会回到这个板块的第一页。
+
+### 键盘复习
+- **空格**：翻面；翻开后再按一次 = 记住了。
+- **1 / 2 / 3 / 4**：翻面后评分——没记住、模糊、记住了、很简单。
+- **← / →**：上一张 / 下一张；**E**：打开 AI 解释。
+- 做选择题、判断题时，可以按数字或字母作答，回车提交或进入下一题。
+
+### 常用快捷键（Mac 上把 Ctrl 换成 ⌘）
+- **Ctrl+K**：搜索项目、笔记、闪卡和题目，方向键选择，回车打开。
+- **Ctrl+1 到 Ctrl+7**：切换左侧栏的板块；**Ctrl+,**：打开设置；**Ctrl+N**：新建项目；**Esc**：返回或关闭窗口。
+
+### 保存文件
+导出备份、PDF 时选「保存到文件夹」，会打开系统的「另存为」窗口，下次从上次的文件夹开始。保存后会显示完整路径，可以点「打开文件夹」。
+
+### 提醒
+Mac 上关掉应用也会按时提醒。Windows 和 Linux 只在应用开着时提醒（到点后两小时内打开应用也会提醒一次）。
+
+### 和手机互相迁移
+在一边「导出数据」，把备份文件传到另一边，再「导入数据」即可，详见「备份、迁移和恢复」。
 ''',
   ),
 

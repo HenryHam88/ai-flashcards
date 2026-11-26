@@ -11,6 +11,7 @@ import '../models.dart';
 import '../services/attachments.dart';
 import '../services/llm.dart';
 import '../services/study.dart';
+import '../desktop/platform.dart';
 import '../theme/glass.dart';
 import 'ai_widgets.dart';
 import 'llm_settings_page.dart';
@@ -123,6 +124,7 @@ class _StudyPageState extends State<StudyPage> {
         },
       ),
       initial: 0.88,
+      side: true,
     );
     _load();
   }
@@ -345,10 +347,9 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
     }
   }
 
-  void _attachMenu() => showModalBottomSheet<void>(
-        context: context,
-        backgroundColor: M.sheet,
-        builder: (ctx) => SafeArea(
+  void _attachMenu() => showMenuSheet<void>(
+        context,
+        (ctx) => SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const SizedBox(height: 8),
             ListTile(
@@ -359,16 +360,18 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
                   Navigator.pop(ctx);
                   _pickFiles();
                 }),
-            ListTile(
-                leading: const Icon(Icons.photo_camera_outlined),
-                title: const Text('拍照'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickImage(ImageSource.camera);
-                }),
+            // 桌面没有系统拍照界面：只保留选图片
+            if (!Desk.platform)
+              ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: const Text('拍照'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickImage(ImageSource.camera);
+                  }),
             ListTile(
                 leading: const Icon(Icons.photo_library_outlined),
-                title: const Text('从相册选择'),
+                title: Text(Desk.platform ? '选择图片' : '从相册选择'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _pickImage(ImageSource.gallery);

@@ -6,11 +6,13 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
+import '../desktop/platform.dart';
 import '../models.dart' show MediaAsset;
 import '../services/backup.dart';
 import '../services/reminder.dart';
@@ -355,7 +357,7 @@ class _AppearancePageState extends State<AppearancePage> {
             ),
           ),
         ]),
-        SettingsGroup(title: '动效与反馈', children: [
+        SettingsGroup(title: Desk.platform ? '动效' : '动效与反馈', children: [
           SwitchTile(
             icon: Icons.animation_rounded,
             title: '减少动态效果',
@@ -363,7 +365,8 @@ class _AppearancePageState extends State<AppearancePage> {
             value: st.reduceMotion,
             onChanged: (v) => apply(() => st.reduceMotion = v),
           ),
-          SwitchTile(
+          // 电脑没有振动：桌面版不显示
+          if (!Desk.platform) SwitchTile(
             icon: Icons.vibration_rounded,
             title: '触感反馈',
             subtitle: '点击按钮、评分时轻微振动',
@@ -404,7 +407,7 @@ class _ReminderPageState extends State<ReminderPage> {
           SwitchTile(
             icon: Icons.notifications_active_outlined,
             title: '每日复习提醒',
-            subtitle: '每天固定时间发一条通知，提醒你复习到期的卡片',
+            subtitle: Reminder.worksWhenClosed ? '每天固定时间发一条通知，提醒你复习到期的卡片' : '应用开着时，每天到点发一条通知提醒你复习',
             value: st.reminderOn,
             onChanged: (v) async {
               if (v && !await Reminder.requestPermission()) {
@@ -429,7 +432,12 @@ class _ReminderPageState extends State<ReminderPage> {
           ),
         ]),
         const SizedBox(height: 12),
-        Text('提醒完全在本机生成，不需要联网。部分手机的省电策略可能会延迟通知，可在系统设置里把本应用设为「不限制」。',
+        Text(
+            Desk.isMac
+                ? '提醒完全在本机生成，不需要联网。第一次开启时，macOS 会询问是否允许「闪卡刷题」发送通知。'
+                : Desk.platform
+                    ? '提醒完全在本机生成，不需要联网。电脑上关掉应用后就不会提醒了；想每天都收到，可以让它开机自动打开。'
+                    : '提醒完全在本机生成，不需要联网。部分手机的省电策略可能会延迟通知，可在系统设置里把本应用设为「不限制」。',
             style: TextStyle(color: M.sub, fontSize: 12, height: 1.6)),
       ]),
     );
@@ -443,10 +451,9 @@ Future<void> saveOrShareBackup(BuildContext context, Uint8List bytes, String nam
 
 /// 生成好的文件（备份、PDF、知识库压缩包）：保存到自己选的文件夹，或分享。
 Future<void> saveOrShareFile(BuildContext context, Uint8List bytes, String name, {required String title, required String mimeType}) async {
-  final how = await showModalBottomSheet<String>(
-    context: context,
-    backgroundColor: M.sheet,
-    builder: (ctx) => SafeArea(
+  final how = await showMenuSheet<String>(
+    context,
+    (ctx) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         const SizedBox(height: 12),
         Padding(
@@ -457,13 +464,21 @@ Future<void> saveOrShareFile(BuildContext context, Uint8List bytes, String name,
         ListTile(
             leading: const Icon(Icons.save_alt_rounded),
             title: const Text('保存到文件夹'),
-            subtitle: const Text('打开系统文件夹，自己选存在哪里（下载、文档、网盘…）'),
+            subtitle: Text(Desk.platform ? '打开「另存为」窗口，自己选存在哪里' : '打开系统文件夹，自己选存在哪里（下载、文档、网盘…）'),
             onTap: () => Navigator.pop(ctx, 'save')),
-        ListTile(
-            leading: const Icon(Icons.share_rounded),
-            title: const Text('分享'),
-            subtitle: const Text('发给微信、QQ、邮箱，或传到新手机'),
-            onTap: () => Navigator.pop(ctx, 'share')),
+        // Linux 没有系统分享：改成直接存进「下载」并打开文件夹
+        if (Desk.isLinux)
+          ListTile(
+              leading: const Icon(Icons.folder_open_rounded),
+              title: const Text('存到「下载」并打开文件夹'),
+              subtitle: const Text('不用选位置，存好后直接打开所在文件夹'),
+              onTap: () => Navigator.pop(ctx, 'downloads'))
+        else
+          ListTile(
+              leading: const Icon(Icons.share_rounded),
+              title: const Text('分享'),
+              subtitle: Text(Desk.platform ? '用系统分享发给其他应用' : '发给微信、QQ、邮箱，或传到新手机'),
+              onTap: () => Navigator.pop(ctx, 'share')),
         const SizedBox(height: 8),
       ]),
     ),
@@ -471,6 +486,8 @@ Future<void> saveOrShareFile(BuildContext context, Uint8List bytes, String name,
   if (how == null || !context.mounted) return;
   if (how == 'save') {
     await saveToChosenFolder(context, bytes, name, mimeType: mimeType);
+  } else if (how == 'downloads') {
+    await saveToDownloadsAndReveal(context, bytes, name);
   } else {
     final dir = await Directory.systemTemp.createTemp('afc');
     final f = File(p.join(dir.path, name));
@@ -488,7 +505,8 @@ Future<Uri?> Function({required String fileName, required Uint8List bytes, requi
 /// 保存后提示具体位置，取消时什么都不做。
 Future<Uri?> saveToChosenFolder(BuildContext context, Uint8List bytes, String name, {required String mimeType}) async {
   final st = context.read<AppState>().settings;
-  final last = st.lastSaveUri;
+  // 桌面记的是上次保存的文件夹路径；手机记的是系统返回的文件地址（和以前一样）
+  final last = Desk.platform ? lastSaveDirFor(st.lastSaveUri) : st.lastSaveUri;
   Uri? uri;
   try {
     uri = saveFileOverride != null
@@ -504,8 +522,71 @@ Future<Uri?> saveToChosenFolder(BuildContext context, Uint8List bytes, String na
     return null;
   }
   st.lastSaveUri = uri.toString();
-  if (context.mounted) toast(context, '已保存到：${savedLocationLabel(uri, name)}');
+  if (!context.mounted) return uri;
+  if (Desk.platform && uri.scheme == 'file') {
+    showSavedToast(context, uri.toFilePath());
+  } else {
+    toast(context, '已保存到：${savedLocationLabel(uri, name)}');
+  }
   return uri;
+}
+
+/// 桌面：上次保存的文件地址 → 所在文件夹（下次「另存为」从这里开始）。认不出来时返回空。
+String lastSaveDirFor(String saved) {
+  if (saved.isEmpty) return '';
+  try {
+    final u = Uri.parse(saved);
+    if (u.scheme == 'file') return p.dirname(u.toFilePath());
+    if (u.scheme.isEmpty) return p.dirname(saved);
+  } catch (_) {}
+  return '';
+}
+
+/// 桌面：提示保存的完整路径，并可以直接打开所在文件夹。
+void showSavedToast(BuildContext context, String path) {
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text('已保存到：$path'),
+    behavior: SnackBarBehavior.floating,
+    backgroundColor: M.text.withValues(alpha: 0.88),
+    action: SnackBarAction(
+      label: '打开文件夹',
+      textColor: M.oat,
+      onPressed: () => revealInFolder(path),
+    ),
+  ));
+}
+
+/// 用系统文件管理器打开文件所在的文件夹。
+Future<void> revealInFolder(String path) async {
+  try {
+    if (Desk.isWindows) {
+      await Process.start('explorer.exe', ['/select,', path]);
+    } else if (Desk.isMac) {
+      await Process.start('open', ['-R', path]);
+    } else {
+      await launchUrl(Uri.directory(p.dirname(path)));
+    }
+  } catch (_) {}
+}
+
+/// Linux：存到「下载」文件夹（重名时自动加编号），然后打开文件夹。
+Future<void> saveToDownloadsAndReveal(BuildContext context, Uint8List bytes, String name) async {
+  try {
+    final dir = await getDownloadsDirectory() ?? Directory(Platform.environment['HOME'] ?? Directory.systemTemp.path);
+    await dir.create(recursive: true);
+    final base = p.basenameWithoutExtension(name), ext = p.extension(name);
+    var f = File(p.join(dir.path, name));
+    for (var i = 2; await f.exists(); i++) {
+      f = File(p.join(dir.path, '$base ($i)$ext'));
+    }
+    await f.writeAsBytes(bytes, flush: true);
+    if (!context.mounted) return;
+    context.read<AppState>().settings.lastSaveUri = Uri.file(f.path).toString();
+    showSavedToast(context, f.path);
+    await launchUrl(Uri.directory(dir.path));
+  } catch (e) {
+    if (context.mounted) toast(context, '保存失败：$e');
+  }
 }
 
 /// 把系统返回的文件地址变成看得懂的位置，如「内部存储/Download/备份.afcbak」。认不出来时只显示文件名。
@@ -568,7 +649,7 @@ class _DataPageState extends State<DataPage> {
           SettingsTile(
             icon: Icons.download_rounded,
             title: '导入数据',
-            subtitle: '从备份文件恢复，换手机时用；也可以导入同学分享的项目',
+            subtitle: '从备份文件恢复，换${Desk.device}时用；也可以导入同学分享的项目',
             onTap: () => pickAndImport(context).then((_) => _loadLocal()),
           ),
         ]),
@@ -941,6 +1022,18 @@ class _ImportSummaryState extends State<ImportSummary> {
 
 // ------------------------------------------------------------------ 关于
 
+/// 从 GitHub 发布信息里找名字以 [suffix] 结尾的安装包：(文件名, 下载地址)。
+(String, String)? pickReleaseAsset(Object? assets, String suffix) {
+  if (assets is! List) return null;
+  for (final a in assets) {
+    if (a is! Map) continue;
+    final name = '${a['name'] ?? ''}', url = '${a['browser_download_url'] ?? ''}';
+    if (name.endsWith(suffix) && url.startsWith('https://')) return (name, url);
+  }
+  return null;
+}
+
+
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
   @override
@@ -969,23 +1062,31 @@ class _AboutPageState extends State<AboutPage> {
           .get(Uri.parse('https://api.github.com/repos/HenryHam88/ai-flashcards/releases/latest'),
               headers: {'Accept': 'application/vnd.github+json'})
           .timeout(const Duration(seconds: 10));
-      final tag = (jsonDecode(r.body) as Map)['tag_name']?.toString() ?? '';
+      final json = jsonDecode(r.body) as Map;
+      final tag = json['tag_name']?.toString() ?? '';
       if (tag.isEmpty) throw '没有找到发布版本';
       if (cmpVersion(tag, cur) > 0) {
         setState(() => updateText = '发现新版本 $tag');
         if (!mounted) return;
+        // 电脑上直接指向对应系统的安装包，免得下成手机的 APK
+        final suffix = Desk.releaseAssetSuffix;
+        final asset = suffix == null ? null : pickReleaseAsset(json['assets'], suffix);
         final go = await showDialog<bool>(
           context: context,
           builder: (c) => AlertDialog(
             title: Text('发现新版本 $tag'),
-            content: Text('当前版本 v$cur。前往 GitHub 下载最新安装包？数据不会丢失。'),
+            content: Text(suffix == null
+                ? '当前版本 v$cur。前往 GitHub 下载最新安装包？数据不会丢失。'
+                : asset == null
+                    ? '当前版本 v$cur。前往 GitHub 下载 ${Desk.osName} 版？数据不会丢失。'
+                    : '当前版本 v$cur。下载 ${Desk.osName} 版安装包（${asset.$1}），解压后替换旧版本即可，数据不会丢失。'),
             actions: [
               TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('以后再说')),
               TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('去下载')),
             ],
           ),
         );
-        if (go == true) _open('$repoUrl/releases/latest');
+        if (go == true) _open(asset?.$2 ?? '$repoUrl/releases/latest');
       } else {
         setState(() => updateText = '已是最新版本');
       }

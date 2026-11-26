@@ -1,6 +1,6 @@
 # 闪卡刷题 / AI Flashcards
 
-> 开源 Android 学习应用：用 AI 把 PDF、Word 或 TXT 教材生成闪卡和练习题，再用 FSRS 间隔重复安排复习。类似 Anki，但能从教材自动出卡出题。An open-source Android study app that uses AI to turn textbooks into FSRS flashcards and quizzes.
+> 开源学习应用（Android、Windows、macOS、Linux）：用 AI 把 PDF、Word 或 TXT 教材生成闪卡和练习题，再用 FSRS 间隔重复安排复习。类似 Anki，但能从教材自动出卡出题。An open-source study app for Android, Windows, macOS, and Linux that uses AI to turn textbooks into FSRS flashcards and quizzes.
 
 学习数据只保存在本机，项目没有自己的服务器。生成和解析需要你自己的 AI API 密钥（DeepSeek、通义千问、Kimi 等），费用由对应服务商收取。应用界面目前为简体中文。Study data stays on the device. Generation requires your own API key. The UI is Simplified Chinese only.
 

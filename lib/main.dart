@@ -1,14 +1,22 @@
+import 'dart:io';
 import 'dart:ui';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart' show sqfliteFfiInit, databaseFactoryFfi, databaseFactory;
 
 import 'app_state.dart';
 import 'data/doc_store.dart';
 import 'data/repository.dart';
+import 'desktop/desktop_shell.dart';
+import 'desktop/platform.dart';
 import 'services/reminder.dart';
+import 'services/secret_store.dart';
 import 'services/settings.dart';
 import 'theme/glass.dart';
 import 'ui/onboarding_page.dart';
@@ -19,11 +27,24 @@ import 'ui/stats_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final desktop = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
+  if (Platform.isLinux || Platform.isWindows) {
+    // 桌面没有 sqflite 原生插件：用 FFI，数据库放在固定的应用数据目录（升级后数据还在）
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    await databaseFactory.setDatabasesPath(p.join((await getApplicationSupportDirectory()).path, 'databases'));
+  }
+  if (Platform.isMacOS) {
+    // macOS 版不启用沙盒，跳过 file_picker 的沙盒权限检查
+    await FilePicker.skipEntitlementsChecks();
+  }
   final store = await SqliteDocStore.open();
   final prefs = await SharedPreferences.getInstance();
   final repo = Repository(store);
   await repo.loadDocTypes();
-  final settings = Settings(prefs, SecureSecretStore());
+  final SecretStore secrets =
+      desktop ? await DesktopSecretStore.create(prefs, await getApplicationSupportDirectory()) : SecureSecretStore();
+  final settings = Settings(prefs, secrets);
   await settings.ensureMigrated();
   final state = AppState(repo, settings);
   // 老用户升级上来已经有数据，不再显示首次引导
@@ -78,10 +99,51 @@ class StudyApp extends StatelessWidget {
                 child: child!,
               );
             },
-            home: home ?? (st.onboarded ? const HomeShell() : const OnboardingPage()),
+            home: home ?? (st.onboarded ? const AppShell() : const AppOnboarding()),
           );
         }),
       );
+}
+
+/// 手机用底部导航（[HomeShell]）；桌面窗口够宽时用左侧栏（[DesktopShell]）。
+class AppShell extends StatelessWidget {
+  const AppShell({super.key});
+  @override
+  Widget build(BuildContext context) {
+    if (!Desk.platform) return const HomeShell();
+    return LayoutBuilder(
+        builder: (context, c) => c.maxWidth >= Desk.breakpoint ? const DesktopShell() : const HomeShell());
+  }
+}
+
+/// 首次引导：桌面上居中显示成窄的向导，不铺满整个窗口。
+class AppOnboarding extends StatelessWidget {
+  const AppOnboarding({super.key});
+  @override
+  Widget build(BuildContext context) {
+    if (!Desk.platform) return const OnboardingPage();
+    return BlobBackground(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: M.sheet.withValues(alpha: 0.6),
+                  border: Border.all(color: M.line.withValues(alpha: 0.8)),
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                child: const OnboardingPage(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class HomeShell extends StatefulWidget {

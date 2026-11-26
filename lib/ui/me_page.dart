@@ -7,6 +7,8 @@ import '../services/cloud_storage.dart' show CloudProvider;
 import '../services/concurrency.dart';
 import '../services/prompts.dart';
 import '../services/settings.dart';
+import '../desktop/platform.dart';
+import '../services/secret_store.dart' show DesktopSecretStore;
 import '../theme/glass.dart';
 import '../help/help_articles.dart' show HelpIds;
 import 'cloud_settings_page.dart';
@@ -30,7 +32,7 @@ class MePage extends StatelessWidget {
     return SafeArea(
       bottom: false,
       child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 110), children: [
-        const Text('我的', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
+        Text(Desk.active ? '设置' : '我的', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         SettingsGroup(title: '学习', children: [
           SettingsTile(icon: Icons.bookmark_border_rounded, title: '错题本', subtitle: '全部项目的错题', onTap: () => go(const WrongBookPage())),
@@ -75,13 +77,13 @@ class MePage extends StatelessWidget {
           SettingsTile(
               icon: Icons.import_export_rounded,
               title: '导出 / 导入数据',
-              subtitle: st.autoBackup ? '备份、换手机迁移 · 已开启每周自动备份' : '备份、换手机迁移、分享项目',
+              subtitle: st.autoBackup ? '备份、换${Desk.device}迁移 · 已开启每周自动备份' : '备份、换${Desk.device}迁移、分享项目',
               onTap: () => go(const DataPage())),
           SettingsTile(
               icon: Icons.cloud_outlined,
               title: '云端存储',
               subtitle: st.cloudBucket.isEmpty
-                  ? '未配置 · 用自己的阿里云 OSS / 腾讯云 COS 存放大文件，省手机空间'
+                  ? '未配置 · 用自己的阿里云 OSS / 腾讯云 COS 存放大文件，省${Desk.device}空间'
                   : '${CloudProvider.of(st.cloudProvider).name} · ${st.cloudBucket}',
               onTap: () => go(const CloudSettingsPage())),
         ]),
@@ -98,7 +100,9 @@ class MePage extends StatelessWidget {
               onTap: () => go(const AboutPage())),
         ]),
         const SizedBox(height: 16),
-        Text('所有数据只保存在本机（配置云端存储后，只有你选择释放的大文件会放到你自己的存储桶）；密钥保存在系统安全存储中。',
+        Text(
+            '所有数据只保存在本机（配置云端存储后，只有你选择释放的大文件会放到你自己的存储桶）；'
+            '${Desk.platform && DesktopSecretStore.usingFile ? '这台电脑没有可用的系统钥匙串，密钥加密保存在本机应用目录里。' : '密钥保存在系统安全存储中。'}',
             textAlign: TextAlign.center, style: TextStyle(color: M.sub, fontSize: 12, height: 1.6)),
       ]),
     );
@@ -192,7 +196,7 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
                 ]),
               ),
             const SizedBox(height: 4),
-            Text('Word（.docx 和旧版 .doc）会整份交给所选模型解析，不在手机上本地解析。TXT 不受这里的设置影响，总是在手机上直接读取。',
+            Text('Word（.docx 和旧版 .doc）会整份交给所选模型解析，不在${Desk.device}上本地解析。TXT 不受这里的设置影响，总是在${Desk.device}上直接读取。',
                 style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
           ]),
         ),
@@ -224,7 +228,7 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
               const SizedBox(height: 8),
               Text(
                 st.ocrMixed
-                    ? '已开启混合模式：解析前先在手机上逐页检查，文字很少的页（扫描页、整页插图）或带「图 1.2」这类图注的页用版面模式，其余页用文字模式；每页只上传一次，结果按原页码合并。'
+                    ? '已开启混合模式：解析前先在${Desk.device}上逐页检查，文字很少的页（扫描页、整页插图）或带「图 1.2」这类图注的页用版面模式，其余页用文字模式；每页只上传一次，结果按原页码合并。'
                     : (st.ocrModes.first == Settings.ocrRich
                         ? '全部页面用版面模式，保留图表和插图位置。'
                         : '全部页面用文字模式，适合纯文字教材。两个都选可开启混合模式。'),

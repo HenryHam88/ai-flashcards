@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.4.1+22
+version: 1.5.0+23
 
 environment:
   sdk: ^3.14.0
@@ -56,6 +56,8 @@ dependencies:
   crypto: ^3.0.8
   charset: ^2.0.1
   image_picker: ^1.2.4
+  sqflite_common_ffi: ^2.4.7
+  dbus: ^0.8.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -114,3 +116,14 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# 桌面版（Windows / Linux）用 sqflite_common_ffi，SQLite 随应用打包；
+# Android / iOS / macOS 继续用系统 SQLite（sqflite 原生插件），安装包不变。
+hooks:
+  user_defines:
+    sqlite3:
+      source:
+        android: system
+        ios: system
+        macos: system
+        default: sqlite3

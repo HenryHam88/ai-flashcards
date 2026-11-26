@@ -19,13 +19,13 @@ Future<void> showSourceSheet(BuildContext context, {required String docId, requi
         if (chapter.isNotEmpty && !word) Text(chapter, style: TextStyle(color: M.sub)),
         const SizedBox(height: 12),
         MathText(text.isEmpty ? '没有找到这一页的解析结果。' : text, style: const TextStyle(fontSize: 15, height: 1.6)),
-      ]));
+      ]), side: true);
 }
 
 /// AI 解释：半屏毛玻璃面板，盖在当前闪卡/题目上方，不跳转路由。
 /// 关闭后底下的页面状态（当前第几张）完全不变。
 Future<void> showExplainSheet(BuildContext context, {Flashcard? card, Question? question}) {
-  return showGlassSheet(context, (ctx, sc) => _ExplainBody(card: card, question: question, controller: sc), initial: 0.55);
+  return showGlassSheet(context, (ctx, sc) => _ExplainBody(card: card, question: question, controller: sc), initial: 0.55, side: true);
 }
 
 class _ExplainBody extends StatefulWidget {

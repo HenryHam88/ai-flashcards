@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-26
+
+### 新增
+
+- 桌面版：Windows、macOS、Linux 都能用，功能和手机版相同；备份文件可以在手机和电脑之间互相导入。
+  - 左侧栏放今日、复习、学习板块、笔记、统计、错题、收藏、我的项目、数据和设置，点一下就切换；窗口拉窄时自动换成手机布局。
+  - 键盘复习：空格翻面，翻面后按 1–4 评分（没记住 / 模糊 / 记住了 / 很简单），左右方向键切换上一张 / 下一张，E 打开 AI 解释；选择题、判断题可以按数字或字母作答。
+  - Ctrl+K（Mac 上是 ⌘K）搜索项目、笔记、闪卡和题目；Ctrl+1 到 Ctrl+7 切换板块，Ctrl+, 打开设置，Ctrl+N 新建项目。
+  - AI 解释、出处和 AI 伴学在右侧面板打开，其他弹出面板改成居中的窗口。
+  - 保存文件时打开系统的「另存为」窗口，记住上次的文件夹，保存后显示完整路径，可以直接打开所在文件夹；Linux 上「分享」换成「存到下载并打开文件夹」。
+  - 每日提醒：Mac 上关掉应用也会提醒；Windows 和 Linux 在应用开着时提醒。
+  - 「检查更新」会直接找到对应系统的安装包。
+  - 电脑上没有系统钥匙串时（部分 Linux），API Key 加密保存在本机的应用目录里，应用照常打开。
+
 ## [1.4.1] - 2026-11-26
 
 ### 新增
@@ -233,7 +247,8 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式显示。
 - 学习统计页面。
 
-[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/HenryHam88/ai-flashcards/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.7...v1.4.0
 [1.3.7]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.6...v1.3.7

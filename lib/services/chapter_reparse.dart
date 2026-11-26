@@ -21,6 +21,7 @@ import 'pdf_tools.dart';
 import 'pipeline.dart';
 import 'settings.dart';
 import 'text_import.dart';
+import '../desktop/platform.dart';
 
 /// 重新解析使用的引擎。
 enum ReparseEngine { deepseekText, deepseekRich, kimi, local, txt }
@@ -74,7 +75,7 @@ ReparseEngine defaultEngine(PdfDoc doc, Settings s) {
 String reparseEstimate(PdfDoc doc, ChapterRange r, ReparseEngine e, {int batch = 30}) {
   final n = r.end - r.start + 1;
   final unit = doc.isSectioned ? '节' : '页';
-  if (e == ReparseEngine.txt) return '重新读取整个 TXT 文件，只替换这一章的 $n 个小节 · 在手机上读取，免费、不联网';
+  if (e == ReparseEngine.txt) return '重新读取整个 TXT 文件，只替换这一章的 $n 个小节 · 在${Desk.device}上读取，免费、不联网';
   if (e == ReparseEngine.local) return '共 $n $unit · 读取 PDF 自带的文字层，免费、不联网（扫描版没有文字层）';
   final batches = (n / max(1, batch)).ceil();
   return '共 $n $unit，分 $batches 批上传 · 按 ${e.label} 的实际用量计费，约等于解析 $n $unit的费用；'

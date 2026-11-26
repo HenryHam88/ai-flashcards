@@ -2,6 +2,8 @@ import 'package:flutter/services.dart';
 
 import 'package:material_ui/material_ui.dart';
 
+import '../desktop/platform.dart';
+
 
 export 'rich_text.dart';
 
@@ -237,8 +239,11 @@ class GlassButton extends StatelessWidget {
 }
 
 /// 半屏毛玻璃底部面板（不跳转页面，关掉后原页面状态完全保留）。
+///
+/// 桌面版改成居中对话框；[side] 为 true 时改成右侧栏（AI 解释、原文、伴学这类边看边用的内容）。
 Future<T?> showGlassSheet<T>(BuildContext context, Widget Function(BuildContext, ScrollController) builder,
-    {double initial = 0.55, double maxSize = 0.92}) {
+    {double initial = 0.55, double maxSize = 0.92, bool side = false}) {
+  if (Desk.active) return showDesktopPanel<T>(context, builder, side: side, initial: initial);
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
@@ -268,6 +273,108 @@ Future<T?> showGlassSheet<T>(BuildContext context, Widget Function(BuildContext,
       ),
     ),
   );
+}
+
+/// 只有几个选项的小菜单：手机从底部弹出，桌面显示成居中的小对话框。
+Future<T?> showMenuSheet<T>(BuildContext context, WidgetBuilder builder) {
+  if (!Desk.active) return showModalBottomSheet<T>(context: context, backgroundColor: M.sheet, builder: builder);
+  return showDialog<T>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.18),
+    builder: (ctx) => Dialog(
+      backgroundColor: M.sheet,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: builder(ctx)),
+      ),
+    ),
+  );
+}
+
+/// 桌面版的面板：居中对话框，或从右侧滑出的侧栏。内容和手机面板完全一样。
+Future<T?> showDesktopPanel<T>(BuildContext context, Widget Function(BuildContext, ScrollController) builder,
+    {bool side = false, double initial = 0.55}) {
+  if (side) {
+    return showGeneralDialog<T>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '关闭',
+      barrierColor: Colors.black.withValues(alpha: 0.12),
+      transitionDuration: MediaQuery.of(context).disableAnimations ? Duration.zero : const Duration(milliseconds: 220),
+      pageBuilder: (ctx, _, _) => Align(
+        alignment: Alignment.centerRight,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: SizedBox(
+            width: 480,
+            height: double.infinity,
+            child: _DesktopPanel(builder: builder),
+          ),
+        ),
+      ),
+      transitionBuilder: (ctx, a, _, child) => SlideTransition(
+        position: Tween(begin: const Offset(0.25, 0), end: Offset.zero).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+        child: FadeTransition(opacity: a, child: child),
+      ),
+    );
+  }
+  return showDialog<T>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.18),
+    builder: (ctx) {
+      final h = MediaQuery.of(ctx).size.height;
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: SizedBox(
+            width: 640,
+            height: (h * (initial < 0.6 ? 0.6 : initial)).clamp(320.0, h - 48),
+            child: _DesktopPanel(builder: builder),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _DesktopPanel extends StatefulWidget {
+  final Widget Function(BuildContext, ScrollController) builder;
+  const _DesktopPanel({required this.builder});
+  @override
+  State<_DesktopPanel> createState() => _DesktopPanelState();
+}
+
+class _DesktopPanelState extends State<_DesktopPanel> {
+  final sc = ScrollController();
+  @override
+  void dispose() {
+    sc.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: M.sheet,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24), side: BorderSide(color: M.line.withValues(alpha: 0.9))),
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(0, 6, 6, 0),
+              child: IconButton(
+                tooltip: '关闭（Esc）',
+                icon: Icon(Icons.close_rounded, color: M.sub, size: 20),
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+            ),
+          ),
+          Expanded(child: widget.builder(context, sc)),
+        ]),
+      );
 }
 
 /// 轻触反馈：所有玻璃卡片 / 按钮共用，可在设置里关闭。
@@ -305,19 +412,37 @@ class GlassScaffold extends StatelessWidget {
   final List<Widget>? actions;
   final Widget? leading;
   final Widget? titleWidget;
-  const GlassScaffold({super.key, this.title, required this.body, this.actions, this.leading, this.titleWidget});
+  /// 桌面上内容的最大宽度。
+  final double deskMax;
+  const GlassScaffold(
+      {super.key, this.title, required this.body, this.actions, this.leading, this.titleWidget, this.deskMax = 1000});
   @override
-  Widget build(BuildContext context) => BlobBackground(
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          appBar: (title == null && titleWidget == null)
-              ? null
-              : AppBar(
-                  title: titleWidget ?? Text(title!, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
-                  actions: actions,
-                  leading: leading),
-          body: body,
-        ),
+  Widget build(BuildContext context) {
+    final scaffold = Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: (title == null && titleWidget == null)
+          ? null
+          : AppBar(
+              title: titleWidget ?? Text(title!, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
+              centerTitle: Desk.active ? false : null,
+              actions: actions,
+              leading: leading),
+      body: body,
+    );
+    // 桌面：内容限制在合适的宽度里居中，不被拉成通栏
+    return BlobBackground(child: Desk.active ? DeskWidth(max: deskMax, child: scaffold) : scaffold);
+  }
+}
+
+/// 桌面主区的内容宽度：居中，最宽 [max]。
+class DeskWidth extends StatelessWidget {
+  final Widget child;
+  final double max;
+  const DeskWidth({super.key, required this.child, this.max = 1000});
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(constraints: BoxConstraints(maxWidth: max), child: child),
       );
 }
 
