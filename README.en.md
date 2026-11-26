@@ -16,7 +16,7 @@
 
 </div>
 
-AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a PDF, Word, or TXT textbook and AI extracts the key points, generates flashcards and practice questions, and schedules your reviews with the FSRS algorithm. Formulas are typeset like a textbook, and all your study data stays on your phone.
+AI Flashcards (闪卡刷题) is an open-source Android study app that turns PDF, Word, or TXT textbooks into flashcards and quizzes, then schedules reviews with the FSRS algorithm. It is similar to Anki, but can use AI to generate cards and questions from your textbooks automatically. Formulas are typeset like a textbook, and all your study data stays on your phone.
 
 > [!NOTE]
 > The app interface is currently available in Simplified Chinese only.

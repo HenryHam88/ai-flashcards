@@ -1,0 +1,21 @@
+# 闪卡刷题 / AI Flashcards
+
+> 开源 Android 学习应用：用 AI 把 PDF、Word 或 TXT 教材生成闪卡和练习题，再用 FSRS 间隔重复安排复习。类似 Anki，但能从教材自动出卡出题。An open-source Android study app that uses AI to turn textbooks into FSRS flashcards and quizzes.
+
+学习数据只保存在本机，项目没有自己的服务器。生成和解析需要你自己的 AI API 密钥（DeepSeek、通义千问、Kimi 等），费用由对应服务商收取。应用界面目前为简体中文。Study data stays on the device. Generation requires your own API key. The UI is Simplified Chinese only.
+
+## 文档 Docs
+
+- [README（简体中文）](https://github.com/HenryHam88/ai-flashcards/blob/main/README.md): 功能、下载（推荐 arm64-v8a）、快速开始、隐私与常见问题
+- [README (English)](https://github.com/HenryHam88/ai-flashcards/blob/main/README.en.md): Features, download (arm64-v8a recommended), quick start, privacy, and FAQ
+- [CHANGELOG](https://github.com/HenryHam88/ai-flashcards/blob/main/CHANGELOG.md): 版本更新记录 / Version history
+- [最新发布 Releases](https://github.com/HenryHam88/ai-flashcards/releases/latest): 最新 APK 安装包 / Latest APKs
+
+## 帮助 Help
+
+- [应用内帮助原文](https://github.com/HenryHam88/ai-flashcards/blob/main/lib/help/help_articles.dart): 使用说明与常见问题（简体中文，应用内「我的 → 使用帮助」的内容来源）/ In-app help articles (Simplified Chinese)
+
+## Optional
+
+- [CONTRIBUTING](https://github.com/HenryHam88/ai-flashcards/blob/main/CONTRIBUTING.md): 如何提 Issue 和 Pull Request / How to contribute
+- [LICENSE](https://github.com/HenryHam88/ai-flashcards/blob/main/LICENSE): MIT
