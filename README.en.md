@@ -9,14 +9,14 @@
 [![Release](https://img.shields.io/github/v/release/HenryHam88/ai-flashcards?color=8FA68B&label=release)](https://github.com/HenryHam88/ai-flashcards/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/HenryHam88/ai-flashcards/total?color=A3B1BD)](https://github.com/HenryHam88/ai-flashcards/releases)
 [![License](https://img.shields.io/github/license/HenryHam88/ai-flashcards?color=D9CBB4)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Android%207.0%2B-8FA68B?logo=android&logoColor=white)](#download)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Windows%20%7C%20macOS%20%7C%20Linux-8FA68B)](#download)
 [![Flutter](https://img.shields.io/badge/Flutter-3.50-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 
 [简体中文](README.md) | **English**
 
 </div>
 
-AI Flashcards (闪卡刷题) is an open-source Android study app that turns PDF, Word, or TXT textbooks into flashcards and quizzes, then schedules reviews with the FSRS algorithm. It is similar to Anki, but can use AI to generate cards and questions from your textbooks automatically. Formulas are typeset like a textbook, and all your study data stays on your phone.
+AI Flashcards (闪卡刷题) is an open-source study app for Android, Windows, macOS, and Linux that turns PDF, Word, or TXT textbooks into flashcards and quizzes, then schedules reviews with the FSRS algorithm. It is similar to Anki, but can use AI to generate cards and questions from your textbooks automatically. Formulas are typeset like a textbook, and all your study data stays on your own device.
 
 > [!NOTE]
 > The app interface is currently available in Simplified Chinese only.
@@ -79,7 +79,7 @@ AI Flashcards (闪卡刷题) is an open-source Android study app that turns PDF,
 
 **Documents and generation**
 - PDF, Word (.docx / .doc), and TXT, batch import with per-file progress
-- TXT files are read on the phone (offline, free) with automatic UTF-8 / UTF-16 / GBK detection, split into sections at paragraph breaks, then chaptered as usual
+- TXT files are read on your device (offline, free) with automatic UTF-8 / UTF-16 / GBK detection, split into sections at paragraph breaks, then chaptered as usual
 - Scanned PDFs are supported; formulas are kept as LaTeX
 - Automatic chapter detection (bookmarks, table of contents, heading formats, with AI as a fallback), plus a manual chapter editor
 - Chapter content viewer: read the parsed text of each chapter page by page with textbook-style formulas, switch chapters, search with highlighting, copy, see which parser produced it, and generate from that chapter in one tap
@@ -134,6 +134,8 @@ AI Flashcards (闪卡刷题) is an open-source Android study app that turns PDF,
 
 Get the latest version from [Releases](https://github.com/HenryHam88/ai-flashcards/releases/latest):
 
+### Android
+
 | Package | Devices |
 | --- | --- |
 | `ai-flashcards-<version>-arm64-v8a.apk` | **Most phones (recommended)** |
@@ -151,6 +153,22 @@ SHA-256: f5:ec:04:9f:25:ef:21:59:36:28:23:59:4a:08:49:46:f5:66:6d:cc:54:35:19:b9
 
 Verify with `apksigner verify --print-certs <apk>`.
 </details>
+
+### Desktop
+
+| Package | System |
+| --- | --- |
+| `ai-flashcards-<version>-windows-x64.zip` | Windows 10 / 11 (64-bit) |
+| `ai-flashcards-<version>-macos.zip` | macOS 12 or later (Apple silicon and Intel) |
+| `ai-flashcards-<version>-linux-x64.tar.gz` | 64-bit Linux (Ubuntu 22.04, Debian 12, Fedora 38 or later, etc.) |
+
+The desktop app has the same features as the phone app; move data between them with a backup file. The desktop builds are not signed with a paid developer certificate yet, so the system asks for confirmation the first time:
+
+- **Windows**: unzip and double-click `ai_flashcards.exe`. If you see "Windows protected your PC", click **More info → Run anyway**.
+- **macOS**: unzip, drag 闪卡刷题 into Applications, then **right-click it → Open → Open**. If there is no Open button (macOS 15 or later), double-click it once, then go to **System Settings → Privacy & Security** and click **Open Anyway** at the bottom. After that it opens normally.
+- **Linux**: extract and run `ai_flashcards` in the folder; run `./install-desktop-entry.sh` to add it to your app menu. Needs GTK 3 and libsecret (included in most desktop distributions).
+
+To update, download the new version and replace the old files. Your data lives in the system's app data folder and is kept.
 
 ## Quick start
 
@@ -171,13 +189,13 @@ Choose in **我的 → 文档解析（PDF / Word）** (Me → Document parsing):
 | Kimi file extraction | ✓ | ✓ | — | Currently free |
 | Local text layer | ✓ | — | — | Free, offline |
 
-TXT files ignore this setting and are always read on the phone, free and offline.
+TXT files ignore this setting and are always read on your device, free and offline.
 
 ## Privacy and data
 
 - Documents, cards, mistakes, and review history are stored only on your device. The project runs no servers.
 - API keys are kept in the system secure storage (Android Keystore).
-- Document content is sent only to the providers you configure; "Local text layer" mode never goes online. TXT files are read on the phone and are not uploaded.
+- Document content is sent only to the providers you configure; "Local text layer" mode never goes online. TXT files are read on your device and are not uploaded.
 - Backups exclude API keys by default; they are included only if you turn on "包含 API 密钥" (backups are not encrypted, so keep them private). Cloud-storage credentials are never included in backups.
 
 ## FAQ
@@ -211,7 +229,7 @@ Ask for a rewrite in the card's AI explanation, or mark the question as "AI 出�
 - Generation and grading quality depends on the model you choose; double-check important content against the source.
 - With Kimi, source page numbers for PDFs may be imprecise.
 - Chapters of unusually formatted books may be detected incorrectly; adjust them in the chapter editor or let AI re-split them.
-- This is an Android app. Move data between devices with a backup file; there is no real-time sync.
+- Move data between your phone and computer with a backup file; there is no real-time sync.
 
 ## Build from source
 
@@ -224,6 +242,8 @@ flutter pub get
 flutter test
 flutter build apk --release --split-per-abi
 ```
+
+Build the desktop app on the matching system: `flutter build windows`, `flutter build macos`, or `flutter build linux` (Linux needs `clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev`). When a version tag is pushed, GitHub Actions builds the three desktop packages and attaches them to that release.
 
 Release signing reads `android/key.properties` (or the file pointed to by `AI_FLASHCARDS_KEY_PROPERTIES`); without it, the debug key is used.
 

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
@@ -121,10 +122,60 @@ class _QuizPageState extends State<QuizPage> {
     _persist();
   }
 
+  /// 键盘：1–4（或 A–D）选选项，判断题 1 = 对、2 = 错；回车提交多选 / 下一题；← → 上一题 / 下一题。
+  /// 填空和解答题要打字，不绑定按键。
+  Map<ShortcutActivator, VoidCallback> _keys() {
+    if (loading || index >= qs.length) return const {};
+    final q = qs[index];
+    final answered = answers.containsKey(q.id);
+    final isChoice = q.type == QType.single || q.type == QType.multi;
+    if (!isChoice && q.type != QType.judge) return const {};
+    SingleActivator k(LogicalKeyboardKey key) => SingleActivator(key, includeRepeats: false);
+    void choose(int i) {
+      if (answered) return;
+      if (q.type == QType.judge) {
+        if (i < 2) _submit(q, i == 0 ? '对' : '错');
+        return;
+      }
+      if (i >= q.options.length) return;
+      final letter = String.fromCharCode(65 + i);
+      if (q.type == QType.single) {
+        _submit(q, letter);
+      } else {
+        setState(() => picked.contains(i) ? picked.remove(i) : picked.add(i));
+      }
+    }
+
+    void enter() {
+      if (answered) {
+        _next();
+      } else if (q.type == QType.multi && picked.isNotEmpty) {
+        _submit(q, (picked.toList()..sort()).map((i) => String.fromCharCode(65 + i)).join());
+      }
+    }
+
+    final digits = [LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2, LogicalKeyboardKey.digit3, LogicalKeyboardKey.digit4,
+      LogicalKeyboardKey.digit5, LogicalKeyboardKey.digit6];
+    final letters = [LogicalKeyboardKey.keyA, LogicalKeyboardKey.keyB, LogicalKeyboardKey.keyC, LogicalKeyboardKey.keyD,
+      LogicalKeyboardKey.keyE, LogicalKeyboardKey.keyF];
+    return {
+      for (var i = 0; i < digits.length; i++) k(digits[i]): () => choose(i),
+      if (isChoice)
+        for (var i = 0; i < letters.length; i++) k(letters[i]): () => choose(i),
+      k(LogicalKeyboardKey.enter): enter,
+      k(LogicalKeyboardKey.arrowLeft): _prev,
+      k(LogicalKeyboardKey.arrowRight): () => answered ? _next() : null,
+    };
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      CallbackShortcuts(bindings: _keys(), child: Focus(autofocus: true, child: _scaffold()));
+
+  Widget _scaffold() {
     final done = !loading && index >= qs.length;
     return GlassScaffold(
+      deskMax: 820,
       title: loading || done ? '测验' : '测验  ${index + 1}/${qs.length}',
       leading: IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => Navigator.pop(context)),
       actions: [
@@ -149,7 +200,7 @@ class _QuizPageState extends State<QuizPage> {
                 showSourceSheet(context, docId: q.docId, page: q.page, chapter: q.chapter, section: q.section);
               } else {
                 await s.mark(q: q, mark: v);
-                if (context.mounted) toast(context, '已标记为「$v」');
+                if (mounted) toast(context, '已标记为「$v」');
               }
             },
             itemBuilder: (_) => const [

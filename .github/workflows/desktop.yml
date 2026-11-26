@@ -1,0 +1,121 @@
+# 桌面版构建：Linux / Windows / macOS。
+# - 手动运行（workflow_dispatch）或改动 main 的 PR：只构建并上传为 Actions 产物。
+# - 推送 v* 标签：构建后把安装包附加到同名的已有 Release（不新建 Release，不改说明；已有同名文件则跳过）。
+# 不使用任何签名密钥或密码。
+name: Desktop builds
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.50.1'
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-22.04
+            asset: linux-x64.tar.gz
+          - name: windows
+            os: windows-latest
+            asset: windows-x64.zip
+          - name: macos
+            os: macos-latest
+            asset: macos.zip
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: v
+        run: |
+          V="v$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' pubspec.yaml)"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "$V" ]; then
+            echo "标签 ${GITHUB_REF_NAME} 和 pubspec 版本 $V 不一致"; exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "file=ai-flashcards-$V-${{ matrix.asset }}" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Linux build tools
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev
+
+      - run: flutter pub get
+
+      - name: Build (Linux)
+        if: matrix.name == 'linux'
+        run: |
+          flutter build linux --release
+          D="ai-flashcards-${{ steps.v.outputs.version }}-linux-x64"
+          mkdir -p dist-pkg && cp -r build/linux/x64/release/bundle "dist-pkg/$D"
+          cp linux/packaging/install-desktop-entry.sh "dist-pkg/$D/"
+          tar -C dist-pkg -czf "${{ steps.v.outputs.file }}" "$D"
+
+      - name: Build (Windows)
+        if: matrix.name == 'windows'
+        run: |
+          flutter build windows --release
+          D="ai-flashcards-${{ steps.v.outputs.version }}-windows-x64"
+          mkdir -p dist-pkg && cp -r build/windows/x64/runner/Release "dist-pkg/$D"
+          # 带上 VC++ 运行库，没装过的电脑也能直接打开
+          for f in msvcp140.dll vcruntime140.dll vcruntime140_1.dll; do
+            cp "/c/Windows/System32/$f" "dist-pkg/$D/"
+          done
+          (cd dist-pkg && 7z a -tzip "../${{ steps.v.outputs.file }}" "$D" > /dev/null)
+
+      - name: Build (macOS)
+        if: matrix.name == 'macos'
+        run: |
+          flutter build macos --release
+          mkdir -p dist-pkg
+          ditto build/macos/Build/Products/Release/ai_flashcards.app "dist-pkg/闪卡刷题.app"
+          codesign --verify --deep "dist-pkg/闪卡刷题.app"
+          lipo -archs "dist-pkg/闪卡刷题.app/Contents/MacOS/ai_flashcards"
+          ditto -c -k --sequesterRsrc --keepParent "dist-pkg/闪卡刷题.app" "${{ steps.v.outputs.file }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.v.outputs.file }}
+          path: ${{ steps.v.outputs.file }}
+          if-no-files-found: error
+
+      - name: Attach to existing release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          FILE: ${{ steps.v.outputs.file }}
+        run: |
+          # 发布脚本会先建好 Release；这里最多等 30 分钟，不会自己新建。
+          for i in $(seq 1 60); do
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 && break
+            [ "$i" = 60 ] && { echo "没有找到 Release $TAG"; exit 1; }
+            sleep 30
+          done
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | grep -qxF "$FILE"; then
+            echo "$FILE 已在 Release 里，跳过"
+          else
+            gh release upload "$TAG" "$FILE" --repo "$GITHUB_REPOSITORY"
+          fi

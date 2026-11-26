@@ -10,6 +10,7 @@ import '../models.dart';
 import '../services/llm.dart';
 import '../services/pdf_export.dart';
 import 'pdf_export_sheet.dart' show confirmMissingGlyphs;
+import '../desktop/platform.dart';
 import '../theme/glass.dart';
 import 'ai_widgets.dart';
 import 'explain_sheet.dart' show showSourceSheet;
@@ -325,10 +326,10 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     }
   }
 
-  void _photoMenu() => showModalBottomSheet<void>(
-        context: context,
-        backgroundColor: M.sheet,
-        builder: (ctx) => SafeArea(
+  // 桌面没有系统拍照界面：直接打开「选择图片」
+  void _photoMenu() => Desk.platform ? _addPhoto(ImageSource.gallery) : showMenuSheet<void>(
+        context,
+        (ctx) => SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const SizedBox(height: 8),
             ListTile(

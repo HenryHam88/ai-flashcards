@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
@@ -11,6 +10,7 @@ import '../models.dart';
 import '../services/pdf_tools.dart';
 import '../services/pipeline.dart';
 import '../services/settings.dart';
+import '../desktop/platform.dart';
 import '../theme/glass.dart';
 import 'chapter_editor_page.dart';
 import 'chapter_view_page.dart';
@@ -112,7 +112,7 @@ class _ProjectPageState extends State<ProjectPage> {
   Future<void> _upload() async {
     final picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['pdf', 'docx', 'doc', 'txt']);
     if (picked.isEmpty) return;
-    final dir = Directory(p.join((await getApplicationDocumentsDirectory()).path, 'pdfs'));
+    final dir = Directory(p.join((await appFilesDirectory()).path, 'pdfs'));
     await dir.create(recursive: true);
     final added = <PdfDoc>[];
     final large = <String>[]; // 超过 10 MB 的 TXT
@@ -142,7 +142,7 @@ class _ProjectPageState extends State<ProjectPage> {
         builder: (ctx) => AlertDialog(
           backgroundColor: M.sheet,
           title: const Text('现在解析？'),
-          content: Text('已添加 ${added.length} 份资料。会排队依次解析（最多同时 ${s.parseConcurrency} 份），PDF 每批 ${s.settings.ocrBatchPages} 页，Word 整份交给解析模型${added.any((d) => d.isText) ? '，TXT 在手机上直接读取（不联网、不花钱）' : ''}；每份单独显示进度，失败可单独重试。'
+          content: Text('已添加 ${added.length} 份资料。会排队依次解析（最多同时 ${s.parseConcurrency} 份），PDF 每批 ${s.settings.ocrBatchPages} 页，Word 整份交给解析模型${added.any((d) => d.isText) ? '，TXT 在${Desk.device}上直接读取（不联网、不花钱）' : ''}；每份单独显示进度，失败可单独重试。'
               '${added.any((d) => d.isWord) && !Settings.supportsWord(s.settings.ocrProvider) ? '\n\n注意：${ParseService.wordUnsupported}。' : ''}'
               '${large.isEmpty ? '' : '\n\n注意：${large.join('、')} 超过 10 MB，读取和出题会比较慢，建议只保留需要的章节。'}'),
           actions: [
@@ -319,7 +319,7 @@ class _ProjectPageState extends State<ProjectPage> {
                 itemBuilder: (_) => [
                   const PopupMenuItem(value: 'rename', child: Text('重命名')),
                   const PopupMenuItem(value: 'export', child: Text('导出 / 分享此项目')),
-                  if (d.cloudOn) const PopupMenuItem(value: 'release', child: Text('释放手机空间')),
+                  if (d.cloudOn) PopupMenuItem(value: 'release', child: Text('释放${Desk.device}空间')),
                   const PopupMenuItem(value: 'delete', child: Text('删除项目')),
                 ],
               ),
@@ -521,7 +521,7 @@ class _ProjectPageState extends State<ProjectPage> {
                     if (doc.parsedPages > 0) const PopupMenuItem(value: 'view', child: Text('查看章节内容')),
                     if (doc.parsedPages > 0) const PopupMenuItem(value: 'chapters', child: Text('编辑章节')),
                     if (d.cloudOn && doc.status == '已解析' && d.docMedia[doc.id]?.offloaded != true)
-                      const PopupMenuItem(value: 'release', child: Text('放到云端，释放手机空间')),
+                      PopupMenuItem(value: 'release', child: Text('放到云端，释放${Desk.device}空间')),
                     if (d.docMedia[doc.id]?.offloaded == true) const PopupMenuItem(value: 'download', child: Text('下载原文件回本机')),
                     const PopupMenuItem(value: 'delete', child: Text('删除')),
                   ],
@@ -608,10 +608,9 @@ class _ProjectPageState extends State<ProjectPage> {
     final suspended = c?.suspended ?? q!.suspended;
     final fav = await s.repo.isFavorite(c != null ? 'card' : 'question', c?.id ?? q!.id);
     if (!mounted) return;
-    final v = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: M.sheet,
-      builder: (ctx) => SafeArea(
+    final v = await showMenuSheet<String>(
+      context,
+      (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('编辑'), onTap: () => Navigator.pop(ctx, 'edit')),
           ListTile(
@@ -650,6 +649,7 @@ class _ProjectPageState extends State<ProjectPage> {
 
   Widget _cardTile(Flashcard c) => ListTile(
         onLongPress: () => _itemMenu(c),
+        onTap: Desk.platform ? () => _itemMenu(c) : null, // 桌面：单击打开同一个菜单
         enabled: true,
         title: Opacity(
           opacity: c.suspended ? 0.45 : 1,
@@ -666,6 +666,7 @@ class _ProjectPageState extends State<ProjectPage> {
 
   Widget _questionTile(Question q) => ListTile(
         onLongPress: () => _itemMenu(q),
+        onTap: Desk.platform ? () => _itemMenu(q) : null, // 桌面：单击打开同一个菜单
         leading: Text(q.type, style: TextStyle(color: M.sageDark, fontSize: 12)),
         title: Opacity(
             opacity: q.suspended ? 0.45 : 1,

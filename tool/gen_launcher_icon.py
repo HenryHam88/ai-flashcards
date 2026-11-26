@@ -1,5 +1,6 @@
 """生成启动图标图层（1024px 源图）：python3 tool/gen_launcher_icon.py，输出到 build/icon_src/。
-需要 google-chrome；之后用 PIL 缩放到各 mipmap 密度。"""
+需要 google-chrome；之后用 PIL 缩放到各 mipmap 密度。
+桌面图标：python3 tool/gen_desktop_icons.py（用 legacy / mac 两张源图）。"""
 import os, subprocess
 OUT = 'build/icon_src'
 os.makedirs(OUT, exist_ok=True)
@@ -39,6 +40,8 @@ svgs = {
  'legacy': f'<rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/><g transform="translate(256 256) scale(0.92) translate(-256 -270)">{CARDS}</g>',
  'fg': fg_group(CARDS),
  'bg': '<rect width="512" height="512" fill="url(#bg)"/>',
+ # macOS 图标网格：824/1024 圆角方块居中，留出系统阴影的边距
+ 'mac': f'<rect x="50" y="50" width="412" height="412" rx="92" fill="url(#bg)"/><g transform="translate(256 256) scale(0.8) translate(-256 -270)">{CARDS}</g>',
  'mono': fg_group(MONO),
 }
 for name, body in svgs.items():

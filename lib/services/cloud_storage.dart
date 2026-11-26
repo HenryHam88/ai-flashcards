@@ -10,6 +10,7 @@ import '../models.dart';
 import 'doc_files.dart';
 import 's3_signer.dart';
 import 'settings.dart';
+import '../desktop/platform.dart';
 
 /// 云端存储：把大文件（原始资料、笔记照片、导出的 PDF、备份）放到用户自己买的
 /// 阿里云 OSS / 腾讯云 COS / 其他 S3 兼容存储桶里，释放手机空间；用到时再下载回来。
@@ -241,11 +242,11 @@ class S3Client {
     final code = RegExp(r'<Code>([^<]+)</Code>').firstMatch(body)?.group(1) ?? '';
     final msg = RegExp(r'<Message>([^<]+)</Message>').firstMatch(body)?.group(1) ?? '';
     final hint = switch (code) {
-      'SignatureDoesNotMatch' => '签名不匹配：AccessKey Secret 不对，或手机时间不准',
+      'SignatureDoesNotMatch' => '签名不匹配：AccessKey Secret 不对，或${Desk.device}时间不准',
       'InvalidAccessKeyId' => 'AccessKey ID 不存在或已被禁用',
       'NoSuchBucket' => '存储桶不存在：检查名称和地域是否对应',
       'AccessDenied' => '没有权限：请给这个 AccessKey 授予该存储桶的读写权限',
-      'RequestTimeTooSkewed' => '手机时间与服务器相差太大，请打开自动设置时间',
+      'RequestTimeTooSkewed' => '${Desk.device}时间与服务器相差太大，请打开自动设置时间',
       'InvalidBucketName' => '存储桶名称格式不对',
       'PermanentRedirect' || 'AuthorizationHeaderMalformed' => '地域填写不对，请改成存储桶实际所在的地域',
       'SecondLevelDomainForbidden' => '阿里云要求用自定义域名访问这个存储桶，请在「自定义域名」里填写已绑定的域名',

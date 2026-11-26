@@ -12,6 +12,7 @@ import '../theme/glass.dart';
 import 'me_page.dart' show KeyField, settingsTextField;
 import 'number_input.dart';
 import 'settings_pages.dart';
+import '../desktop/platform.dart';
 
 /// RAM / CAM 最小权限策略：只允许读写这个存储桶里本应用的前缀。
 String cloudPolicy(String provider, String bucket, String prefix) {
@@ -86,9 +87,9 @@ class _CloudSettingsPageState extends State<CloudSettingsPage> {
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 40), children: [
         Glass(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('用自己的存储桶省手机空间', style: TextStyle(fontWeight: FontWeight.w700)),
+            Text('用自己的存储桶省${Desk.device}空间', style: TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
-            Text('原始 PDF / Word、笔记照片、导出的 PDF 和备份可以放到你自己买的阿里云 OSS 或腾讯云 COS 上，手机里只留解析好的文字。'
+            Text('原始 PDF / Word、笔记照片、导出的 PDF 和备份可以放到你自己买的阿里云 OSS 或腾讯云 COS 上，${Desk.device}里只留解析好的文字。'
                 '卡片、题目、笔记文字、导图都留在本机，复习不需要联网；需要原文件时（重新解析、查看照片原图）会自动下载回来。',
                 style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
             const SizedBox(height: 6),

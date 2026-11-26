@@ -9,14 +9,14 @@
 [![Release](https://img.shields.io/github/v/release/HenryHam88/ai-flashcards?color=8FA68B&label=release)](https://github.com/HenryHam88/ai-flashcards/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/HenryHam88/ai-flashcards/total?color=A3B1BD)](https://github.com/HenryHam88/ai-flashcards/releases)
 [![License](https://img.shields.io/github/license/HenryHam88/ai-flashcards?color=D9CBB4)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Android%207.0%2B-8FA68B?logo=android&logoColor=white)](#下载)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Windows%20%7C%20macOS%20%7C%20Linux-8FA68B)](#下载)
 [![Flutter](https://img.shields.io/badge/Flutter-3.50-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 
 **简体中文** | [English](README.en.md)
 
 </div>
 
-闪卡刷题是一款开源的 Android 学习应用，帮你把 PDF、Word 或 TXT 教材变成闪卡和练习题，并用 FSRS 算法安排复习。类似 Anki，但能用 AI 从教材自动出卡出题。公式按教材排版显示，所有学习数据只保存在你的手机上。
+闪卡刷题是一款开源的学习应用，支持 Android、Windows、macOS 和 Linux，帮你把 PDF、Word 或 TXT 教材变成闪卡和练习题，并用 FSRS 算法安排复习。类似 Anki，但能用 AI 从教材自动出卡出题。公式按教材排版显示，所有学习数据只保存在你自己的设备上。
 
 ## 截图
 
@@ -76,7 +76,7 @@
 
 **资料与生成**
 - 支持 PDF、Word（.docx / .doc）和 TXT，可批量导入，每份资料单独显示进度
-- TXT 在手机上直接读取（不联网、不花钱），自动识别 UTF-8 / UTF-16 / GBK 编码，按段落切成小节后照常分章
+- TXT 在本机直接读取（不联网、不花钱），自动识别 UTF-8 / UTF-16 / GBK 编码，按段落切成小节后照常分章
 - 扫描版 PDF 也能识别，公式保留为 LaTeX
 - 自动识别章节（书签、目录页、标题格式，识别不到时由 AI 分章），也可手动编辑
 - 章节内容：按页查看每章解析出的原文（公式按教材样式排版），可切换章节、搜索高亮、复制，显示解析来源，一键「用这章出题」
@@ -131,6 +131,8 @@
 
 从 [Releases](https://github.com/HenryHam88/ai-flashcards/releases/latest) 下载最新版本：
 
+### Android
+
 | 安装包 | 适用设备 |
 | --- | --- |
 | `ai-flashcards-<版本>-arm64-v8a.apk` | **绝大多数手机，推荐** |
@@ -148,6 +150,22 @@ SHA-256: f5:ec:04:9f:25:ef:21:59:36:28:23:59:4a:08:49:46:f5:66:6d:cc:54:35:19:b9
 
 可用 `apksigner verify --print-certs <apk>` 核对。
 </details>
+
+### 电脑版
+
+| 安装包 | 适用系统 |
+| --- | --- |
+| `ai-flashcards-<版本>-windows-x64.zip` | Windows 10 / 11（64 位） |
+| `ai-flashcards-<版本>-macos.zip` | macOS 12 及以上（Apple 芯片和 Intel 都可以） |
+| `ai-flashcards-<版本>-linux-x64.tar.gz` | 64 位 Linux（Ubuntu 22.04、Debian 12、Fedora 38 及以上等） |
+
+电脑版和手机版功能相同，用备份文件互相迁移。电脑版暂时没有购买开发者证书签名，第一次打开时系统会拦一下：
+
+- **Windows**：解压后双击「ai_flashcards.exe」。如果出现「Windows 已保护你的电脑」，点「更多信息」→「仍要运行」。
+- **macOS**：解压后把「闪卡刷题」拖到「应用程序」，然后**右键点它 → 打开 → 打开**。如果没有「打开」按钮（macOS 15 及以上），先双击一次，再到「系统设置 → 隐私与安全性」底部点「仍要打开」。之后就能正常双击打开。
+- **Linux**：解压后运行文件夹里的 `ai_flashcards`；运行 `./install-desktop-entry.sh` 可以把它加到应用菜单。需要系统里有 GTK 3 和 libsecret（大多数桌面发行版自带）。
+
+更新时下载新版本替换旧文件即可，数据保存在系统的应用数据目录里，不会丢失。
 
 ## 快速开始
 
@@ -168,13 +186,13 @@ SHA-256: f5:ec:04:9f:25:ef:21:59:36:28:23:59:4a:08:49:46:f5:66:6d:cc:54:35:19:b9
 | Kimi 文件解析 | ✓ | ✓ | — | 目前免费 |
 | 本地提取文字层 | ✓ | — | — | 免费，离线 |
 
-TXT 不受这里的设置影响，总是在手机上直接读取，免费、离线。
+TXT 不受这里的设置影响，总是在本机直接读取，免费、离线。
 
 ## 隐私与数据
 
 - 资料、卡片、错题和学习记录只保存在本机，项目没有任何服务器。
 - API Key 存放在系统安全存储（Android Keystore）中。
-- 文档内容只会发送给你配置的服务商；选择「本地提取」时完全不联网；TXT 只在手机上读取，不会上传。
+- 文档内容只会发送给你配置的服务商；选择「本地提取」时完全不联网；TXT 只在本机读取，不会上传。
 - 导出的备份默认不含 API Key；只有手动勾选「包含 API 密钥」时才会写入（备份文件不加密，请勿外传）。云端存储的密钥也不会进入备份。
 
 ## 常见问题
@@ -208,7 +226,7 @@ TXT 不受这里的设置影响，总是在手机上直接读取，免费、离�
 - 生成与批改质量取决于所选模型，重要内容请对照原文核对。
 - 使用 Kimi 解析 PDF 时，出处页码可能不够精确。
 - 排版特殊的教材可能识别不准章节，可在「编辑章节」中调整或让 AI 重新分章。
-- 这是 Android 应用。多设备之间用备份文件迁移，没有实时同步。
+- 手机和电脑之间用备份文件迁移，没有实时同步。
 
 ## 从源码构建
 
@@ -221,6 +239,8 @@ flutter pub get
 flutter test
 flutter build apk --release --split-per-abi
 ```
+
+电脑版在对应系统上构建：`flutter build windows`、`flutter build macos` 或 `flutter build linux`（Linux 需要 `clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev`）。推送版本标签时，GitHub Actions 会自动构建三个电脑版安装包并附加到对应的 Release。
 
 发布签名从 `android/key.properties`（或环境变量 `AI_FLASHCARDS_KEY_PROPERTIES` 指定的文件）读取，未配置时使用 debug 签名。
 

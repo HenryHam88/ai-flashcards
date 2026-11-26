@@ -4,9 +4,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as pth;
-import 'package:path_provider/path_provider.dart';
 
 import 'data/repository.dart';
+import 'desktop/platform.dart' show appFilesDirectory;
 import 'models.dart';
 import 'services/attachments.dart';
 import 'services/backup.dart';
@@ -81,7 +81,7 @@ class AppState extends ChangeNotifier {
   Future<Directory> appDir() async {
     if (appDirOverride != null) return appDirOverride!;
     try {
-      return await getApplicationDocumentsDirectory();
+      return await appFilesDirectory();
     } catch (_) {
       return Directory.systemTemp;
     }
@@ -136,7 +136,7 @@ class AppState extends ChangeNotifier {
   Future<BackupService> backup() async => BackupService(
       store: repo.store,
       settings: settings,
-      appDir: appDirOverride ?? await getApplicationDocumentsDirectory(),
+      appDir: appDirOverride ?? await appFilesDirectory(),
       appVersion: appVersion);
 
   /// 导出到 Obsidian / Notion：照片和伴学附件放到云端的会自动下载回来。
