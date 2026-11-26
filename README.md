@@ -33,6 +33,12 @@
     <td align="center"><img src="docs/screenshots/16_word_doc_list.png" width="190"><br><sub>资料管理</sub></td>
     <td align="center"><img src="docs/screenshots/15_word_doc.png" width="190"><br><sub>解析设置</sub></td>
   </tr>
+</table>
+
+<details>
+<summary>更多截图</summary>
+
+<table>
   <tr>
     <td align="center"><img src="docs/screenshots/19_settings.png" width="190"><br><sub>设置</sub></td>
     <td align="center"><img src="docs/screenshots/23_explain_history.png" width="190"><br><sub>解释历史</sub></td>
@@ -50,21 +56,23 @@
     <td align="center"><img src="docs/screenshots/30_help_article.png" width="190"><br><sub>帮助文章</sub></td>
     <td align="center"><img src="docs/screenshots/31_table_render.png" width="190"><br><sub>表格显示</sub></td>
     <td align="center"><img src="docs/screenshots/32_latex_text.png" width="190"><br><sub>LaTeX 文本格式</sub></td>
-    <td align="center"><img src="docs/screenshots/34_txt_doc.png" width="190"><br><sub>TXT 资料</sub></td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/screenshots/34_txt_doc.png" width="190"><br><sub>TXT 资料</sub></td>
     <td align="center"><img src="docs/screenshots/35_new_vs_review.png" width="190"><br><sub>新学 / 待复习</sub></td>
     <td align="center"><img src="docs/screenshots/36_card_badge.png" width="190"><br><sub>卡片标签</sub></td>
     <td align="center"><img src="docs/screenshots/37_due_by_day.png" width="190"><br><sub>每日到期卡片</sub></td>
-    <td align="center"><img src="docs/screenshots/38_chapter_reparse.png" width="190"><br><sub>按章重新解析</sub></td>
-    <td align="center"><img src="docs/screenshots/42_concurrency.png" width="190"><br><sub>并发数</sub></td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/screenshots/38_chapter_reparse.png" width="190"><br><sub>按章重新解析</sub></td>
+    <td align="center"><img src="docs/screenshots/42_concurrency.png" width="190"><br><sub>并发数</sub></td>
     <td align="center"><img src="docs/screenshots/43_typed_count.png" width="190"><br><sub>直接输入数量</sub></td>
   </tr>
 </table>
 
-## 功能
+</details>
+
+## 主要功能
 
 **资料与生成**
 - 支持 PDF、Word（.docx / .doc）和 TXT，可批量导入，每份资料单独显示进度
@@ -82,13 +90,22 @@
 - 可开启「生成后先审核」：新内容先进待审核，逐张确认、编辑或让 AI 重写后再加入复习
 - 任意卡片 / 题目都能标记「这张有问题」（答案错误、太简单、重复、超纲、表述不清），之后出题会自动避开这些问题
 
+**学习与 AI**
+- 学习板块：每章可按需生成思维导图（可手动增删改、展开收起、保存为图片）
+- 「AI 伴学」按章节或页码选资料对话，回答以教材原文为依据，可「存为笔记」；可以发 PDF、Word、TXT 和图片（每个对话最多 5 个），资料上限 6 万字
+- 知识点笔记：照片、我的理解、AI 讲解、相关题目和带页码的原文引用；可导出单条或全部笔记 PDF
+- 收藏：知识点、闪卡和题目都能加星标，项目页或首页「收藏」集中查看、复习和做题
+- AI 联网搜索默认开启「深度搜索」，回答下面列出可点击的参考网页；出闪卡和出题不联网
+- 多模型配置（「我的 → AI 模型」）：可添加 DeepSeek、通义千问、智谱、Kimi、豆包、硅基流动、OpenRouter、Ollama 等，填好密钥后点「拉取模型」再选；出题、AI 解释、AI 伴学可以分别指定，解释和伴学也能跟随出题模型
+- AI 回答边生成边显示，可随时停止；伴学、解释等对话可以复制
+
 **复习与测验**
-- FSRS 间隔重复调度，滑动评分，支持上一张 / 下一张回看
+- FSRS 间隔重复调度，四档评分（没记住 / 模糊 / 记住了 / 很简单），可回看上一张修改评分
 - 新卡和复习分开计数（类似 Anki）：「新学」和「待复习」，入口「学新卡」「复习」「全部学习」（先复习后新卡）；每日新卡默认 20 张，可「今天再学 10 张」；卡片标出新 / 复习 / 重学
 - 每日到期卡片：按天查看哪些卡什么时候到期（含逾期），按项目筛选，一键复习这些
 - 客观题自动判分，简答题和计算题由 AI 批改
 - AI 解释：结合原文讲解、举例，可以继续追问；所有解释自动保存到「解释历史」，可搜索、收藏、随时接着问
-- 错题本：自动收录，按项目筛选，针对薄弱知识点再出新题
+- 错题本：自动收录，按项目筛选，针对薄弱知识点再出新题；错题可导出 PDF（答案「每题后面」或「全部放在最后」，可选包含解析和上次作答）
 - 学习数据：每日概览（练习次数、正确率、学习时长、连续天数）、半年热力图、未来 7 / 30 / 90 天和全部到期预测（90 天和全部按周或按月合计，点柱子看当天的卡）、各项目和章节的掌握度
 - 薄弱点推荐：根据遗忘次数、错题和记忆率找出最弱的章节，一键「复习这些」或「针对这些出新题」
 - 学习设置：每日新卡 / 复习上限、FSRS 目标记忆率、每日开始时间
@@ -101,6 +118,7 @@
 - 可选每周自动备份，保留最近 3 份
 - 导出到 Obsidian / Notion：笔记、AI 伴学和 AI 解释的对话、收藏、错题打包成 Markdown 压缩包（错题另附 CSV，可在 Notion 里做成数据库）
 - 「保存到文件夹」打开系统的文件夹选择，自己决定存在哪里
+- 可选把大文件放到阿里云 OSS、腾讯云 COS 或 S3 兼容存储以释放手机空间，打开时再下载；云端密钥不进备份
 
 **体验**
 - 完整的 LaTeX 公式排版与 Markdown 格式；识别出的表格（含公式）显示为可左右滑动的表格；公式外的 `\texttt`、`\textbf`、列表和 tabular 等 LaTeX 写法也会整理成正常的格式
@@ -133,12 +151,12 @@ SHA-256: f5:ec:04:9f:25:ef:21:59:36:28:23:59:4a:08:49:46:f5:66:6d:cc:54:35:19:b9
 
 ## 快速开始
 
-1. 在 [DeepSeek 开放平台](https://platform.deepseek.com/) 创建 API Key。
-2. 打开应用，进入 **我的 → 出题模型**，填入 API Key，点击「测试连接」。
+1. 在 [DeepSeek 开放平台](https://platform.deepseek.com/) 创建 API Key（也可以用其他已支持的服务商）。
+2. 打开应用，进入 **我的 → AI 模型**，添加服务商、填写密钥，点「拉取模型」或「测试连接」。
 3. 新建项目，上传教材，解析完成后点击「生成」。
 
 > [!TIP]
-> 出题模型兼容任何 OpenAI 格式的接口，也可以换成通义千问、Kimi 等服务。
+> 出题、AI 解释、AI 伴学可以分别选用模型。接口兼容 OpenAI 格式，也可以换成通义千问、Kimi 等服务。
 
 ## 支持的解析方式
 
@@ -152,12 +170,12 @@ SHA-256: f5:ec:04:9f:25:ef:21:59:36:28:23:59:4a:08:49:46:f5:66:6d:cc:54:35:19:b9
 
 TXT 不受这里的设置影响，总是在手机上直接读取，免费、离线。
 
-## 隐私
+## 隐私与数据
 
 - 资料、卡片、错题和学习记录只保存在本机，项目没有任何服务器。
 - API Key 存放在系统安全存储（Android Keystore）中。
 - 文档内容只会发送给你配置的服务商；选择「本地提取」时完全不联网；TXT 只在手机上读取，不会上传。
-- 导出的备份默认不含 API Key；只有手动勾选「包含 API 密钥」时才会写入（备份文件不加密，请勿外传）。
+- 导出的备份默认不含 API Key；只有手动勾选「包含 API 密钥」时才会写入（备份文件不加密，请勿外传）。云端存储的密钥也不会进入备份。
 
 ## 常见问题
 
@@ -185,24 +203,12 @@ TXT 不受这里的设置影响，总是在手机上直接读取，免费、离�
 可以在该卡片的「AI 解释」中让模型重新整理，或在测验中标记「AI 出错了」。
 </details>
 
-## 已知问题
+**已知限制**
 
 - 生成与批改质量取决于所选模型，重要内容请对照原文核对。
 - 使用 Kimi 解析 PDF 时，出处页码可能不够精确。
 - 排版特殊的教材可能识别不准章节，可在「编辑章节」中调整或让 AI 重新分章。
-- 目前仅支持 Android，暂不支持多设备实时同步（可用备份文件迁移）。
-
-## 路线图
-
-- [x] PDF / Word 解析与 AI 生成
-- [x] FSRS 复习、测验与错题本
-- [x] 数据备份与迁移、深色模式、解释历史
-- [x] 出题质量控制、学习数据与薄弱点推荐
-- [ ] 云端同步（WebDAV）
-- [ ] 网页版
-- [ ] iOS 版
-
-欢迎在 [Issues](https://github.com/HenryHam88/ai-flashcards/issues) 中提出建议。
+- 这是 Android 应用。多设备之间用备份文件迁移，没有实时同步。
 
 ## 从源码构建
 
@@ -234,9 +240,9 @@ flutter build apk --release --split-per-abi
    指纹不同的安装包无法覆盖安装已发布的版本。
 </details>
 
-## 参与贡献
+## 反馈
 
-欢迎提交 Issue 和 Pull Request，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。版本变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+遇到问题或有建议，请在 [Issues](https://github.com/HenryHam88/ai-flashcards/issues) 里提出。也欢迎提交 Pull Request，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。版本变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可证
 
