@@ -43,8 +43,10 @@ class _WrongExportSheetState extends State<WrongExportSheet> {
       final name = '${widget.title}-错题集-${PdfExportService.dateLabel(DateTime.now())}.pdf'.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
       await s.saveExport(widget.projectId, name, bytes);
       if (!mounted) return;
+      final outer = Navigator.of(context).context;
       Navigator.pop(context);
-      await saveOrShareFile(context, bytes, name, title: 'PDF 已生成（${fmtSize(bytes.length)}）', mimeType: 'application/pdf');
+      if (!outer.mounted) return;
+      await saveOrShareFile(outer, bytes, name, title: 'PDF 已生成（${fmtSize(bytes.length)}）', mimeType: 'application/pdf');
     } catch (e) {
       if (mounted) setState(() => (busy = false, error = '导出失败：$e'));
     }

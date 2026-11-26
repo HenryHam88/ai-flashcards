@@ -14,6 +14,7 @@ import 'services/chapters.dart';
 import 'services/cloud_storage.dart';
 import 'services/doc_files.dart';
 import 'services/fsrs.dart';
+import 'services/kb_export.dart';
 import 'services/json_utils.dart';
 import 'services/latex.dart';
 import 'services/llm.dart';
@@ -137,6 +138,9 @@ class AppState extends ChangeNotifier {
       settings: settings,
       appDir: appDirOverride ?? await getApplicationDocumentsDirectory(),
       appVersion: appVersion);
+
+  /// 导出到 Obsidian / Notion：照片和伴学附件放到云端的会自动下载回来。
+  KbExportService kbExporter() => KbExportService(repo: repo, media: chatFile);
 
   /// 导入数据后刷新内存缓存和所有页面。
   Future<void> afterImport() async {

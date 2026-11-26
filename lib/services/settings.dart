@@ -498,6 +498,10 @@ class Settings {
     return '';
   }
 
+  /// 上次「保存到文件夹」选的位置（系统返回的文件地址），下次保存时从这个文件夹打开。只在本机，不进备份。
+  String get lastSaveUri => prefs.getString('last_save_uri') ?? '';
+  set lastSaveUri(String v) => prefs.setString('last_save_uri', v);
+
   // AI 解释 / AI 伴学模型：各项留空则沿用出题模型。
   String get explainBaseUrl => prefs.getString('explain_base') ?? '';
   set explainBaseUrl(String v) {

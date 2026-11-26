@@ -30,8 +30,7 @@
   "I:P(B_i\\mid A)=\\dfrac{P(B_i)P(A\\mid B_i)}{\\sum_{j}P(B_j)P(A\\mid B_j)}"
  ],
  "$\\int_0^1 x\\,dx=\\frac12$ **重点** *斜体* `code $x$`": [
-  "I:\\int_0^1 x\\,dx=\\frac12",
-  "I:x"
+  "I:\\int_0^1 x\\,dx=\\frac12"
  ],
  "$\\mathrm{Var}(X)$, $\\mathbb{R}$, $\\vec{a}\\cdot\\vec{b}$, $\\overline{X}$, $\\hat\\theta$": [
   "I:\\mathrm{Var}(X)",
@@ -257,14 +256,10 @@
  "help:generate": [],
  "help:quality": [],
  "help:review": [],
- "help:quiz": [
-  "I:..."
- ],
+ "help:quiz": [],
  "help:explain_history": [],
  "help:study": [],
- "help:notes": [
-  "I:..."
- ],
+ "help:notes": [],
  "help:web_search": [],
  "help:favorites": [],
  "help:cloud": [],
