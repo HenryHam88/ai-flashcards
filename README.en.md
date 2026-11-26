@@ -36,6 +36,12 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
     <td align="center"><img src="docs/screenshots/16_word_doc_list.png" width="190"><br><sub>Documents</sub></td>
     <td align="center"><img src="docs/screenshots/15_word_doc.png" width="190"><br><sub>Parsing settings</sub></td>
   </tr>
+</table>
+
+<details>
+<summary>More screenshots</summary>
+
+<table>
   <tr>
     <td align="center"><img src="docs/screenshots/19_settings.png" width="190"><br><sub>Settings</sub></td>
     <td align="center"><img src="docs/screenshots/23_explain_history.png" width="190"><br><sub>Explanation history</sub></td>
@@ -53,19 +59,21 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
     <td align="center"><img src="docs/screenshots/30_help_article.png" width="190"><br><sub>Help article</sub></td>
     <td align="center"><img src="docs/screenshots/31_table_render.png" width="190"><br><sub>Tables</sub></td>
     <td align="center"><img src="docs/screenshots/32_latex_text.png" width="190"><br><sub>LaTeX text formatting</sub></td>
-    <td align="center"><img src="docs/screenshots/34_txt_doc.png" width="190"><br><sub>TXT files</sub></td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/screenshots/34_txt_doc.png" width="190"><br><sub>TXT files</sub></td>
     <td align="center"><img src="docs/screenshots/35_new_vs_review.png" width="190"><br><sub>New vs. due</sub></td>
     <td align="center"><img src="docs/screenshots/36_card_badge.png" width="190"><br><sub>Card badges</sub></td>
     <td align="center"><img src="docs/screenshots/37_due_by_day.png" width="190"><br><sub>Due by day</sub></td>
-    <td align="center"><img src="docs/screenshots/38_chapter_reparse.png" width="190"><br><sub>Re-parse a chapter</sub></td>
-    <td align="center"><img src="docs/screenshots/42_concurrency.png" width="190"><br><sub>Concurrency</sub></td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/screenshots/38_chapter_reparse.png" width="190"><br><sub>Re-parse a chapter</sub></td>
+    <td align="center"><img src="docs/screenshots/42_concurrency.png" width="190"><br><sub>Concurrency</sub></td>
     <td align="center"><img src="docs/screenshots/43_typed_count.png" width="190"><br><sub>Type a count</sub></td>
   </tr>
 </table>
+
+</details>
 
 ## Features
 
@@ -85,13 +93,22 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
 - Optional "review before adding": new items wait in an inbox where you can accept, edit, delete, or have AI rewrite them
 - Flag any card or question as wrong, too easy, duplicate, out of scope, or unclear; future generation avoids those problems
 
+**Study and AI**
+- Learning section: generate a mind map per chapter on demand (edit nodes, expand or collapse, save as an image)
+- AI study buddy: chat over selected chapters or page ranges, grounded in the source text, and save a conversation as a note; attach PDF, Word, TXT, or images (up to 5 per conversation); source text cap is 60,000 characters
+- Knowledge-point notes: photos, your own understanding, AI explanations, related questions, and page-referenced quotations; export one note or all notes as PDF
+- Favorites: star knowledge points, flashcards, and questions, then review or practice them from the project page or the home Favorites entry
+- Web search is on by default in "deep search" mode, with clickable reference links under the answer; flashcard and quiz generation never go online
+- Multiple model providers (我的 → AI 模型): add DeepSeek, Qwen, Zhipu, Kimi, Doubao, SiliconFlow, OpenRouter, Ollama, and others; paste a key, pull the model list, then pick; generation, AI explanations, and the study buddy can use different models, or the latter two can follow the generation model
+- Answers stream as they are generated and can be stopped at any time; study-buddy and explanation chats can be copied
+
 **Review and practice**
-- FSRS spaced-repetition scheduling, swipe to grade, step back and forward through cards
+- FSRS spaced-repetition scheduling with four grades (Forgot / Fuzzy / Got it / Easy); you can go back and change the previous card's grade
 - New and due cards are counted separately (Anki-style): "Learn new", "Review", and "Study all" (due reviews first, then new); 20 new cards a day by default, with "10 more today"; each card is badged new / review / relearn
 - Due by day: see which cards come due on which day (including overdue), filter by project, and review them right away
 - Objective questions are graded automatically; short-answer and calculation questions are graded by AI
 - AI explanations grounded in the source text, with follow-up questions; every explanation is kept in a searchable history you can star and continue
-- Mistake book: wrong answers are collected automatically, filterable by project, with new questions generated for weak points
+- Mistake book: wrong answers are collected automatically, filterable by project, with new questions generated for weak points; mistakes can also be exported as a PDF (answer after each question or all at the end, optional explanations and last answers)
 - Study data: daily overview (reviews, accuracy, time, streak), a six-month heatmap, a due forecast for 7 / 30 / 90 days or everything (weekly or monthly bars beyond 30 days; tap a bar to see that day's cards), and mastery per project and chapter
 - Weak-spot suggestions based on lapses, mistakes, and recall, with one tap to review them or generate new questions targeting them
 - Study settings: daily new / review limits, FSRS desired retention, day start time
@@ -104,6 +121,7 @@ AI Flashcards (闪卡刷题) is an open-source study app for Android. Import a P
 - Optional weekly automatic backup, keeping the latest 3
 - Export to Obsidian / Notion: notes, AI study-buddy and explanation chats, favorites, and mistakes as a Markdown zip (mistakes also as a CSV you can import as a Notion database)
 - "Save to folder" opens the system picker so you choose where the file goes
+- Optionally offload large files to Aliyun OSS, Tencent COS, or S3-compatible storage to free space on the phone; files download again when you open them. Cloud credentials are never included in backups.
 
 **Experience**
 - Full LaTeX typesetting and Markdown formatting; tables recognized in your material (formulas included) are shown as real, horizontally scrollable tables; LaTeX text commands outside formulas (`\texttt`, `\textbf`, itemize, tabular, …) are displayed as proper formatting
@@ -136,12 +154,12 @@ Verify with `apksigner verify --print-certs <apk>`.
 
 ## Quick start
 
-1. Create an API key on the [DeepSeek Platform](https://platform.deepseek.com/).
-2. In the app, open **我的 (Me) → 出题模型 (Generation model)**, paste the key, and tap 测试连接 (Test connection).
+1. Create an API key on the [DeepSeek Platform](https://platform.deepseek.com/) (or another supported provider).
+2. In the app, open **我的 (Me) → AI 模型 (AI models)**, add a provider, paste the key, and tap 拉取模型 (Pull models) or 测试连接 (Test connection).
 3. Create a project, upload a textbook, and tap 生成 (Generate) once parsing finishes.
 
 > [!TIP]
-> The generation model works with any OpenAI-compatible API, such as Qwen or Kimi.
+> Generation, AI explanations, and the study buddy can each use a different model. The API is OpenAI-compatible, so you can also use Qwen, Kimi, and similar services.
 
 ## Supported parsing providers
 
@@ -155,12 +173,12 @@ Choose in **我的 → 文档解析（PDF / Word）** (Me → Document parsing):
 
 TXT files ignore this setting and are always read on the phone, free and offline.
 
-## Privacy
+## Privacy and data
 
 - Documents, cards, mistakes, and review history are stored only on your device. The project runs no servers.
 - API keys are kept in the system secure storage (Android Keystore).
-- Document content is sent only to the providers you configure; "Local text layer" mode never goes online.
-- Backups exclude API keys by default; they are included only if you turn on "包含 API 密钥" (backups are not encrypted, so keep them private).
+- Document content is sent only to the providers you configure; "Local text layer" mode never goes online. TXT files are read on the phone and are not uploaded.
+- Backups exclude API keys by default; they are included only if you turn on "包含 API 密钥" (backups are not encrypted, so keep them private). Cloud-storage credentials are never included in backups.
 
 ## FAQ
 
@@ -188,24 +206,12 @@ On the old phone open **我的 → 导出 / 导入数据 → 导出数据** and 
 Ask for a rewrite in the card's AI explanation, or mark the question as "AI 出错了" (AI made a mistake) in the quiz.
 </details>
 
-## Known issues
+**Known limitations**
 
 - Generation and grading quality depends on the model you choose; double-check important content against the source.
 - With Kimi, source page numbers for PDFs may be imprecise.
 - Chapters of unusually formatted books may be detected incorrectly; adjust them in the chapter editor or let AI re-split them.
-- Android only for now; no real-time multi-device sync yet (use backup files to migrate).
-
-## Roadmap
-
-- [x] PDF / Word parsing and AI generation
-- [x] FSRS review, quizzes, and mistake book
-- [x] Data backup and migration, dark mode, explanation history
-- [x] Generation quality control, study data, and weak-spot suggestions
-- [ ] Cloud sync (WebDAV)
-- [ ] Web version
-- [ ] iOS version
-
-Suggestions are welcome in [Issues](https://github.com/HenryHam88/ai-flashcards/issues).
+- This is an Android app. Move data between devices with a backup file; there is no real-time sync.
 
 ## Build from source
 
@@ -221,9 +227,25 @@ flutter build apk --release --split-per-abi
 
 Release signing reads `android/key.properties` (or the file pointed to by `AI_FLASHCARDS_KEY_PROPERTIES`); without it, the debug key is used.
 
-## Contributing
+<details>
+<summary>Configure release signing</summary>
 
-Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [CHANGELOG](CHANGELOG.md).
+1. Generate a keystore the first time you publish (keep using the same one; losing it means you cannot install over older official builds):
+
+   ```bash
+   keytool -genkeypair -v -keystore ~/keys/ai-flashcards-release.jks \
+     -alias ai-flashcards -keyalg RSA -keysize 4096 -validity 10000
+   ```
+
+2. Copy `android/key.properties.example` to `android/key.properties` and fill in the path, alias, and both passwords.
+   `key.properties`, `*.jks`, and `*.keystore` are in `.gitignore` — **do not commit them**. Keep a separate backup of the keystore.
+3. Run `flutter build apk --release --split-per-abi`, then check the certificate fingerprint with `apksigner verify --print-certs <apk>` against the one published above.
+   An APK signed with a different certificate cannot be installed over the official release.
+</details>
+
+## Feedback
+
+Questions and suggestions are welcome in [Issues](https://github.com/HenryHam88/ai-flashcards/issues). Pull requests are welcome too — see [CONTRIBUTING.md](CONTRIBUTING.md). Version history is in the [CHANGELOG](CHANGELOG.md).
 
 ## License
 
