@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-28
+
+### 修复
+
+- 图片多的大 PDF 分批上传时体积过大，导致 OCR 超时失败。
+- 解析失败时显示具体原因。
+
 ## [1.6.0] - 2026-11-26
 
 ### 新增
@@ -260,7 +267,8 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式显示。
 - 学习统计页面。
 
-[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/HenryHam88/ai-flashcards/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/HenryHam88/ai-flashcards/compare/v1.4.0...v1.4.1

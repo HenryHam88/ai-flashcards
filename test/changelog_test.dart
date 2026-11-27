@@ -18,7 +18,7 @@ void main() {
       expect(versions.length, greaterThanOrEqualTo(14));
       final headings = [for (final b in doc.blocks) if (b.type == MdBlockType.heading && b.level == 2) b.text];
       expect(headings, [for (final m in versions) 'v${m[1]}  ·  ${m[2]}']);
-      expect(headings.first, startsWith('v1.6.0'));
+      expect(headings.first, startsWith('v1.6.1'));
       expect(shown.contains('[Unreleased]'), isFalse);
       expect(shown.contains('https://github.com/HenryHam88/ai-flashcards/compare'), isFalse);
     });
