@@ -206,6 +206,49 @@ class KpDiff {
 
 typedef BatchFetcher = Future<List<String>> Function(ReparseEngine engine, int from, int to);
 
+/// 一章里还没分析的段落。
+class KpPending {
+  final PdfDoc doc;
+  final ChapterRange chapter;
+  final List<Chunk> chunks;
+  const KpPending(this.doc, this.chapter, this.chunks);
+}
+
+/// 「分析未分析的章节」的结果。
+class KpAnalyzeReport {
+  final int chapters; // 本次要分析的章数
+  final List<String> doneChapters, failedChapters;
+  final int chunksOk, chunksEmpty, chunksFailed, chunksSkipped;
+  final String? error;
+  final bool stoppedEarly;
+  const KpAnalyzeReport({
+    this.chapters = 0,
+    this.doneChapters = const [],
+    this.failedChapters = const [],
+    this.chunksOk = 0,
+    this.chunksEmpty = 0,
+    this.chunksFailed = 0,
+    this.chunksSkipped = 0,
+    this.error,
+    this.stoppedEarly = false,
+  });
+
+  bool get nothingToDo => chapters == 0;
+  bool get allDone => failedChapters.isEmpty;
+
+  /// 给用户看的一句话。
+  String get summary {
+    if (nothingToDo) return '没有需要分析的章节，都分析过了。';
+    final done = doneChapters.length;
+    if (stoppedEarly) {
+      return '${done > 0 ? '已分析 $done 章，' : ''}分析中途停下了：$error。已经分析好的不会丢，处理后再点一次就接着做。';
+    }
+    if (allDone) return '已分析 $done 章。';
+    final bad = failedChapters.length;
+    return '${done > 0 ? '已分析 $done 章，' : ''}$bad 章没分析完${error == null ? '' : '：$error'}。再点一次会接着分析这些章节。';
+  }
+}
+
 class ChapterReparseService {
   final Repository repo;
   final Settings settings;
@@ -497,7 +540,7 @@ class ChapterReparseService {
   Future<(int, int)> kpCoverage(PdfDoc doc, ChapterRange r) async {
     final chunks = await chapterChunks(doc, r);
     final kps = await repo.kps(doc.projectId);
-    final done = chunks.where((c) => kps.any((k) => k.id.startsWith('${c.id}_k'))).length;
+    final done = chunks.where((c) => kps.any((k) => k.id.startsWith('${c.id}_k')) || settings.kpEmptyMarked(c)).length;
     return (done, chunks.length);
   }
 
@@ -509,6 +552,7 @@ class ChapterReparseService {
         if (chunks.any((c) => k.id.startsWith('${c.id}_k'))) k.id,
     ];
     await repo.deleteKps(ids);
+    settings.clearKpEmpty(chunks);
     return ids.length;
   }
 
@@ -530,5 +574,70 @@ class ChapterReparseService {
       await repo.saveKps(backup);
       rethrow;
     }
+  }
+
+  // ---------- 分析还没分析的章节 ----------
+
+  /// 一份资料的章节：有分章方案按方案，没有就当作「全文」一章。
+  Future<List<ChapterRange>> docChapters(PdfDoc doc, [List<Chunk>? chunks]) async {
+    final plan = await repo.chapterPlan(doc.id);
+    if (plan != null && plan.chapters.isNotEmpty) return plan.chapters;
+    final cs = chunks ?? await _docChunks(doc);
+    if (cs.isEmpty) return const [];
+    return [ChapterRange('全文', cs.map((c) => c.pageStart).reduce(min), cs.map((c) => c.pageEnd).reduce(max))];
+  }
+
+  /// 还没分析完的章节（至少有一段文字既没有知识点、也没有分析过）。
+  /// [doc]、[chapter] 用来缩小范围；已经分析好的章节不会出现在结果里。
+  Future<List<KpPending>> pendingKps(String projectId, {PdfDoc? doc, ChapterRange? chapter}) async {
+    final docs = doc != null ? [doc] : await repo.docs(projectId);
+    final allChunks = await repo.chunks(projectId);
+    final withKp = <String>{};
+    for (final k in await repo.kps(projectId)) {
+      final i = k.id.lastIndexOf('_k');
+      if (i > 0) withKp.add(k.id.substring(0, i));
+    }
+    final out = <KpPending>[];
+    for (final d in docs) {
+      final cs = allChunks.where((c) => c.docId == d.id).toList()..sort((a, b) => a.pageStart.compareTo(b.pageStart));
+      if (cs.isEmpty) continue;
+      final ranges = chapter != null ? [chapter] : await docChapters(d, cs);
+      for (final r in ranges) {
+        final inRange = cs.where((c) => c.pageEnd >= r.start && c.pageStart <= r.end);
+        final todo = [for (final c in inRange) if (!withKp.contains(c.id) && !settings.kpEmptyMarked(c)) c];
+        if (todo.isNotEmpty) out.add(KpPending(d, r, todo));
+      }
+    }
+    return out;
+  }
+
+  /// 只分析还没分析的章节：已分析好的段落不动，失败的段落不影响别的段落。
+  Future<KpAnalyzeReport> analyzePendingKps(String projectId, GenerationService gen,
+      {PdfDoc? doc, ChapterRange? chapter, Progress? onProgress}) async {
+    final pending = await pendingKps(projectId, doc: doc, chapter: chapter);
+    if (pending.isEmpty) return const KpAnalyzeReport();
+    final byId = <String, Chunk>{};
+    for (final p in pending) {
+      for (final c in p.chunks) {
+        byId.putIfAbsent(c.id, () => c);
+      }
+    }
+    final res = await gen.analyzeChunks(projectId, byId.values.toList(), onProgress ?? (_, _) {});
+    final doneCh = <String>[], failedCh = <String>[];
+    for (final p in pending) {
+      final ok = p.chunks.every((c) => res.counts.containsKey(c.id));
+      (ok ? doneCh : failedCh).add(p.chapter.title);
+    }
+    return KpAnalyzeReport(
+      chapters: pending.length,
+      doneChapters: doneCh,
+      failedChapters: failedCh,
+      chunksOk: res.counts.values.where((n) => n > 0).length,
+      chunksEmpty: res.counts.values.where((n) => n == 0).length,
+      chunksFailed: res.errors.length,
+      chunksSkipped: byId.length - res.counts.length - res.errors.length,
+      error: res.fatal ?? (res.errors.isEmpty ? null : res.errors.values.first),
+      stoppedEarly: res.fatal != null,
+    );
   }
 }

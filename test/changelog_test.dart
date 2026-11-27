@@ -18,7 +18,7 @@ void main() {
       expect(versions.length, greaterThanOrEqualTo(14));
       final headings = [for (final b in doc.blocks) if (b.type == MdBlockType.heading && b.level == 2) b.text];
       expect(headings, [for (final m in versions) 'v${m[1]}  ·  ${m[2]}']);
-      expect(headings.first, startsWith('v1.5.0'));
+      expect(headings.first, startsWith('v1.6.0'));
       expect(shown.contains('[Unreleased]'), isFalse);
       expect(shown.contains('https://github.com/HenryHam88/ai-flashcards/compare'), isFalse);
     });
@@ -46,13 +46,25 @@ void main() {
       expect(last.text, endsWith('显示完全不变。'));
     });
 
+    test('1.6.0 的条目完整显示', () {
+      final i = doc.blocks.indexWhere((b) => b.type == MdBlockType.heading && b.text.startsWith('v1.6.0'));
+      final j = doc.blocks.indexWhere((b) => b.type == MdBlockType.heading && b.text.startsWith('v1.5.0'));
+      final part = doc.blocks.sublist(i + 1, j);
+      expect(part.where((b) => b.type == MdBlockType.heading).map((b) => b.text), ['新增', '修复']);
+      expect(part.any((b) => b.text.contains('分析未分析的章节')), isTrue);
+      expect(part.any((b) => b.text.contains('常用提示词')), isTrue);
+      expect(part.any((b) => b.text.contains('显示名称')), isTrue);
+      expect(part.any((b) => b.text.contains('测试')), isTrue);
+      expect(part.every((b) => b.type == MdBlockType.heading || b.type == MdBlockType.bullet), isTrue);
+    });
+
     test('1.5.0 的条目完整显示', () {
       final i = doc.blocks.indexWhere((b) => b.type == MdBlockType.heading && b.text.startsWith('v1.5.0'));
       final j = doc.blocks.indexWhere((b) => b.type == MdBlockType.heading && b.text.startsWith('v1.4.1'));
       final part = doc.blocks.sublist(i + 1, j);
       expect(part.where((b) => b.type == MdBlockType.heading).map((b) => b.text), ['新增']);
       expect(part.any((b) => b.text.contains('Ctrl+K')), isTrue);
-      expect(part.where((b) => b.type == MdBlockType.bullet && b.level == 1).length, 8);
+      expect(part.where((b) => b.type == MdBlockType.bullet && b.level == 0).length, 8);
       expect(part.every((b) => b.type == MdBlockType.heading || b.type == MdBlockType.bullet), isTrue);
     });
 

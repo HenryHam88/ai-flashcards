@@ -534,6 +534,44 @@ class _ChapterKpSheetState extends State<ChapterKpSheet> {
     }
   }
 
+  /// 只分析这一章里还没分析的段落，已经有知识点的不动。
+  Future<void> _continue() async {
+    setState(() {
+      running = true;
+      error = null;
+      message = '分析知识点…';
+      frac = 0;
+    });
+    try {
+      final gen = await s.generator(projectId: widget.doc.projectId);
+      final r = await s.reparser.analyzePendingKps(widget.doc.projectId, gen, doc: widget.doc, chapter: widget.range, onProgress: (m, f) {
+        if (mounted) {
+          setState(() {
+            message = m;
+            frac = f;
+          });
+        }
+      });
+      await _load();
+      if (mounted) {
+        setState(() {
+          running = false;
+          if (!r.allDone) error = r.summary;
+        });
+        if (r.allDone) toast(context, r.summary);
+      }
+      s.changed();
+    } catch (e) {
+      await _load();
+      if (mounted) {
+        setState(() {
+          running = false;
+          error = '$e';
+        });
+      }
+    }
+  }
+
   Future<void> _reanalyze() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -620,6 +658,16 @@ class _ChapterKpSheetState extends State<ChapterKpSheet> {
         ),
         const SizedBox(height: 4),
         Text('自动数量和出题会用这些知识点。', style: TextStyle(color: M.sub, fontSize: 12)),
+        if (!running && d == null && kps != null && coverage.$2 > 0 && coverage.$1 < coverage.$2) ...[
+          const SizedBox(height: 10),
+          GlassButton(
+            label: '分析没分析的 ${coverage.$2 - coverage.$1} 段',
+            icon: Icons.auto_awesome_outlined,
+            tint: M.sage,
+            expand: true,
+            onTap: _continue,
+          ),
+        ],
         if (running) ...[
           const SizedBox(height: 12),
           Text(message, style: const TextStyle(fontSize: 13)),
@@ -735,6 +783,96 @@ class _ChapterKpSheetState extends State<ChapterKpSheet> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+/// 「分析未分析的章节」：只分析还没分析完的章节，已经分析好的不动。没有要分析的章节时不显示。
+class KpPendingCard extends StatefulWidget {
+  final String projectId;
+  final PdfDoc? doc; // 只看这一份资料；为空就是整个项目
+  final VoidCallback? onDone;
+  const KpPendingCard({super.key, required this.projectId, this.doc, this.onDone});
+  @override
+  State<KpPendingCard> createState() => _KpPendingCardState();
+}
+
+class _KpPendingCardState extends State<KpPendingCard> {
+  List<KpPending>? pending;
+  bool running = false;
+  String message = '';
+  double frac = 0;
+
+  AppState get s => context.read<AppState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final l = await s.reparser.pendingKps(widget.projectId, doc: widget.doc);
+    if (mounted) setState(() => pending = l);
+  }
+
+  Future<void> _run() async {
+    final list = pending ?? const <KpPending>[];
+    final chunks = {for (final p in list) for (final c in p.chunks) c.id}.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: M.sheet,
+        title: const Text('分析未分析的章节？'),
+        content: Text('共 ${list.length} 章、$chunks 段文字还没分析。只分析这些，已经分析好的不动；会产生少量费用。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('开始分析')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final app = s; // 分析期间页面可能被刷新，之后不能再用 context
+    setState(() => (running = true, message = '分析知识点…', frac = 0));
+    String result;
+    try {
+      final gen = await app.generator(projectId: widget.projectId);
+      final r = await app.reparser.analyzePendingKps(widget.projectId, gen, doc: widget.doc, onProgress: (m, f) {
+        if (mounted) setState(() => (message = m, frac = f));
+      });
+      result = r.summary;
+    } catch (e) {
+      result = '$e';
+    }
+    if (mounted) toast(context, result);
+    if (mounted) setState(() => running = false);
+    app.changed();
+    if (mounted) await _load();
+    widget.onDone?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = pending;
+    if (list == null || (list.isEmpty && !running)) return const SizedBox();
+    final chunks = {for (final p in list) for (final c in p.chunks) c.id}.length;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Glass(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('还有 ${list.length} 章没分析完', style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text('共 $chunks 段文字。只分析这些，已经分析好的不动。', style: TextStyle(color: M.sub, fontSize: 12, height: 1.5)),
+          const SizedBox(height: 10),
+          if (running) ...[
+            Text(message, style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 6),
+            LinearProgressIndicator(value: frac <= 0 ? null : frac.clamp(0.0, 1.0), color: M.sage, backgroundColor: M.glass.withValues(alpha: 0.5)),
+          ] else
+            GlassButton(label: '分析未分析的章节', icon: Icons.auto_awesome_outlined, tint: M.sage, expand: true, onTap: _run),
+        ]),
       ),
     );
   }

@@ -3,11 +3,13 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../help/help_articles.dart' show HelpIds;
+import '../services/conn_test.dart';
 import '../services/llm.dart';
 import '../services/providers.dart';
 import '../services/settings.dart';
 import '../theme/glass.dart';
 import 'ai_widgets.dart';
+import 'conn_test_row.dart';
 import 'help_page.dart';
 import 'me_page.dart' show KeyField, settingsTextField;
 import 'settings_pages.dart';
@@ -134,8 +136,19 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
           GlassButton(label: '手动添加', icon: Icons.edit_outlined, onTap: () => _manualAdd(st, p)),
         ]),
         if (p.models.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Text('已有 ${p.models.length} 个模型', style: TextStyle(color: M.sub, fontSize: 12)),
+          const SizedBox(height: 6),
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => _manageModels(st, p),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+              child: Row(children: [
+                Expanded(child: Text('已有 ${p.models.length} 个模型', style: TextStyle(color: M.sub, fontSize: 12))),
+                Text('管理、改名、测试', style: TextStyle(color: M.sageDark, fontSize: 12, fontWeight: FontWeight.w600)),
+                Icon(Icons.chevron_right_rounded, size: 18, color: M.sageDark),
+              ]),
+            ),
+          ),
         ],
       ]),
     );
@@ -145,7 +158,8 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
     final follow = use != LlmUse.generate && st.assignment(use).follow;
     final e = st.resolved(use);
     final provider = st.providerById(e.providerId);
-    final label = follow ? '跟随出题模型（${e.model}）' : (e.model.isEmpty ? '还没选模型' : e.model);
+    final shown = st.modelLabel(e.providerId, e.model);
+    final label = follow ? '跟随出题模型（$shown）' : (e.model.isEmpty ? '还没选模型' : shown);
     final spec = Reasoning.of(e.kind, e.model);
     return Glass(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -271,7 +285,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
               _refresh();
             },
             child: Row(children: [
-              Expanded(child: Text(webE.model.isEmpty ? '还没选联网模型' : webE.model, style: const TextStyle(fontWeight: FontWeight.w600))),
+              Expanded(child: Text(webE.model.isEmpty ? '还没选联网模型' : st.modelLabel(webE.providerId, webE.model), style: const TextStyle(fontWeight: FontWeight.w600))),
               Icon(Icons.chevron_right_rounded, color: M.sub),
             ]),
           ),
@@ -314,6 +328,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
     try {
       final ids = await ModelCatalog.fetch(p.baseUrl, await st.providerKey(p.id));
       p.models = ids;
+      p.modelNames.removeWhere((k, _) => !ids.contains(k));
       st.upsertProvider(p);
       if (mounted) toast(context, '已拉取 ${ids.length} 个模型');
       _refresh();
@@ -326,24 +341,58 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
   }
 
   Future<void> _manualAdd(Settings st, LlmProvider p) async {
-    final c = TextEditingController();
-    final name = await showGlassSheet<String>(
+    final r = await showGlassSheet<ModelEditResult>(
       context,
-      (ctx, sc) => ListView(controller: sc, padding: const EdgeInsets.fromLTRB(20, 8, 20, 30), children: [
-        const Text('手动添加模型', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 6),
-        Text('有的服务商不支持拉取列表，填一个模型名称即可。', style: TextStyle(color: M.sub, fontSize: 13, height: 1.5)),
-        const SizedBox(height: 12),
-        TextField(controller: c, autofocus: true, decoration: const InputDecoration(hintText: '例如 deepseek-flash')),
-        const SizedBox(height: 16),
-        GlassButton(label: '添加', icon: Icons.check_rounded, expand: true, onTap: () => Navigator.pop(ctx, c.text.trim())),
-      ]),
-      initial: 0.45,
+      (ctx, sc) => ModelEditSheet(st: st, provider: p, controller: sc),
+      initial: 0.7,
     );
-    c.dispose();
-    if (name == null || name.isEmpty) return;
-    if (!p.models.contains(name)) p.models.add(name);
-    st.upsertProvider(p);
+    if (r == null || r.id.isEmpty) return;
+    _applyEdit(st, p, r);
+  }
+
+  void _applyEdit(Settings st, LlmProvider p, ModelEditResult r) {
+    if (r.delete) {
+      st.removeModel(p.id, r.id);
+    } else {
+      final fresh = st.providerById(p.id) ?? p;
+      if (!fresh.models.contains(r.id)) fresh.models.add(r.id);
+      fresh.setModelName(r.id, r.name);
+      st.upsertProvider(fresh);
+      p.models = fresh.models;
+      p.modelNames = fresh.modelNames;
+    }
+    _refresh();
+  }
+
+  /// 这个服务商的全部模型：点一个可以改名、测试、删除。
+  Future<void> _manageModels(Settings st, LlmProvider p) async {
+    await showGlassSheet<void>(
+      context,
+      (ctx, sc) => _ModelListSheet(
+        st: st,
+        providerId: p.id,
+        controller: sc,
+        onEdit: (m) async {
+          final cur = st.providerById(p.id) ?? p;
+          final r = await showGlassSheet<ModelEditResult>(
+            ctx,
+            (c2, sc2) => ModelEditSheet(st: st, provider: cur, modelId: m, controller: sc2),
+            initial: 0.7,
+          );
+          if (r != null && r.id.isNotEmpty) _applyEdit(st, p, r);
+        },
+        onAdd: () async {
+          final cur = st.providerById(p.id) ?? p;
+          final r = await showGlassSheet<ModelEditResult>(
+            ctx,
+            (c2, sc2) => ModelEditSheet(st: st, provider: cur, controller: sc2),
+            initial: 0.7,
+          );
+          if (r != null && r.id.isNotEmpty) _applyEdit(st, p, r);
+        },
+      ),
+      initial: 0.7,
+    );
     _refresh();
   }
 
@@ -355,6 +404,196 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
       st.upsertProvider(p);
     }
     st.setAssignment(LlmUse.generate, ModelChoice(providerId: p.id, modelId: model));
+  }
+}
+
+/// 添加 / 编辑模型的结果。
+class ModelEditResult {
+  final String id;
+  final String name;
+  final bool delete;
+  const ModelEditResult(this.id, this.name, {this.delete = false});
+}
+
+/// 添加或编辑一个模型：模型 ID、显示名称，还能点「测试」试一下能不能用。
+/// 「测试」按钮实际做的事，测试时可以换成假的。
+typedef LlmTester = Future<TestResult> Function({required String baseUrl, required String apiKey, required String model, bool keyOptional});
+
+class ModelEditSheet extends StatefulWidget {
+  final Settings st;
+  final LlmProvider provider;
+  final String? modelId; // 为空表示新添加
+  final ScrollController? controller;
+  final LlmTester? tester;
+  const ModelEditSheet({super.key, required this.st, required this.provider, this.modelId, this.controller, this.tester});
+  @override
+  State<ModelEditSheet> createState() => _ModelEditSheetState();
+}
+
+class _ModelEditSheetState extends State<ModelEditSheet> {
+  late final idC = TextEditingController(text: widget.modelId ?? '');
+  late final nameC = TextEditingController(text: widget.modelId == null ? '' : (widget.provider.modelNames[widget.modelId!] ?? ''));
+  late final changed = Listenable.merge([idC]);
+  bool get editing => widget.modelId != null;
+
+  @override
+  void dispose() {
+    idC.dispose();
+    nameC.dispose();
+    super.dispose();
+  }
+
+  Future<TestResult> _test() async {
+    final p = widget.provider;
+    final run = widget.tester ?? ConnTest.llm;
+    return run(
+      baseUrl: p.baseUrl,
+      apiKey: await widget.st.providerKey(p.id),
+      model: idC.text,
+      keyOptional: ProviderPreset.of(p.kind).keyOptional,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      controller: widget.controller,
+      padding: EdgeInsets.fromLTRB(20, 8, 20, 30 + MediaQuery.of(context).viewInsets.bottom),
+      children: [
+        Text(editing ? '编辑模型' : '手动添加模型', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Text(
+            editing
+                ? '${widget.provider.name} 的模型。起个名字后，选模型的地方会显示这个名字。'
+                : '有的服务商不支持拉取列表，填一个模型 ID 即可。名字可以不填，不填就显示模型 ID。',
+            style: TextStyle(color: M.sub, fontSize: 13, height: 1.5)),
+        const SizedBox(height: 12),
+        if (editing)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Glass(
+              radius: 14,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(children: [
+                Text('模型 ID', style: TextStyle(color: M.sub, fontSize: 13)),
+                const SizedBox(width: 12),
+                Expanded(child: Text(widget.modelId!, style: const TextStyle(fontWeight: FontWeight.w600))),
+              ]),
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: TextField(
+              controller: idC,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: '模型 ID', hintText: '例如 deepseek-flash'),
+            ),
+          ),
+        TextField(
+          controller: nameC,
+          decoration: const InputDecoration(labelText: '显示名称（可不填）', hintText: '例如 我的 DeepSeek'),
+        ),
+        const SizedBox(height: 14),
+        ConnTestRow(run: _test, reset: changed),
+        const SizedBox(height: 16),
+        GlassButton(
+          label: editing ? '保存' : '添加',
+          icon: Icons.check_rounded,
+          tint: M.sage,
+          expand: true,
+          onTap: () {
+            final id = idC.text.trim();
+            if (id.isEmpty) {
+              toast(context, '先填写模型 ID');
+              return;
+            }
+            Navigator.pop(context, ModelEditResult(id, nameC.text.trim()));
+          },
+        ),
+        if (editing) ...[
+          const SizedBox(height: 10),
+          GlassButton(
+            label: '删除这个模型',
+            icon: Icons.delete_outline_rounded,
+            expand: true,
+            onTap: () => Navigator.pop(context, ModelEditResult(widget.modelId!, '', delete: true)),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// 一个服务商的全部模型。
+class _ModelListSheet extends StatefulWidget {
+  final Settings st;
+  final String providerId;
+  final ScrollController controller;
+  final Future<void> Function(String modelId) onEdit;
+  final Future<void> Function() onAdd;
+  const _ModelListSheet({required this.st, required this.providerId, required this.controller, required this.onEdit, required this.onAdd});
+  @override
+  State<_ModelListSheet> createState() => _ModelListSheetState();
+}
+
+class _ModelListSheetState extends State<_ModelListSheet> {
+  String q = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.st.providerById(widget.providerId);
+    if (p == null) return const SizedBox();
+    final key = q.trim().toLowerCase();
+    final list = [
+      for (final m in p.models)
+        if (key.isEmpty || m.toLowerCase().contains(key) || p.labelOf(m).toLowerCase().contains(key)) m
+    ];
+    return ListView(controller: widget.controller, padding: const EdgeInsets.fromLTRB(20, 8, 20, 30), children: [
+      Text('${p.name} 的模型', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 6),
+      Text('点一个模型可以起名字、测试能不能用，或者删掉。', style: TextStyle(color: M.sub, fontSize: 13, height: 1.5)),
+      const SizedBox(height: 12),
+      if (p.models.length > 8)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: TextField(
+            onChanged: (v) => setState(() => q = v),
+            decoration: const InputDecoration(hintText: '搜索模型', prefixIcon: Icon(Icons.search_rounded)),
+          ),
+        ),
+      for (final m in list)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Glass(
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+            onTap: () async {
+              await widget.onEdit(m);
+              if (mounted) setState(() {});
+            },
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(p.labelOf(m), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  if (p.labelOf(m) != m) Text(m, style: TextStyle(color: M.sub, fontSize: 12)),
+                ]),
+              ),
+              Icon(Icons.chevron_right_rounded, color: M.sub),
+            ]),
+          ),
+        ),
+      if (list.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Text('没有找到。', style: TextStyle(color: M.sub))),
+      const SizedBox(height: 4),
+      GlassButton(
+        label: '添加模型',
+        icon: Icons.add_rounded,
+        expand: true,
+        onTap: () async {
+          await widget.onAdd();
+          if (mounted) setState(() {});
+        },
+      ),
+    ]);
   }
 }
 
@@ -408,7 +647,10 @@ Future<ModelPick?> showModelPicker(BuildContext context, Settings st,
             child: Glass(
               padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
               onTap: () => Navigator.pop(ctx, ModelPick(providerId: e.key.id, modelId: m)),
-              child: Text(m, style: const TextStyle(fontWeight: FontWeight.w600)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(e.key.labelOf(m), style: const TextStyle(fontWeight: FontWeight.w600)),
+                if (e.key.labelOf(m) != m) Text(m, style: TextStyle(color: M.sub, fontSize: 12)),
+              ]),
             ),
           ),
       ],
@@ -434,6 +676,8 @@ class ChatModelChip extends StatelessWidget {
   String get label {
     final m = current.model;
     if (m.isEmpty) return '模型';
+    final named = state.settings.modelLabel(current.providerId, m);
+    if (named != m) return named.length <= 18 ? named : '${named.substring(0, 16)}…';
     return m.length <= 18 ? m : '…${m.substring(m.length - 16)}';
   }
 

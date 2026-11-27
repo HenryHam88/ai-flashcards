@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-26
+
+### 新增
+
+- 分析未分析的章节：项目页「资料」和学习板块里，有章节没分析完时会出现这一栏，只补这些，已经分析好的不动。一段失败不影响别的段，下次接着做。章节的「查看知识点」里也能只补没分析的段落。
+- 自定义模型可以起显示名称。选模型的列表、出题 / 解释 / 伴学几栏和伴学面板上都显示名称；「已有 N 个模型」里可以改名、删除。
+- 项目的常用提示词：每个项目可以存多条（项目页 ⋮ →「常用提示词」，或在 AI 解释、AI 伴学里直接添加）。输入框上方点一下就跟着这次提问发出去，可以选几条，不点和以前一样。
+- 添加、编辑模型时可以点「测试」，不通会说明是密钥、接口地址、模型名还是超时的问题。DeepSeek OCR 和 Kimi 文件解析也有「测试连接」。
+
+### 修复
+
+- 目录、前言这类没有知识点的段落，每次自动数量或出题都要重新分析、重复花钱：现在分析过一次就记下来。
+
 ## [1.5.0] - 2026-11-26
 
 ### 新增
@@ -246,7 +259,8 @@
 - 完整的 LaTeX 公式排版与 Markdown 格式显示。
 - 学习统计页面。
 
-[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/HenryHam88/ai-flashcards/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/HenryHam88/ai-flashcards/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/HenryHam88/ai-flashcards/compare/v1.3.7...v1.4.0

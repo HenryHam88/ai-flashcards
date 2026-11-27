@@ -666,11 +666,15 @@ class AppState extends ChangeNotifier {
   }
 
   /// AI 伴学：每次都把选中资料的原文放进系统提示，对话本身只存可见内容。
-  Future<StudyChat> studyAsk(StudyChat chat, String question, {AiIo? io}) async {
+  /// [title]：新对话的标题（默认取问题开头）。选了提示词时问题后面会带上提示词，标题只取用户自己的提问。
+  Future<StudyChat> studyAsk(StudyChat chat, String question, {AiIo? io, String? title}) async {
     final (msgs, web) = await _studyPrompt(chat, question);
     final r = await _answer(await studyLlm(chat: chat), msgs, web: web, io: io);
     chat.messages = [...chat.messages, {'role': 'user', 'content': question}, {'role': 'assistant', 'content': r.content, ...r.extras()}];
-    if (chat.title.isEmpty) chat.title = question.length > 24 ? '${question.substring(0, 24)}…' : question;
+    if (chat.title.isEmpty) {
+      final t = (title ?? question).trim().replaceAll(RegExp(r'\s+'), ' ');
+      chat.title = t.length > 24 ? '${t.substring(0, 24)}…' : t;
+    }
     chat.updatedAt = DateTime.now();
     await repo.saveStudyChat(chat);
     return chat;

@@ -40,10 +40,21 @@ class LlmProvider {
   String name;
   String baseUrl;
   List<String> models; // 拉取或手动添加的模型名
-  LlmProvider({required this.id, required this.kind, required this.name, required this.baseUrl, List<String>? models})
-      : models = models ?? [];
+  /// 给模型起的显示名（模型 ID → 名称）。没起的就显示模型 ID。
+  Map<String, String> modelNames;
+  LlmProvider(
+      {required this.id, required this.kind, required this.name, required this.baseUrl, List<String>? models, Map<String, String>? modelNames})
+      : models = models ?? [],
+        modelNames = modelNames ?? {};
 
-  Map<String, dynamic> toJson() => {'id': id, 'kind': kind, 'name': name, 'baseUrl': baseUrl, 'models': models};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'kind': kind,
+        'name': name,
+        'baseUrl': baseUrl,
+        'models': models,
+        if (modelNames.isNotEmpty) 'modelNames': modelNames,
+      };
 
   factory LlmProvider.fromJson(Map<String, dynamic> j) => LlmProvider(
         id: '${j['id']}',
@@ -51,7 +62,34 @@ class LlmProvider {
         name: '${j['name'] ?? ''}',
         baseUrl: '${j['baseUrl'] ?? ''}',
         models: [for (final m in (j['models'] as List?) ?? const []) '$m'],
+        modelNames: {
+          if (j['modelNames'] is Map)
+            for (final e in (j['modelNames'] as Map).entries)
+              if ('${e.value}'.trim().isNotEmpty) '${e.key}': '${e.value}'.trim(),
+        },
       );
+
+  /// 界面上显示的模型名：起了名字显示名字，否则显示模型 ID。
+  String labelOf(String modelId) {
+    final n = modelNames[modelId]?.trim() ?? '';
+    return n.isEmpty ? modelId : n;
+  }
+
+  /// 设置（或清除，传空）显示名。
+  void setModelName(String modelId, String name) {
+    final n = name.trim();
+    if (n.isEmpty || n == modelId) {
+      modelNames.remove(modelId);
+    } else {
+      modelNames[modelId] = n;
+    }
+  }
+
+  /// 删除一个模型，名字一起去掉。
+  void removeModel(String modelId) {
+    models.remove(modelId);
+    modelNames.remove(modelId);
+  }
 
   bool get isDeepSeek => kind == 'deepseek' || (Uri.tryParse(baseUrl)?.host == 'api.deepseek.com');
 }

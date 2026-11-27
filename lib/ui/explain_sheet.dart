@@ -7,6 +7,7 @@ import '../services/llm.dart';
 import '../theme/glass.dart';
 import 'ai_widgets.dart';
 import 'quiz_page.dart';
+import 'snippet_bar.dart';
 
 /// 查看教材原文（半屏面板）。
 Future<void> showSourceSheet(BuildContext context, {required String docId, required int page, String chapter = '', String section = ''}) async {
@@ -44,9 +45,11 @@ class _ExplainBodyState extends State<_ExplainBody> {
   final input = TextEditingController();
   final run = AiRun();
   String? pending; // 正在等回答的追问
+  late final SnippetPicker snippets;
 
   @override
   void dispose() {
+    snippets.dispose();
     run.dispose();
     input.dispose();
     super.dispose();
@@ -67,6 +70,7 @@ class _ExplainBodyState extends State<_ExplainBody> {
   @override
   void initState() {
     super.initState();
+    snippets = SnippetPicker(context.read<AppState>(), projectId)..load();
     _load();
   }
 
@@ -92,10 +96,12 @@ class _ExplainBodyState extends State<_ExplainBody> {
   }
 
   Future<void> _ask() async {
-    final q = input.text.trim();
-    if (q.isEmpty || cache == null) return;
+    // 选了提示词时，输入框可以留空：这一轮就按所选提示词再讲一遍
+    final q = snippets.compose(input.text);
+    if (q.isEmpty || cache == null || busy) return;
     setState(() => (busy = true, pending = q));
     input.clear();
+    snippets.clearSelection();
     try {
       final c = await context.read<AppState>().followUp(cache!, q, io: run.start());
       if (mounted) setState(() => cache = c);
@@ -182,17 +188,20 @@ class _ExplainBodyState extends State<_ExplainBody> {
         top: false,
         child: Padding(
           padding: EdgeInsets.fromLTRB(16, 4, 16, 10 + MediaQuery.of(context).viewInsets.bottom),
-          child: Row(children: [
-            Expanded(
-                child: TextField(
-                    controller: input,
-                    onSubmitted: (_) => _ask(),
-                    decoration: const InputDecoration(hintText: '继续追问，比如「再讲简单点」'))),
-            const SizedBox(width: 8),
-            IconButton.filled(
-                style: IconButton.styleFrom(backgroundColor: M.sage),
-                onPressed: busy ? null : _ask,
-                icon: const Icon(Icons.send_rounded)),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(padding: const EdgeInsets.only(bottom: 8), child: SnippetBar(picker: snippets, enabled: !busy)),
+            Row(children: [
+              Expanded(
+                  child: TextField(
+                      controller: input,
+                      onSubmitted: (_) => _ask(),
+                      decoration: const InputDecoration(hintText: '继续追问，比如「再讲简单点」'))),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                  style: IconButton.styleFrom(backgroundColor: M.sage),
+                  onPressed: busy ? null : _ask,
+                  icon: const Icon(Icons.send_rounded)),
+            ]),
           ]),
         ),
       ),

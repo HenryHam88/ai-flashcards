@@ -13,6 +13,7 @@ import '../services/settings.dart';
 import '../desktop/platform.dart';
 import '../theme/glass.dart';
 import 'chapter_editor_page.dart';
+import 'chapter_reparse.dart' show KpPendingCard;
 import 'chapter_view_page.dart';
 import 'cloud_settings_page.dart' show showReleaseSheet, confirmDeleteWithCloud;
 import '../services/cloud_storage.dart' show formatBytes;
@@ -29,6 +30,7 @@ import 'inbox_page.dart';
 import 'home_page.dart';
 import 'quiz_page.dart';
 import 'review_page.dart';
+import 'snippet_bar.dart' show openSnippetManager;
 import 'due_page.dart';
 import '../services/study_queue.dart';
 import 'wrong_book_page.dart';
@@ -218,6 +220,9 @@ class _ProjectPageState extends State<ProjectPage> {
   Future<void> _menu(String v, Project pr) async {
     if (v == 'export') {
       await showExportSheet(context, projectId: pr.id, projectName: pr.name);
+    } else if (v == 'snippets') {
+      await openSnippetManager(context, pr.id);
+      s.changed();
     } else if (v == 'rename') {
       final n = await promptText(context, '重命名项目', initial: pr.name);
       if (n != null && n.trim().isNotEmpty) {
@@ -318,6 +323,7 @@ class _ProjectPageState extends State<ProjectPage> {
                 onSelected: (v) => _menu(v, d.project),
                 itemBuilder: (_) => [
                   const PopupMenuItem(value: 'rename', child: Text('重命名')),
+                  const PopupMenuItem(value: 'snippets', child: Text('常用提示词')),
                   const PopupMenuItem(value: 'export', child: Text('导出 / 分享此项目')),
                   if (d.cloudOn) PopupMenuItem(value: 'release', child: Text('释放${Desk.device}空间')),
                   const PopupMenuItem(value: 'delete', child: Text('删除项目')),
@@ -433,6 +439,7 @@ class _ProjectPageState extends State<ProjectPage> {
             );
           },
         ),
+        if (d.docs.any((x) => x.parsedPages > 0)) KpPendingCard(projectId: d.project.id),
         for (final doc in d.docs)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),

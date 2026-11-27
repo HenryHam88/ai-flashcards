@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../services/cloud_storage.dart' show CloudProvider;
+import '../services/conn_test.dart';
 import '../services/concurrency.dart';
 import '../services/prompts.dart';
 import '../services/settings.dart';
@@ -12,6 +13,7 @@ import '../services/secret_store.dart' show DesktopSecretStore;
 import '../theme/glass.dart';
 import '../help/help_articles.dart' show HelpIds;
 import 'cloud_settings_page.dart';
+import 'conn_test_row.dart';
 import 'explain_history_page.dart';
 import 'favorites_page.dart';
 import 'help_page.dart';
@@ -237,6 +239,13 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
               const SizedBox(height: 12),
               settingsTextField('接口地址', st.ocrBaseUrl, (v) => st.ocrBaseUrl = v),
               KeyField(label: 'OCR 密钥（留空则使用出题模型的密钥）', load: st.ocrKeyRaw, save: st.setOcrKey),
+              ConnTestRow(
+                label: '测试连接',
+                run: () async => ConnTest.deepseekOcr(
+                    baseUrl: st.ocrBaseUrl, apiKey: await st.ocrKey(), purpose: st.ocrModes.first),
+              ),
+              const SizedBox(height: 4),
+              Text('测试会传一页很小的文件给 OCR，只试能不能用。', style: TextStyle(color: M.sub, fontSize: 12)),
             ]),
           ),
         if (st.ocrProvider == OcrProvider.kimi)
@@ -248,6 +257,9 @@ class _OcrSettingsPageState extends State<OcrSettingsPage> {
               const SizedBox(height: 12),
               settingsTextField('接口地址', st.kimiBaseUrl, (v) => st.kimiBaseUrl = v),
               KeyField(label: 'Kimi API 密钥', load: st.kimiKey, save: st.setKimiKey),
+              ConnTestRow(label: '测试连接', run: () async => ConnTest.kimiFile(baseUrl: st.kimiBaseUrl, apiKey: await st.kimiKey())),
+              const SizedBox(height: 4),
+              Text('测试会传一个很小的文本文件，试完就删掉。', style: TextStyle(color: M.sub, fontSize: 12)),
             ]),
           ),
         if (st.ocrProvider == OcrProvider.local)

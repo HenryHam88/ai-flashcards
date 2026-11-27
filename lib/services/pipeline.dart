@@ -539,6 +539,18 @@ List<KnowledgePoint> parseKps(String projectId, Chunk c, Map<String, dynamic> j)
   ];
 }
 
+/// [GenerationService.analyzeChunks] 的结果。
+class ChunkAnalysis {
+  /// 分析成功的段落 id → 知识点数（0 = 这一段没有知识点）。
+  final counts = <String, int>{};
+
+  /// 失败的段落 id → 原因。
+  final errors = <String, String>{};
+
+  /// 每一段都会遇到的错误（密钥无效、余额不足），出现后就停止了。
+  String? fatal;
+}
+
 class GenerationService {
   final Repository repo;
   final Settings settings;
@@ -585,6 +597,29 @@ class GenerationService {
     }
   }
 
+  /// 分析一段文字：调用模型、保存知识点。这一段确实没有知识点时记下来，之后不再重复分析。
+  Future<List<KnowledgePoint>> _analyzeChunk(String projectId, Chunk c, {bool strict = false}) async {
+    final prompt = Prompts.fill(settings.prompt('kp'), {
+      'chapter': c.chapter,
+      'section': c.section,
+      'pages': '${c.pageStart}–${c.pageEnd}',
+      'text': c.text,
+    });
+    final j = await llm.chatJson(prompt);
+    final kps = parseKps(projectId, c, j);
+    if (kps.isEmpty) {
+      // 返回里根本没有知识点列表（不是「这一段没有」）：不记，下次还会再试
+      if (j['knowledge_points'] == null && j['items'] == null) {
+        if (strict) throw LlmException('模型没有返回知识点');
+        return kps;
+      }
+      settings.markKpEmpty([c]);
+    } else {
+      await repo.saveKps(kps);
+    }
+    return kps;
+  }
+
   /// 第 1–2 步：提取知识点（已提取过的块会复用），并去重。
   Future<List<KnowledgePoint>> extractKps(String projectId, List<Chunk> chunks, Progress p) async {
     final existing = await repo.kps(projectId);
@@ -595,23 +630,40 @@ class GenerationService {
       final c = chunks[i];
       final cachedForChunk = existing.where((k) => k.id.startsWith('${c.id}_k')).toList();
       if (cachedForChunk.isNotEmpty) return cachedForChunk;
+      if (settings.kpEmptyMarked(c)) return const <KnowledgePoint>[]; // 分析过，这一段没有知识点
       p(
           conc == 1
               ? '提取知识点：${c.chapter} ${c.section}（${i + 1}/${chunks.length}）'
               : '提取知识点：${c.chapter} ${c.section}（已完成 $done/${chunks.length}）',
           0.1 + 0.4 * (conc == 1 ? i : done) / chunks.length);
-      final prompt = Prompts.fill(settings.prompt('kp'), {
-        'chapter': c.chapter,
-        'section': c.section,
-        'pages': '${c.pageStart}–${c.pageEnd}',
-        'text': c.text,
-      });
-      final j = await llm.chatJson(prompt);
-      final kps = parseKps(projectId, c, j);
-      await repo.saveKps(kps);
-      return kps;
+      return _analyzeChunk(projectId, c);
     }, onDone: (d, _) => done = d);
     return dedupeKps([for (final l in perChunk) ...l]);
+  }
+
+  /// 只分析还没分析的段落：已有知识点的不动。
+  /// 和 [extractKps] 不同，某一段失败不会中断其它段——失败的记下原因，下次再点还会继续分析它们。
+  /// 密钥无效、余额不足这类每一段都会遇到的错误才会提前停止。
+  Future<ChunkAnalysis> analyzeChunks(String projectId, List<Chunk> chunks, Progress p) async {
+    final out = ChunkAnalysis();
+    var done = 0;
+    await runPool<bool>(chunks.length, settings.concurrency, (i) async {
+      if (out.fatal != null) return false;
+      final c = chunks[i];
+      p('分析知识点：${c.chapter} ${c.section}（已完成 $done/${chunks.length}）', chunks.isEmpty ? 1 : done / chunks.length);
+      try {
+        final kps = await _analyzeChunk(projectId, c, strict: true);
+        out.counts[c.id] = kps.length;
+      } on LlmCancelled {
+        rethrow;
+      } catch (e) {
+        out.errors[c.id] = '$e';
+        final t = '$e';
+        if (t.contains('密钥') || t.contains('余额')) out.fatal ??= t;
+      }
+      return true;
+    }, onDone: (d, _) => done = d);
+    return out;
   }
 
   static String optionsText(List<String> l) => l.isEmpty ? '不限' : l.join('、');
