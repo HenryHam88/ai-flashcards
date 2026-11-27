@@ -91,6 +91,17 @@ class LlmProvider {
     modelNames.remove(modelId);
   }
 
+  /// 用拉取结果更新列表。接口给了更好认的名字时填成昵称；已经起过的不覆盖。
+  void applyFetched(List<CatalogModel> list) {
+    models = [for (final e in list) e.id];
+    modelNames.removeWhere((k, _) => !models.contains(k));
+    for (final e in list) {
+      final n = e.name?.trim() ?? '';
+      if (n.isEmpty || modelNames.containsKey(e.id)) continue;
+      setModelName(e.id, n);
+    }
+  }
+
   bool get isDeepSeek => kind == 'deepseek' || (Uri.tryParse(baseUrl)?.host == 'api.deepseek.com');
 }
 
@@ -324,6 +335,13 @@ class Reasoning {
   }
 }
 
+/// 拉取到的一个模型：id 用来发请求，name 是接口给的更好认的名字（没有则为 null）。
+class CatalogModel {
+  final String id;
+  final String? name;
+  const CatalogModel(this.id, [this.name]);
+}
+
 /// 拉取模型列表、看图能力、上下文长度（都按模型名自动判断，不给用户填）。
 class ModelCatalog {
   static Uri modelsUrl(String baseUrl) {
@@ -338,20 +356,51 @@ class ModelCatalog {
     return Uri.parse('$b/models');
   }
 
-  static List<String> parse(String body) {
+  /// 接口给的显示名能不能当昵称：跟模型 ID 不同，而且看起来是给人看的。不凭 ID 自己编。
+  static String? niceName(String id, String? raw) {
+    final n = (raw ?? '').trim();
+    if (n.isEmpty || n == id) return null;
+    if (n.length > 80) return null;
+    if (_looksLikeId(n) && n.toLowerCase() != id.toLowerCase()) return null;
+    return n;
+  }
+
+  /// 像模型 ID 的字符串：没有空格和汉字，主要由小写字母、数字和 - / : . 组成。
+  static bool _looksLikeId(String s) {
+    if (RegExp(r'[\s\u4e00-\u9fff]').hasMatch(s)) return false;
+    if (!RegExp(r'^[A-Za-z0-9._:/-]+$').hasMatch(s)) return false;
+    return s.contains('-') || s.contains('/') || s.contains(':') || s.contains('.');
+  }
+
+  static List<CatalogModel> parse(String body) {
     final j = jsonDecode(body);
     final data = j is Map ? j['data'] ?? j['models'] : j;
     if (data is! List) return const [];
-    final out = <String>[];
+    final out = <CatalogModel>[];
+    final seen = <String>{};
     for (final x in data) {
-      final id = x is Map ? '${x['id'] ?? x['name'] ?? ''}' : '$x';
-      if (id.isNotEmpty && !out.contains(id)) out.add(id);
+      late final String id;
+      String? rawName;
+      if (x is Map) {
+        final idField = '${x['id'] ?? ''}'.trim();
+        if (idField.isNotEmpty) {
+          id = idField;
+          rawName = '${x['display_name'] ?? x['displayName'] ?? x['name'] ?? ''}'.trim();
+        } else {
+          id = '${x['name'] ?? x['model'] ?? ''}'.trim();
+          rawName = '${x['display_name'] ?? x['displayName'] ?? ''}'.trim();
+        }
+      } else {
+        id = '$x'.trim();
+      }
+      if (id.isEmpty || !seen.add(id)) continue;
+      out.add(CatalogModel(id, niceName(id, rawName)));
     }
     return out;
   }
 
   /// 拉取失败时抛 [FetchModelsException]，提示可以手动添加。
-  static Future<List<String>> fetch(String baseUrl, String apiKey, {http.Client? client}) async {
+  static Future<List<CatalogModel>> fetch(String baseUrl, String apiKey, {http.Client? client}) async {
     if (baseUrl.trim().isEmpty) throw FetchModelsException('还没有填写接口地址');
     final c = client ?? http.Client();
     try {
@@ -364,9 +413,9 @@ class ModelCatalog {
       if (r.statusCode < 200 || r.statusCode >= 300) {
         throw FetchModelsException('拉取失败（${r.statusCode}）。可以手动添加模型名称');
       }
-      final ids = parse(r.body);
-      if (ids.isEmpty) throw FetchModelsException('接口没有返回模型。可以手动添加模型名称');
-      return ids;
+      final list = parse(r.body);
+      if (list.isEmpty) throw FetchModelsException('接口没有返回模型。可以手动添加模型名称');
+      return list;
     } on FetchModelsException {
       rethrow;
     } catch (e) {

@@ -200,16 +200,26 @@ class Settings {
     }
   }
 
-  LlmProvider addPreset(ProviderPreset preset, {String? baseUrl}) {
+  LlmProvider addPreset(ProviderPreset preset, {String? baseUrl, String? name}) {
+    final n = (name ?? '').trim();
     final p = LlmProvider(
       id: _newPid(),
       kind: preset.kind,
-      name: preset.name,
+      name: n.isEmpty ? preset.name : n,
       baseUrl: (baseUrl ?? preset.baseUrl).trim(),
       models: preset.kind == 'deepseek' ? ['deepseek-flash', 'deepseek-v4-pro'] : [],
     );
     upsertProvider(p);
     return p;
+  }
+
+  /// 给服务商改名。空名字不改。
+  void renameProvider(String id, String name) {
+    final p = providerById(id);
+    final n = name.trim();
+    if (p == null || n.isEmpty) return;
+    p.name = n;
+    upsertProvider(p);
   }
 
   Map<String, ModelChoice> get _assignments {
@@ -393,7 +403,6 @@ class Settings {
         }
         p.baseUrl = baseUrl;
         p.kind = ModelCatalog.kindOfUrl(baseUrl);
-        p.name = ProviderPreset.of(p.kind).name;
       }
       if (model != null && model.isNotEmpty && !p.models.contains(model)) p.models.add(model);
       upsertProvider(p);

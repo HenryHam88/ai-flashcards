@@ -114,7 +114,7 @@ void main() {
       await t.pumpAndSettle();
       expect(find.text('豆包 Pro'), findsWidgets);
       expect(find.text('ep-20250101-abcdef'), findsNothing);
-      expect(find.text('管理、改名、测试'), findsWidgets);
+      expect(find.text('管理模型'), findsWidgets);
     });
 
     Widget sheetHost(LlmProvider p, {String? modelId, required void Function(ModelEditResult?) onResult, LlmTester? tester}) => StudyApp(
@@ -126,7 +126,7 @@ void main() {
                         context: ctx, isScrollControlled: true, builder: (c) => SizedBox(height: 700, child: ModelEditSheet(st: st, provider: p, modelId: modelId, tester: tester)))),
                     child: const Text('open')))));
 
-    testWidgets('添加模型：填 ID 和显示名称，点测试看到结果，再添加', (t) async {
+    testWidgets('添加模型：填 ID 和昵称，点测试看到结果，再添加', (t) async {
       t.view.physicalSize = const Size(1170, 2532);
       t.view.devicePixelRatio = 3;
       addTearDown(t.view.reset);
@@ -141,7 +141,7 @@ void main() {
       await t.tap(find.text('open'));
       await t.pumpAndSettle();
       await t.enterText(find.widgetWithText(TextField, '模型 ID'), 'my-model');
-      await t.enterText(find.widgetWithText(TextField, '显示名称（可不填）'), '我的模型');
+      await t.enterText(find.widgetWithText(TextField, '昵称（可不填）'), '我的模型');
       await t.tap(find.text('测试'));
       await t.pumpAndSettle();
       expect(asked, ['https://x/v1|sk-abc|my-model']);
@@ -189,9 +189,9 @@ void main() {
       await t.pumpAndSettle();
       expect(find.widgetWithText(TextField, '模型 ID'), findsNothing);
       expect(find.text('m1'), findsOneWidget);
-      expect(find.widgetWithText(TextField, '显示名称（可不填）'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '昵称（可不填）'), findsOneWidget);
       expect(find.text('旧名字'), findsOneWidget);
-      await t.enterText(find.widgetWithText(TextField, '显示名称（可不填）'), '新名字');
+      await t.enterText(find.widgetWithText(TextField, '昵称（可不填）'), '新名字');
       await t.tap(find.text('保存'));
       await t.pumpAndSettle();
       expect((got?.id, got?.name, got?.delete), ('m1', '新名字', false));
@@ -201,6 +201,62 @@ void main() {
       await t.tap(find.text('删除这个模型'));
       await t.pumpAndSettle();
       expect((got?.id, got?.delete), ('m1', true));
+    });
+  });
+
+
+  group('服务商名称', () {
+    testWidgets('添加自定义服务商时要起名字；取消就不添加', (t) async {
+      t.view.physicalSize = const Size(1170, 2532);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      final before = st.providers.length;
+      await t.pumpWidget(StudyApp(state: state, home: const LlmSettingsPage()));
+      await t.pumpAndSettle();
+      Future<void> openCustom() async {
+        await t.tap(find.text('添加服务商'));
+        await t.pumpAndSettle();
+        await t.scrollUntilVisible(find.text('自定义'), 200, scrollable: find.byType(Scrollable).last);
+        await t.pumpAndSettle();
+        await t.tap(find.text('自定义'));
+        await t.pumpAndSettle();
+      }
+
+      await openCustom();
+      expect(find.text('给服务商起个名字'), findsOneWidget);
+      expect(find.text('例如 火山引擎、公司接口'), findsOneWidget);
+      Navigator.of(t.element(find.text('给服务商起个名字'))).pop();
+      await t.pumpAndSettle();
+      expect(st.providers.length, before, reason: '取消起名就不添加');
+
+      await openCustom();
+      await t.enterText(find.widgetWithText(TextField, '名称'), '火山引擎');
+      await t.tap(find.text('添加'));
+      await t.pumpAndSettle();
+      expect(st.providers.where((p) => p.name == '火山引擎'), isNotEmpty);
+      expect(find.text('火山引擎'), findsWidgets);
+    });
+
+    testWidgets('点卡片上的名字可以改名，选模型的分组也会变', (t) async {
+      t.view.physicalSize = const Size(1170, 2532);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      final p = st.addPreset(ProviderPreset.of('custom'), baseUrl: 'https://x/v1', name: '临时');
+      p.models.add('m1');
+      st.upsertProvider(p);
+      st.setAssignment(LlmUse.generate, ModelChoice(providerId: p.id, modelId: 'm1'));
+      await t.pumpWidget(StudyApp(state: state, home: const LlmSettingsPage()));
+      await t.pumpAndSettle();
+      expect(find.text('临时'), findsWidgets);
+      await t.tap(find.text('临时').first);
+      await t.pumpAndSettle();
+      expect(find.text('服务商名称'), findsOneWidget);
+      await t.enterText(find.widgetWithText(TextField, '名称'), '公司接口');
+      await t.tap(find.text('保存'));
+      await t.pumpAndSettle();
+      expect(st.providerById(p.id)!.name, '公司接口');
+      expect(find.text('公司接口'), findsWidgets);
+      expect(find.text('临时'), findsNothing);
     });
   });
 

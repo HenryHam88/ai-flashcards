@@ -53,7 +53,8 @@ void main() {
       expect(part.where((b) => b.type == MdBlockType.heading).map((b) => b.text), ['新增', '修复']);
       expect(part.any((b) => b.text.contains('分析未分析的章节')), isTrue);
       expect(part.any((b) => b.text.contains('常用提示词')), isTrue);
-      expect(part.any((b) => b.text.contains('显示名称')), isTrue);
+      expect(part.any((b) => b.text.contains('昵称')), isTrue);
+      expect(part.any((b) => b.text.contains('服务商') && b.text.contains('名字')), isTrue);
       expect(part.any((b) => b.text.contains('测试')), isTrue);
       expect(part.every((b) => b.type == MdBlockType.heading || b.type == MdBlockType.bullet), isTrue);
     });
