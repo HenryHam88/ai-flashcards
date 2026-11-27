@@ -273,6 +273,11 @@ class ParseService {
     return [for (final (f, t) in pageBatches(pageCount, batch)) OcrBatch(f, t, purpose)];
   }
 
+  static String _shortError(Object? e) {
+    final t = (e is OcrException ? e.message : '$e').replaceAll(RegExp(r'\s+'), ' ').trim();
+    return t.length > 160 ? '${t.substring(0, 160)}…' : t;
+  }
+
   /// 解析一份 PDF：按计划分批上传，失败自动重试 3 次；已解析的页直接跳过。
   /// 返回失败的批次数（0 表示全部成功）。
   Future<int> parseDoc(PdfDoc doc, Progress onProgress) async {
@@ -285,6 +290,7 @@ class ParseService {
     doc.status = '解析中';
     await repo.saveDoc(doc);
     var failed = 0;
+    String? lastError;
     if (todo.isNotEmpty) {
       onProgress('正在分析页面…', 0.02);
       final batches = (await plan(bytes, doc.pageCount))
@@ -331,6 +337,7 @@ class ParseService {
         }
         if (texts == null) {
           if (err is OcrException && err.message.contains('401')) throw err;
+          lastError = '第 ${b.from}–${b.to} 页：${_shortError(err)}';
           return false;
         }
         await repo.savePages([
@@ -356,7 +363,7 @@ class ParseService {
     doc.parsedPages = pages.length;
     doc.status = failed == 0 ? '已解析' : '部分失败';
     await repo.saveDoc(doc);
-    onProgress(failed == 0 ? '解析完成' : '$failed 批失败，可点重试继续', 1);
+    onProgress(failed == 0 ? '解析完成' : '$failed 批失败，可点重试继续${lastError == null ? '' : '（$lastError）'}', 1);
     return failed;
   }
 }
