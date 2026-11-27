@@ -82,7 +82,20 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
     return Glass(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Expanded(child: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => _renameProvider(st, p),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(children: [
+                  Flexible(child: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),
+                  const SizedBox(width: 6),
+                  Icon(Icons.edit_outlined, size: 16, color: M.sub),
+                ]),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: '删除服务商',
             onPressed: () async {
@@ -144,7 +157,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
               padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
               child: Row(children: [
                 Expanded(child: Text('已有 ${p.models.length} 个模型', style: TextStyle(color: M.sub, fontSize: 12))),
-                Text('管理、改名、测试', style: TextStyle(color: M.sageDark, fontSize: 12, fontWeight: FontWeight.w600)),
+                Text('管理模型', style: TextStyle(color: M.sageDark, fontSize: 12, fontWeight: FontWeight.w600)),
                 Icon(Icons.chevron_right_rounded, size: 18, color: M.sageDark),
               ]),
             ),
@@ -181,7 +194,13 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
             _refresh();
           },
           child: Row(children: [
-            Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+                if (!follow && provider != null && e.model.isNotEmpty)
+                  Text(provider.name, style: TextStyle(color: M.sub, fontSize: 12)),
+              ]),
+            ),
             Icon(Icons.chevron_right_rounded, color: M.sub),
           ]),
         ),
@@ -285,7 +304,13 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
               _refresh();
             },
             child: Row(children: [
-              Expanded(child: Text(webE.model.isEmpty ? '还没选联网模型' : st.modelLabel(webE.providerId, webE.model), style: const TextStyle(fontWeight: FontWeight.w600))),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(webE.model.isEmpty ? '还没选联网模型' : st.modelLabel(webE.providerId, webE.model), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  if (webE.model.isNotEmpty && st.providerById(webE.providerId) != null)
+                    Text(st.providerById(webE.providerId)!.name, style: TextStyle(color: M.sub, fontSize: 12)),
+                ]),
+              ),
               Icon(Icons.chevron_right_rounded, color: M.sub),
             ]),
           ),
@@ -319,18 +344,39 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
       initial: 0.7,
     );
     if (preset == null) return;
-    st.addPreset(preset);
+    String? name;
+    if (preset.kind == 'custom') {
+      if (!mounted) return;
+      name = await showGlassSheet<String>(
+        context,
+        (ctx, sc) => _ProviderNameSheet(controller: sc),
+        initial: 0.5,
+      );
+      if (!mounted || name == null) return;
+    }
+    st.addPreset(preset, name: name);
+    _refresh();
+  }
+
+  Future<void> _renameProvider(Settings st, LlmProvider p) async {
+    if (!mounted) return;
+    final name = await showGlassSheet<String>(
+      context,
+      (ctx, sc) => _ProviderNameSheet(controller: sc, initial: p.name, creating: false),
+      initial: 0.5,
+    );
+    if (!mounted || name == null) return;
+    st.renameProvider(p.id, name);
     _refresh();
   }
 
   Future<void> _fetch(Settings st, LlmProvider p) async {
     setState(() => fetching.add(p.id));
     try {
-      final ids = await ModelCatalog.fetch(p.baseUrl, await st.providerKey(p.id));
-      p.models = ids;
-      p.modelNames.removeWhere((k, _) => !ids.contains(k));
+      final list = await ModelCatalog.fetch(p.baseUrl, await st.providerKey(p.id));
+      p.applyFetched(list);
       st.upsertProvider(p);
-      if (mounted) toast(context, '已拉取 ${ids.length} 个模型');
+      if (mounted) toast(context, '已拉取 ${list.length} 个模型');
       _refresh();
     } catch (e) {
       if (mounted) toast(context, '$e');
@@ -415,7 +461,7 @@ class ModelEditResult {
   const ModelEditResult(this.id, this.name, {this.delete = false});
 }
 
-/// 添加或编辑一个模型：模型 ID、显示名称，还能点「测试」试一下能不能用。
+/// 添加或编辑一个模型：模型 ID、昵称，还能点「测试」试一下能不能用。
 /// 「测试」按钮实际做的事，测试时可以换成假的。
 typedef LlmTester = Future<TestResult> Function({required String baseUrl, required String apiKey, required String model, bool keyOptional});
 
@@ -464,8 +510,8 @@ class _ModelEditSheetState extends State<ModelEditSheet> {
         const SizedBox(height: 6),
         Text(
             editing
-                ? '${widget.provider.name} 的模型。起个名字后，选模型的地方会显示这个名字。'
-                : '有的服务商不支持拉取列表，填一个模型 ID 即可。名字可以不填，不填就显示模型 ID。',
+                ? '${widget.provider.name} 的模型。起个昵称后，选模型的地方会显示这个名字。'
+                : '有的服务商不支持拉取列表，填一个模型 ID 即可。昵称可以不填，不填就显示模型 ID。',
             style: TextStyle(color: M.sub, fontSize: 13, height: 1.5)),
         const SizedBox(height: 12),
         if (editing)
@@ -492,7 +538,7 @@ class _ModelEditSheetState extends State<ModelEditSheet> {
           ),
         TextField(
           controller: nameC,
-          decoration: const InputDecoration(labelText: '显示名称（可不填）', hintText: '例如 我的 DeepSeek'),
+          decoration: const InputDecoration(labelText: '昵称（可不填）', hintText: '例如 我的 DeepSeek'),
         ),
         const SizedBox(height: 14),
         ConnTestRow(run: _test, reset: changed),
@@ -701,5 +747,60 @@ class ChatModelChip extends StatelessWidget {
   Future<void> _pick(BuildContext context) async {
     final r = await showModelPicker(context, state.settings, use: LlmUse.study, allowFollow: true);
     if (r != null) onChanged(r);
+  }
+}
+
+
+/// 添加自定义服务商，或给已有服务商改名。
+class _ProviderNameSheet extends StatefulWidget {
+  final ScrollController? controller;
+  final String? initial;
+  final bool creating;
+  const _ProviderNameSheet({this.controller, this.initial, this.creating = true});
+  @override
+  State<_ProviderNameSheet> createState() => _ProviderNameSheetState();
+}
+
+class _ProviderNameSheetState extends State<_ProviderNameSheet> {
+  late final nameC = TextEditingController(text: widget.initial ?? '');
+
+  @override
+  void dispose() {
+    nameC.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final n = nameC.text.trim();
+    if (n.isEmpty) {
+      toast(context, '先填写名称');
+      return;
+    }
+    Navigator.pop(context, n);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      controller: widget.controller,
+      padding: EdgeInsets.fromLTRB(20, 8, 20, 30 + MediaQuery.of(context).viewInsets.bottom),
+      children: [
+        Text(widget.creating ? '给服务商起个名字' : '服务商名称', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Text(
+            widget.creating ? '添加后点卡片上的名字还能再改。接口地址在添加后再填。' : '这个名字会出现在选模型的列表里，只是给你看的。',
+            style: TextStyle(color: M.sub, fontSize: 13, height: 1.5)),
+        const SizedBox(height: 12),
+        TextField(
+          controller: nameC,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _save(),
+          decoration: const InputDecoration(labelText: '名称', hintText: '例如 火山引擎、公司接口'),
+        ),
+        const SizedBox(height: 16),
+        GlassButton(label: widget.creating ? '添加' : '保存', icon: Icons.check_rounded, tint: M.sage, expand: true, onTap: _save),
+      ],
+    );
   }
 }

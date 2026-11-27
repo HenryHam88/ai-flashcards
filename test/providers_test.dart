@@ -62,7 +62,7 @@ void main() {
       expect(r.headers['Authorization'], 'Bearer sk-test');
       return http.Response('{"data":[{"id":"deepseek-flash"},{"id":"deepseek-v4-pro"}]}', 200);
     });
-    expect(await ModelCatalog.fetch('https://api.deepseek.com', 'sk-test', client: ok), ['deepseek-flash', 'deepseek-v4-pro']);
+    expect((await ModelCatalog.fetch('https://api.deepseek.com', 'sk-test', client: ok)).map((e) => e.id), ['deepseek-flash', 'deepseek-v4-pro']);
     expect(ModelCatalog.modelsUrl('https://api.deepseek.com/v1/'), Uri.parse('https://api.deepseek.com/v1/models'));
     expect(ModelCatalog.modelsUrl('https://api.deepseek.com/chat/completions'), Uri.parse('https://api.deepseek.com/models'));
 
@@ -171,5 +171,62 @@ void main() {
     st.setAssignment(LlmUse.study, const ModelChoice());
     expect(s.studyEndpoint().model, 'deepseek-flash');
     expect(s.studyEndpoint(chat).model, 'qwen-plus', reason: '对话自己的选择优先');
+  });
+
+  test('拉取模型：接口给了更好认的名字才当昵称，不凭 ID 编，也不覆盖已起的名', () async {
+    expect(ModelCatalog.niceName('gpt-4o', 'GPT-4o'), 'GPT-4o');
+    expect(ModelCatalog.niceName('ep-20250101-abcdef', '豆包 Pro'), '豆包 Pro');
+    expect(ModelCatalog.niceName('m1', 'm1'), isNull, reason: '跟 ID 一样就不用');
+    expect(ModelCatalog.niceName('m1', '  '), isNull);
+    expect(ModelCatalog.niceName('m1', null), isNull);
+    expect(ModelCatalog.niceName('foo', 'ep-20250101-abcdef'), isNull, reason: '另一个模型 ID 不算好认的名字');
+    expect(ModelCatalog.niceName('foo', 'deepseek-flash'), isNull);
+
+    final parsed = ModelCatalog.parse(
+        '{"data":[{"id":"ep-1","display_name":"豆包 Pro"},{"id":"gpt-4o","name":"GPT-4o"},{"id":"plain"},{"name":"only-name"},{"id":"m","displayName":"m"},{"id":"a","name":"ep-xxxx-yyyy"}]}');
+    expect(parsed.map((e) => (e.id, e.name)).toList(), [
+      ('ep-1', '豆包 Pro'),
+      ('gpt-4o', 'GPT-4o'),
+      ('plain', null),
+      ('only-name', null),
+      ('m', null),
+      ('a', null),
+    ]);
+
+    final p = LlmProvider(id: 'x', kind: 'custom', name: '火山引擎', baseUrl: 'https://x/v1');
+    p.setModelName('ep-1', '我起的名');
+    p.applyFetched(parsed);
+    expect(p.models, ['ep-1', 'gpt-4o', 'plain', 'only-name', 'm', 'a']);
+    expect(p.labelOf('ep-1'), '我起的名', reason: '已经起过的不覆盖');
+    expect(p.labelOf('gpt-4o'), 'GPT-4o');
+    expect(p.labelOf('plain'), 'plain');
+    expect(p.modelNames.containsKey('plain'), isFalse);
+
+    final ok = MockClient((_) async => http.Response('{"data":[{"id":"ep-1","display_name":"Doubao Pro"}]}', 200));
+    final list = await ModelCatalog.fetch('https://api.example.com/v1', '', client: ok);
+    expect(list.single.id, 'ep-1');
+    expect(list.single.name, 'Doubao Pro');
+  });
+
+  test('服务商可以改名；改接口地址不会把名字改回去；旧数据保持原来的名字', () {
+    final p = st.providers.first;
+    expect(p.name, 'DeepSeek');
+    st.renameProvider(p.id, '  我的 DeepSeek  ');
+    expect(st.providerById(p.id)!.name, '我的 DeepSeek');
+    st.renameProvider(p.id, '   ');
+    expect(st.providerById(p.id)!.name, '我的 DeepSeek', reason: '空名字不改');
+
+    final custom = st.addPreset(ProviderPreset.of('custom'), baseUrl: 'https://x/v1', name: '火山引擎');
+    expect(custom.name, '火山引擎');
+    expect(st.addPreset(ProviderPreset.of('custom'), baseUrl: 'https://y/v1').name, '自定义', reason: '没填名字就还叫自定义');
+
+    st.llmBaseUrl = 'https://api.moonshot.cn/v1';
+    final after = st.providerById(p.id)!;
+    expect(after.kind, 'kimi');
+    expect(after.baseUrl, 'https://api.moonshot.cn/v1');
+    expect(after.name, '我的 DeepSeek');
+
+    final old = LlmProvider.fromJson({'id': 'o', 'kind': 'custom', 'name': '公司接口', 'baseUrl': 'https://z/v1', 'models': []});
+    expect(old.name, '公司接口');
   });
 }
