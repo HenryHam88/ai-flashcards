@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models.dart';
 import 'concurrency.dart';
 import 'llm.dart';
 import 'prompts.dart';
@@ -163,6 +164,26 @@ class Settings {
       list[i] = p;
     }
     providers = list;
+  }
+
+  /// 界面上显示的模型名：起过名字显示名字，否则显示模型 ID。
+  String modelLabel(String? providerId, String modelId) => providerById(providerId)?.labelOf(modelId) ?? modelId;
+
+  /// 删除一个模型。正在用它的功能：解释 / 伴学 / 联网改回跟随，出题改用这个服务商的第一个模型。
+  void removeModel(String providerId, String modelId) {
+    final p = providerById(providerId);
+    if (p == null) return;
+    p.removeModel(modelId);
+    upsertProvider(p);
+    for (final use in LlmUse.values) {
+      final c = assignment(use);
+      if (c.providerId != providerId || c.modelId != modelId) continue;
+      if (use == LlmUse.generate) {
+        if (p.models.isNotEmpty) setAssignment(use, ModelChoice(providerId: providerId, modelId: p.models.first));
+      } else {
+        setAssignment(use, const ModelChoice());
+      }
+    }
   }
 
   void removeProvider(String id) {
@@ -692,6 +713,46 @@ class Settings {
   int get autoCap => prefs.getInt('auto_cap') ?? 40;
   set autoCap(int v) => prefs.setInt('auto_cap', v.clamp(minAutoCap, maxAutoCap));
   static const minAutoCap = 5, maxAutoCap = 3000;
+
+  // ---------- 知识点分析：分析过但没有知识点的段落 ----------
+  // 模型正常返回、但这一段确实没有知识点（比如目录、前言）：记下来，之后不再反复分析、反复花钱。
+  // 用「长度 + 指纹」对照原文：这一段的文字变了，记录自动失效。
+  static String chunkSig(String text) {
+    var h = 0x811c9dc5;
+    for (final u in text.codeUnits) {
+      h = ((h ^ u) * 0x01000193) & 0xffffffff;
+    }
+    return '${text.length}:${h.toRadixString(16)}';
+  }
+
+  Map<String, String> get _kpEmpty {
+    final raw = prefs.getString('kp_empty');
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      return {for (final e in (jsonDecode(raw) as Map).entries) '${e.key}': '${e.value}'};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  bool kpEmptyMarked(Chunk c) => _kpEmpty[c.id] == chunkSig(c.text);
+
+  void markKpEmpty(Iterable<Chunk> chunks) {
+    final m = _kpEmpty;
+    for (final c in chunks) {
+      m[c.id] = chunkSig(c.text);
+    }
+    prefs.setString('kp_empty', jsonEncode(m));
+  }
+
+  void clearKpEmpty(Iterable<Chunk> chunks) {
+    final m = _kpEmpty;
+    final before = m.length;
+    for (final c in chunks) {
+      m.remove(c.id);
+    }
+    if (m.length != before) prefs.setString('kp_empty', jsonEncode(m));
+  }
 
   /// 并发数：同时发出的联网请求上限（OCR 批次、知识点分析、出题批次共用），1–2500，默认 4。
   int get concurrency => (prefs.getInt('concurrency') ?? defaultConcurrency).clamp(minConcurrency, maxConcurrency);

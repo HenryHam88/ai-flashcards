@@ -15,11 +15,12 @@ import '../desktop/platform.dart';
 import '../theme/glass.dart';
 import 'ai_widgets.dart';
 import 'llm_settings_page.dart';
-import 'chapter_reparse.dart' show showChapterKps;
+import 'chapter_reparse.dart' show KpPendingCard, showChapterKps;
 import 'mindmap_view.dart';
 import 'notes_page.dart' show openNoteFor, pickKnowledgePoint;
 import 'number_input.dart';
 import 'settings_pages.dart' show fmtSize;
+import 'snippet_bar.dart';
 
 /// 上限这类整数字数：60000 → 「6 万字」，8000 → 「8000 字」。
 String limitLabel(int n) => n >= 10000 ? '${(n / 10000).toStringAsFixed(n % 10000 == 0 ? 0 : 1)} 万字' : '$n 字';
@@ -254,6 +255,10 @@ class _StudyPageState extends State<StudyPage> {
                       child: Text('还没有解析好的资料。先在项目页「资料」里上传 PDF 并解析，解析好以后这里的每一章都可以生成思维导图、和 AI 一起学习。',
                           style: TextStyle(color: M.sub, height: 1.5)),
                     ),
+                  if (l.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    KpPendingCard(key: ValueKey(l), projectId: widget.projectId),
+                  ],
                   for (var i = 0; i < l.length; i++) ...[
                     if (docs.length > 1 && (i == 0 || l[i - 1].doc.id != l[i].doc.id)) SectionTitle(l[i].doc.name),
                     _chapterCard(l[i]),
@@ -441,8 +446,11 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
     );
   }
 
+  late final SnippetPicker snippets;
+
   @override
   void dispose() {
+    snippets.dispose();
     run.dispose();
     input.dispose();
     super.dispose();
@@ -453,6 +461,7 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
   @override
   void initState() {
     super.initState();
+    snippets = SnippetPicker(context.read<AppState>(), widget.projectId)..load();
     _measure();
     if (widget.ask != null) WidgetsBinding.instance.addPostFrameCallback((_) => _send(widget.ask!));
   }
@@ -472,15 +481,19 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
   void _notify() => widget.onChanged(chat, scope);
 
   Future<void> _send(String q) async {
-    q = q.trim();
+    // 选了提示词时，输入框可以留空：这一轮就按所选提示词来
+    final typed = q.trim();
+    q = snippets.compose(q);
     if (q.isEmpty || busy) return;
+    final title = typed.isNotEmpty ? typed : snippets.picked.map((x) => x.label).join('、');
+    snippets.clearSelection();
     final s = context.read<AppState>();
     final c = _ensureChat();
     c.scope = scope;
     setState(() => (busy = true, pending = q));
     input.clear();
     try {
-      final r = await s.studyAsk(c, q, io: run.start());
+      final r = await s.studyAsk(c, q, io: run.start(), title: title);
       if (mounted) setState(() => chat = r);
     } on LlmCancelled {
       if (mounted) toast(context, '已停止');
@@ -710,19 +723,22 @@ class _StudyChatSheetState extends State<StudyChatSheet> {
         top: false,
         child: Padding(
           padding: EdgeInsets.fromLTRB(8, 4, 16, 10 + MediaQuery.of(context).viewInsets.bottom),
-          child: Row(children: [
-            IconButton(
-                tooltip: '添加附件',
-                onPressed: busy || attachStatus != null ? null : _attachMenu,
-                icon: Icon(Icons.attach_file_rounded, color: M.sub)),
-            Expanded(
-                child: TextField(
-                    controller: input,
-                    onSubmitted: _send,
-                    decoration: const InputDecoration(hintText: '问问这部分内容，比如「为什么要这样定义」'))),
-            const SizedBox(width: 8),
-            IconButton.filled(
-                style: IconButton.styleFrom(backgroundColor: M.sage), onPressed: busy || attachStatus != null ? null : () => _send(input.text), icon: const Icon(Icons.send_rounded)),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(padding: const EdgeInsets.fromLTRB(12, 0, 0, 8), child: SnippetBar(picker: snippets, enabled: !busy)),
+            Row(children: [
+              IconButton(
+                  tooltip: '添加附件',
+                  onPressed: busy || attachStatus != null ? null : _attachMenu,
+                  icon: Icon(Icons.attach_file_rounded, color: M.sub)),
+              Expanded(
+                  child: TextField(
+                      controller: input,
+                      onSubmitted: _send,
+                      decoration: const InputDecoration(hintText: '问问这部分内容，比如「为什么要这样定义」'))),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                  style: IconButton.styleFrom(backgroundColor: M.sage), onPressed: busy || attachStatus != null ? null : () => _send(input.text), icon: const Icon(Icons.send_rounded)),
+            ]),
           ]),
         ),
       ),

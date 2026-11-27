@@ -3,24 +3,61 @@
 String newId() => DateTime.now().microsecondsSinceEpoch.toRadixString(36) +
     (DateTime.now().hashCode & 0xffff).toRadixString(36);
 
+/// 项目里存的一条常用提示词：AI 解释和 AI 伴学里点一下就带上。
+class PromptSnippet {
+  String id;
+  String name; // 按钮上显示的短名字，可以不填
+  String text;
+  PromptSnippet({required this.id, this.name = '', required this.text});
+
+  /// 按钮上显示的文字：有名字用名字，否则取内容开头。
+  String get label {
+    final n = name.trim();
+    if (n.isNotEmpty) return n;
+    final t = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    return t.length <= 12 ? t : '${t.substring(0, 12)}…';
+  }
+
+  Map<String, dynamic> toJson() => {'id': id, if (name.isNotEmpty) 'name': name, 'text': text};
+  factory PromptSnippet.fromJson(Map<String, dynamic> j) =>
+      PromptSnippet(id: '${j['id']}', name: '${j['name'] ?? ''}', text: '${j['text'] ?? ''}');
+
+  /// 把选中的提示词接在问题后面。没选就原样返回；问题是空的、只选了提示词时，用提示词当作这一轮的要求。
+  static String compose(String question, List<PromptSnippet> picked) {
+    final q = question.trim();
+    final texts = [for (final x in picked) x.text.trim()].where((t) => t.isNotEmpty).toList();
+    if (texts.isEmpty) return q;
+    final body = texts.length == 1 ? texts.first : [for (var i = 0; i < texts.length; i++) '${i + 1}. ${texts[i]}'].join('\n');
+    if (q.isEmpty) return texts.length == 1 ? texts.first : '请按下面的要求来：\n$body';
+    return '$q\n\n要求：${texts.length == 1 ? body : '\n$body'}';
+  }
+}
+
 class Project {
   String id;
   String name;
   DateTime createdAt;
   Map<String, dynamic>? defaultOptions; // GenOptions json
-  Project({required this.id, required this.name, DateTime? createdAt, this.defaultOptions})
-      : createdAt = createdAt ?? DateTime.now();
+  List<PromptSnippet> snippets; // 这个项目的常用提示词
+  Project({required this.id, required this.name, DateTime? createdAt, this.defaultOptions, List<PromptSnippet>? snippets})
+      : createdAt = createdAt ?? DateTime.now(),
+        snippets = snippets ?? [];
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
         'createdAt': createdAt.toIso8601String(),
         'defaultOptions': defaultOptions,
+        if (snippets.isNotEmpty) 'snippets': [for (final x in snippets) x.toJson()],
       };
   factory Project.fromJson(Map<String, dynamic> j) => Project(
         id: j['id'],
         name: j['name'],
         createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
         defaultOptions: (j['defaultOptions'] as Map?)?.cast<String, dynamic>(),
+        snippets: [
+          for (final x in (j['snippets'] as List?) ?? const [])
+            if (x is Map) PromptSnippet.fromJson(x.cast<String, dynamic>())
+        ],
       );
 }
 
